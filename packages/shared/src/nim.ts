@@ -60,6 +60,18 @@ function ibanCheck(s: string): number {
   return rem
 }
 
+const ADDRESS_RE = new RegExp(`^NQ\\d{2}[${B32}]{32}$`)
+
+// User-friendly form: "NQ" + two IBAN check digits + 32 base32 characters, spaces optional.
+export function isValidNimAddress(s: string): boolean {
+  const a = normalizeAddress(s)
+  return ADDRESS_RE.test(a) && ibanCheck(`${a.slice(4)}${a.slice(0, 4)}`) === 1
+}
+
+export function formatNimAddress(s: string): string {
+  return normalizeAddress(s).replace(/(.{4})/g, '$1 ').trim()
+}
+
 // 20 raw address bytes (hex) -> "NQxx XXXX ..." user-friendly form.
 export function addressFromBytesHex(hex: string): string {
   const h = hex.replace(/^0x/, '')
