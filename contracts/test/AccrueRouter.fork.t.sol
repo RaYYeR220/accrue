@@ -23,6 +23,7 @@ contract AccrueRouterForkTest is Test {
     uint256 internal ownerPk;
     uint256 internal strangerPk;
     address internal relayer;
+    address internal frontrunner;
 
     function setUp() public {
         vm.createSelectFork(vm.envString("POLYGON_RPC"), FORK_BLOCK);
@@ -38,6 +39,7 @@ contract AccrueRouterForkTest is Test {
         (owner, ownerPk) = makeAddrAndKey("accrue.owner");
         (, strangerPk) = makeAddrAndKey("accrue.stranger");
         relayer = makeAddr("accrue.relayer");
+        frontrunner = makeAddr("accrue.frontrunner");
         assertEq(owner.code.length, 0, "owner is not a plain EOA at the fork block");
 
         // An aToken contract custodies its reserve's underlying, so it is a deep holder at any block.
@@ -65,7 +67,7 @@ contract AccrueRouterForkTest is Test {
         uint256 deadline = vm.getBlockTimestamp() + 1 hours;
         (uint8 v, bytes32 r, bytes32 s) = _sign(ownerPk, USDT0, amount, deadline);
 
-        vm.prank(makeAddr("frontrunner"));
+        vm.prank(frontrunner);
         IERC20Permit(USDT0).permit(owner, address(router), amount, deadline, v, r, s);
 
         vm.prank(relayer);
@@ -73,6 +75,27 @@ contract AccrueRouterForkTest is Test {
 
         assertGe(IERC20(A_USDT0).balanceOf(owner), amount - 1);
         assertEq(IERC20(USDT0).allowance(owner, address(router)), 0);
+        _assertNothingStrays();
+    }
+
+    function test_withdraw_frontRunPermit_stillSucceeds() public {
+        _supply(USDT0, 5e6);
+        uint256 amount = 2e6;
+        uint256 deadline = vm.getBlockTimestamp() + 1 hours;
+        (uint8 v, bytes32 r, bytes32 s) = _sign(ownerPk, A_USDT0, amount, deadline);
+        uint256 ownerBefore = IERC20(USDT0).balanceOf(owner);
+
+        vm.prank(frontrunner);
+        IERC20Permit(A_USDT0).permit(owner, address(router), amount, deadline, v, r, s);
+
+        vm.prank(relayer);
+        uint256 withdrawn = router.withdrawWithPermit(USDT0, owner, amount, amount, deadline, v, r, s);
+
+        assertApproxEqAbs(withdrawn, amount, 2);
+        assertEq(IERC20(USDT0).balanceOf(owner), ownerBefore + withdrawn);
+        assertApproxEqAbs(IERC20(A_USDT0).balanceOf(owner), 3e6, 2);
+        assertEq(IERC20(A_USDT0).allowance(owner, address(router)), 0);
+        _assertNothingStrays();
     }
 
     function test_supply_expiredDeadline_reverts() public {
@@ -223,6 +246,7 @@ contract AccrueRouterForkTest is Test {
         for (uint256 i; i < tokens.length; i++) {
             assertEq(IERC20(tokens[i]).balanceOf(address(router)), 0, "router holds funds");
             assertEq(IERC20(tokens[i]).balanceOf(relayer), 0, "relayer received funds");
+            assertEq(IERC20(tokens[i]).balanceOf(frontrunner), 0, "frontrunner received funds");
         }
     }
 

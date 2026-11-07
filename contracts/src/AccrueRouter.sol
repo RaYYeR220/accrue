@@ -39,6 +39,7 @@ contract AccrueRouter is ReentrancyGuard {
         require(pool != address(0) && assets.length == aTokens.length, "AccrueRouter: bad config");
         POOL = IAavePool(pool);
         for (uint256 i; i < assets.length; i++) {
+            // forge-lint: disable-next-line(require-revert-in-loop) deploy-time check; one bad pair must abort it all.
             require(assets[i] != address(0) && aTokens[i] != address(0), "AccrueRouter: bad config");
             _aTokenOf[assets[i]] = aTokens[i];
         }
@@ -63,13 +64,17 @@ contract AccrueRouter is ReentrancyGuard {
         if (_aTokenOf[asset] == address(0)) revert AssetNotAllowed();
         if (amount == 0) revert ZeroAmount();
 
+        // forge-lint: disable-next-line(reentrancy-no-eth) nonReentrant; the token is allowlisted and has no hooks.
         try IERC20Permit(asset).permit(owner, address(this), amount, deadline, v, r, s) {} catch {}
         if (IERC20(asset).allowance(owner, address(this)) < amount) revert InsufficientAllowance();
 
+        // forge-lint: disable-next-line(arbitrary-send-erc20) `owner` signed the permit and gets the aTokens.
         IERC20(asset).safeTransferFrom(owner, address(this), amount);
         IERC20(asset).forceApprove(address(POOL), amount);
+        // forge-lint: disable-next-line(reentrancy-no-eth) nonReentrant; the pool is immutable Aave v3.
         POOL.supply(asset, amount, owner, 0);
 
+        // forge-lint: disable-next-line(reentrancy-events) nonReentrant, so no call can re-enter and reorder logs.
         emit Supplied(owner, asset, amount, POOL.getReserveNormalizedIncome(asset));
     }
 
@@ -94,19 +99,25 @@ contract AccrueRouter is ReentrancyGuard {
         bytes32 r,
         bytes32 s
     ) external nonReentrant returns (uint256 withdrawn) {
+        // Scoped so `aToken` and `pull` leave the stack before the pool call; with 8 parameters plus the return
+        // value the function otherwise fails to compile with "stack too deep".
         {
             IERC20 aToken = IERC20(_aTokenOf[asset]);
             if (address(aToken) == address(0)) revert AssetNotAllowed();
 
+            // forge-lint: disable-next-line(reentrancy-no-eth) nonReentrant; the aToken is allowlisted Aave v3.
             try IERC20Permit(address(aToken)).permit(owner, address(this), permitValue, deadline, v, r, s) {} catch {}
             uint256 pull = Math.min(amount, Math.min(aToken.balanceOf(owner), aToken.allowance(owner, address(this))));
             if (pull == 0) revert NothingToWithdraw();
 
+            // forge-lint: disable-next-line(arbitrary-send-erc20) `owner` signed the permit and gets the underlying.
             aToken.safeTransferFrom(owner, address(this), pull);
         }
         // Redeem the router's whole aToken balance: aToken transfers round, so `pull` may arrive off by a unit.
+        // forge-lint: disable-next-line(reentrancy-no-eth) nonReentrant; the pool is immutable Aave v3.
         withdrawn = POOL.withdraw(asset, type(uint256).max, owner);
 
+        // forge-lint: disable-next-line(reentrancy-events) nonReentrant, so no call can re-enter and reorder logs.
         emit Withdrawn(owner, asset, withdrawn, POOL.getReserveNormalizedIncome(asset));
     }
 
