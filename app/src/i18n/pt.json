@@ -81,5 +81,17 @@
   "dollars.error.pending": "Sua última transação com este token ainda está a caminho. Espere até ela ser concluída e tente de novo.",
   "dollars.error.notDeployed": "Os depósitos em dólares ainda não estão abertos: o contrato do Accrue ainda não está ativo na Polygon.",
   "dollars.error.connectFirst": "Conecte primeiro sua carteira da Polygon e tente de novo.",
-  "dollars.error.ownerHasCode": "USDC não pode ser movido com uma assinatura deste tipo de carteira. Use USDT."
+  "dollars.error.ownerHasCode": "USDC não pode ser movido com uma assinatura deste tipo de carteira. Use USDT.",
+  "verdict.PAID_AS_PROMISED": "Pago como prometido",
+  "verdict.PAID_AS_PROMISED.desc": "Os pagamentos chegaram no prazo e correspondem ao que a taxa permite, com margem de 2 pontos.",
+  "verdict.BEHIND_SCHEDULE": "Atrasado",
+  "verdict.BEHIND_SCHEDULE.desc": "Nenhum pagamento por mais do dobro do intervalo publicado.",
+  "verdict.SHORT": "Abaixo do prometido",
+  "verdict.SHORT.desc": "Em pelo menos três ciclos de pagamento, os stakers receberam mais de 5 pontos a menos do que a taxa permite.",
+  "verdict.NOT_ENOUGH_DATA": "Dados insuficientes",
+  "verdict.NOT_ENOUGH_DATA.desc": "Menos de três ciclos de pagamento no período, ou um resultado apertado demais. Preferimos esperar a adivinhar.",
+  "verdict.NO_PAYOUTS_BY_DESIGN": "Sem pagamentos por definição",
+  "verdict.NO_PAYOUTS_BY_DESIGN.desc": "O pool não oferece pagamentos: nada é devido e nada é sinalizado.",
+  "verdict.CANT_VERIFY_ROUTED": "Não verificável: desviado para outro lugar",
+  "verdict.CANT_VERIFY_ROUTED.desc": "30% ou mais das recompensas vão para endereços que não conseguimos ligar a stakers, por isso não damos veredito."
 }

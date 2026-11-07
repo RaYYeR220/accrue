@@ -81,5 +81,17 @@
   "dollars.error.pending": "Your last transaction with this token is still on its way. Wait until it lands, then try again.",
   "dollars.error.notDeployed": "Dollar deposits are not open yet: the Accrue contract is not live on Polygon.",
   "dollars.error.connectFirst": "Connect your Polygon wallet first, then try again.",
-  "dollars.error.ownerHasCode": "USDC cannot be moved with a signature from this kind of wallet. Use USDT instead."
+  "dollars.error.ownerHasCode": "USDC cannot be moved with a signature from this kind of wallet. Use USDT instead.",
+  "verdict.PAID_AS_PROMISED": "Paid as promised",
+  "verdict.PAID_AS_PROMISED.desc": "Payouts arrived on schedule and matched what the fee allows, within 2 points.",
+  "verdict.BEHIND_SCHEDULE": "Behind schedule",
+  "verdict.BEHIND_SCHEDULE.desc": "No payout for more than twice the published interval.",
+  "verdict.SHORT": "Short",
+  "verdict.SHORT.desc": "Over at least three payout cycles, stakers got more than 5 points less than the fee allows.",
+  "verdict.NOT_ENOUGH_DATA": "Not enough data",
+  "verdict.NOT_ENOUGH_DATA.desc": "Fewer than three payout cycles in the window, or a result too close to call. We wait rather than guess.",
+  "verdict.NO_PAYOUTS_BY_DESIGN": "No payouts by design",
+  "verdict.NO_PAYOUTS_BY_DESIGN.desc": "The pool lists no payouts, so nothing is owed and nothing is flagged.",
+  "verdict.CANT_VERIFY_ROUTED": "Can't verify — routed elsewhere",
+  "verdict.CANT_VERIFY_ROUTED.desc": "30% or more of the rewards leave to addresses we can't tie to stakers, so we don't call it either way."
 }

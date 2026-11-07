@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-import { RELAY_ERROR_CODES } from '@accrue/shared'
+import { RELAY_ERROR_CODES, VERDICTS } from '@accrue/shared'
 import { afterEach, describe, expect, it } from 'vitest'
-import { currentLang, dicts, LANGS, t } from '../src/i18n'
+import { currentLang, dicts, extendDicts, LANGS, t } from '../src/i18n'
 import { toUiError, WrongChainError } from '../src/providers/errors'
 
 const en = dicts.en
@@ -114,5 +114,50 @@ describe('t', () => {
     const out = t(key, vars)
     expect(out).toContain('XYZ')
     expect(out).not.toMatch(/\{\w+\}/)
+  })
+})
+
+describe('language outside Nimiq Pay', () => {
+  const browser = (search: string, languages: string[]) => ({ location: { search }, navigator: { languages, language: languages[0] } }) as unknown as Window
+
+  it('follows the browser languages in order', () => {
+    expect(currentLang(browser('', ['de-DE', 'en']))).toBe('de')
+    expect(currentLang(browser('', ['ja', 'pt-BR']))).toBe('pt')
+    expect(currentLang(browser('', ['ja']))).toBe('en')
+  })
+
+  it('a ?lang= parameter wins over the browser', () => {
+    expect(currentLang(browser('?lang=fr', ['de-DE']))).toBe('fr')
+    expect(currentLang(browser('?x=1&lang=es', ['de-DE']))).toBe('es')
+    expect(currentLang(browser('?lang=xx', ['de-DE']))).toBe('de')
+  })
+
+  it('inside Nimiq Pay only the host language counts', () => {
+    const w = { ...browser('?lang=fr', ['de-DE']), nimiqPay: { language: 'ja' } } as unknown as Window
+    expect(currentLang(w)).toBe('en')
+  })
+})
+
+describe('verdict copy', () => {
+  it('every verdict code has a neutral label and an explanation', () => {
+    for (const v of VERDICTS) {
+      expect(en[`verdict.${v}`], v).toBeTypeOf('string')
+      expect(en[`verdict.${v}.desc`], v).toBeTypeOf('string')
+    }
+  })
+})
+
+describe('extendDicts', () => {
+  it('adds strings that t() then finds, falling back to en', () => {
+    extendDicts({ en: { 'x.only': 'english', 'x.both': 'both en' }, de: { 'x.both': 'beide' } })
+    try {
+      setHost({ language: 'de' })
+      expect(t('x.both')).toBe('beide')
+      expect(t('x.only')).toBe('english')
+    } finally {
+      delete dicts.en['x.only']
+      delete dicts.en['x.both']
+      delete dicts.de['x.both']
+    }
   })
 })

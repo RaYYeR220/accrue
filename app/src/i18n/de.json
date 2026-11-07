@@ -81,5 +81,17 @@
   "dollars.error.pending": "Deine letzte Transaktion mit diesem Token ist noch unterwegs. Warte, bis sie durch ist, und versuche es dann erneut.",
   "dollars.error.notDeployed": "Dollar-Einzahlungen sind noch nicht offen: Der Accrue-Vertrag ist auf Polygon noch nicht live.",
   "dollars.error.connectFirst": "Verbinde zuerst deine Polygon-Wallet und versuche es dann erneut.",
-  "dollars.error.ownerHasCode": "USDC lässt sich mit einer Signatur aus dieser Art von Wallet nicht bewegen. Nutze stattdessen USDT."
+  "dollars.error.ownerHasCode": "USDC lässt sich mit einer Signatur aus dieser Art von Wallet nicht bewegen. Nutze stattdessen USDT.",
+  "verdict.PAID_AS_PROMISED": "Wie versprochen ausgezahlt",
+  "verdict.PAID_AS_PROMISED.desc": "Die Auszahlungen kamen pünktlich und entsprachen dem, was die Gebühr zulässt, auf 2 Prozentpunkte genau.",
+  "verdict.BEHIND_SCHEDULE": "Im Verzug",
+  "verdict.BEHIND_SCHEDULE.desc": "Seit mehr als dem doppelten angegebenen Intervall keine Auszahlung.",
+  "verdict.SHORT": "Zu wenig",
+  "verdict.SHORT.desc": "Über mindestens drei Auszahlungszyklen erhielten die Staker mehr als 5 Prozentpunkte weniger, als die Gebühr zulässt.",
+  "verdict.NOT_ENOUGH_DATA": "Zu wenig Daten",
+  "verdict.NOT_ENOUGH_DATA.desc": "Weniger als drei Auszahlungszyklen im Zeitraum oder ein Ergebnis, das zu knapp ist. Wir warten lieber, als zu raten.",
+  "verdict.NO_PAYOUTS_BY_DESIGN": "Keine Auszahlungen vorgesehen",
+  "verdict.NO_PAYOUTS_BY_DESIGN.desc": "Der Pool sieht keine Auszahlungen vor: Es ist nichts geschuldet, und nichts wird markiert.",
+  "verdict.CANT_VERIFY_ROUTED": "Nicht prüfbar – anderswohin geleitet",
+  "verdict.CANT_VERIFY_ROUTED.desc": "30 % oder mehr der Belohnungen gehen an Adressen, die wir keinem Staker zuordnen können. Deshalb urteilen wir in keine Richtung."
 }

@@ -81,5 +81,17 @@
   "dollars.error.pending": "Votre dernière transaction avec ce jeton est encore en cours. Attendez qu'elle aboutisse, puis réessayez.",
   "dollars.error.notDeployed": "Les dépôts en dollars ne sont pas encore ouverts : le contrat Accrue n'est pas encore actif sur Polygon.",
   "dollars.error.connectFirst": "Connectez d'abord votre portefeuille Polygon, puis réessayez.",
-  "dollars.error.ownerHasCode": "Les USDC ne peuvent pas être déplacés avec une signature de ce type de portefeuille. Utilisez plutôt des USDT."
+  "dollars.error.ownerHasCode": "Les USDC ne peuvent pas être déplacés avec une signature de ce type de portefeuille. Utilisez plutôt des USDT.",
+  "verdict.PAID_AS_PROMISED": "Payé comme promis",
+  "verdict.PAID_AS_PROMISED.desc": "Les paiements sont arrivés à l’heure et correspondent à ce que permettent les frais, à 2 points près.",
+  "verdict.BEHIND_SCHEDULE": "En retard",
+  "verdict.BEHIND_SCHEDULE.desc": "Aucun paiement depuis plus de deux fois l’intervalle annoncé.",
+  "verdict.SHORT": "Insuffisant",
+  "verdict.SHORT.desc": "Sur au moins trois cycles de paiement, les stakers ont reçu plus de 5 points de moins que ce que permettent les frais.",
+  "verdict.NOT_ENOUGH_DATA": "Pas assez de données",
+  "verdict.NOT_ENOUGH_DATA.desc": "Moins de trois cycles de paiement sur la période, ou un résultat trop serré. Nous attendons plutôt que de deviner.",
+  "verdict.NO_PAYOUTS_BY_DESIGN": "Aucun paiement, par choix",
+  "verdict.NO_PAYOUTS_BY_DESIGN.desc": "Le pool n’annonce aucun paiement : rien n’est dû, rien n’est signalé.",
+  "verdict.CANT_VERIFY_ROUTED": "Invérifiable : redirigé ailleurs",
+  "verdict.CANT_VERIFY_ROUTED.desc": "30 % ou plus des récompenses partent vers des adresses que nous ne pouvons relier à aucun staker, donc nous ne tranchons pas."
 }

@@ -1,0 +1,216 @@
+{
+ "source": "https://validators-api-main.je-cf9.workers.dev/api/v1/validators",
+ "fetched": "2026-11-07",
+ "pools": [
+  {
+   "address": "NQ05 U1RF QJNH JCS1 RDQX 4M3Y 60KR K6CN 5LKC",
+   "name": "NimiqHub Staking",
+   "fee": 0.05,
+   "payoutType": "restake",
+   "schedule": "Every minute",
+   "balanceLuna": "71312376900000",
+   "stakers": 415,
+   "accent": "#e19d3e"
+  },
+  {
+   "address": "NQ29 FBVT B4GM S27H UBP4 1MTC GNKQ VPBT 099M",
+   "name": "$NIM_pool",
+   "fee": 0,
+   "payoutType": "restake",
+   "schedule": "Every 4 hours",
+   "balanceLuna": "63225883100000",
+   "stakers": 332,
+   "accent": "#FFC107"
+  },
+  {
+   "address": "NQ15 5JNS U7CE RAH5 3T02 F8A9 JCT6 QMG9 7TSV",
+   "name": "ObsidianStake",
+   "fee": 0.05,
+   "payoutType": "direct",
+   "schedule": "Every 12 hours",
+   "balanceLuna": "57210264400000",
+   "stakers": 154,
+   "accent": "#ad46ff"
+  },
+  {
+   "address": "NQ53 M1NT S3JD TAGM CBTK 01PX YD3U B1DE GYHB",
+   "name": "Mint Pool",
+   "fee": 0.05,
+   "payoutType": "restake",
+   "schedule": "Every 3 hours",
+   "balanceLuna": "47185712800000",
+   "stakers": 217,
+   "accent": "#30cdb5"
+  },
+  {
+   "address": "NQ38 VK34 DRBL S3CN M9KM 8UJN 9JY2 2KFN VQQH",
+   "name": "Siam Pool",
+   "fee": 0.03,
+   "payoutType": "restake",
+   "schedule": "Every 3 hours",
+   "balanceLuna": "46633342900000",
+   "stakers": 104,
+   "accent": "#1f3047"
+  },
+  {
+   "address": "NQ02 31N6 3KM5 T6G5 22TN EPF5 5XPY RLHK RMB3",
+   "name": "NimiqPocket",
+   "fee": 0.01,
+   "payoutType": "restake",
+   "schedule": "Payouts over 10 NIM are instant when NimiqPocket is elected .",
+   "balanceLuna": "43895510100000",
+   "stakers": 195,
+   "accent": "#F39C12"
+  },
+  {
+   "address": "NQ60 GH2T VEA2 CUR5 SXAD QU9B 7ELD YMG5 5T7U",
+   "name": "Private Whalidator",
+   "fee": null,
+   "payoutType": "none",
+   "schedule": "",
+   "balanceLuna": "41433020900000",
+   "stakers": 33,
+   "accent": "#3896a6"
+  },
+  {
+   "address": "NQ44 V95C ABVY RARR SBMC V8VE M6UH EJP0 RXYQ",
+   "name": "nim.re Staking Pool",
+   "fee": 0.0333,
+   "payoutType": "restake",
+   "schedule": "Every 12 hours",
+   "balanceLuna": "30415993400000",
+   "stakers": 283,
+   "accent": "#F6E44D"
+  },
+  {
+   "address": "NQ83 4MVH 53Q4 AL3B Q097 55GJ LUQ3 GSF0 85B7",
+   "name": "NimiqCafe Staking",
+   "fee": 0.03,
+   "payoutType": "restake",
+   "schedule": "Every 1 minute",
+   "balanceLuna": "29607598400000",
+   "stakers": 64,
+   "accent": "#754b47"
+  },
+  {
+   "address": "NQ08 LMAK 00XK YYN9 CDXV ADVG CL0U HUBM J670",
+   "name": "Ritvars Staking",
+   "fee": 0.02,
+   "payoutType": "restake",
+   "schedule": "Every 12 hours",
+   "balanceLuna": "29185306900000",
+   "stakers": 172,
+   "accent": "#DCFDDD"
+  },
+  {
+   "address": "NQ15 HNAH YRVH DFVM YHAG BSXG 0QHK KA0Q XDR7",
+   "name": "Garuda Pool",
+   "fee": 0.05,
+   "payoutType": "restake",
+   "schedule": "Every 12 hours",
+   "balanceLuna": "25795603000000",
+   "stakers": 256,
+   "accent": "#c08e2f"
+  },
+  {
+   "address": "NQ08 RS08 LTKL 62QL B954 S9YP 0G3R XVKM RU2Y",
+   "name": "Nimiq Marketing Pool",
+   "fee": 0,
+   "payoutType": "restake",
+   "schedule": "0 * * * *",
+   "balanceLuna": "18274022000000",
+   "stakers": 72,
+   "accent": "#D7A711"
+  },
+  {
+   "address": "NQ96 X97C 94M1 6MV3 KJ0G JA5U 6VB4 6Y63 EUH4",
+   "name": "Keyring Staking",
+   "fee": 0.05,
+   "payoutType": "restake",
+   "schedule": "Every 12 hours",
+   "balanceLuna": "15621953300000",
+   "stakers": 112,
+   "accent": "#60b3f9"
+  },
+  {
+   "address": "NQ32 1U9X 7P3X B2H5 XA00 5LC2 5KFE VBQE X3BU",
+   "name": "Nimiq.Fun",
+   "fee": 0.025,
+   "payoutType": "direct",
+   "schedule": "Every 12 hours",
+   "balanceLuna": "9507085900000",
+   "stakers": 44,
+   "accent": "#FFD233"
+  },
+  {
+   "address": "NQ49 N8MB XYCR XBUP 404C KXKK L49M A7BT F082",
+   "name": "Nimiq Base Staking",
+   "fee": 0,
+   "payoutType": "restake",
+   "schedule": "",
+   "balanceLuna": "7916289600000",
+   "stakers": 15,
+   "accent": "#F09008"
+  },
+  {
+   "address": "NQ08 ACT8 T0FE PTG8 P5RL H2S3 QGXH V15R NVXY",
+   "name": "ImpactZero stake",
+   "fee": 0,
+   "payoutType": "restake",
+   "schedule": "",
+   "balanceLuna": "5086673100000",
+   "stakers": 24,
+   "accent": "#07c1ff"
+  },
+  {
+   "address": "NQ51 SURF MCTM AQXM 15PA K9FX 8EEX 29BE VGH8",
+   "name": "Nimiq Surf",
+   "fee": 0,
+   "payoutType": "none",
+   "schedule": "",
+   "balanceLuna": "2595117100000",
+   "stakers": 6,
+   "accent": "#e19d3e"
+  },
+  {
+   "address": "NQ24 8V0E L24U TGQ6 KAGA 0KGY SR4F GVV1 SXNA",
+   "name": "Synapse LN - Nimiq",
+   "fee": 0.01,
+   "payoutType": "restake",
+   "schedule": "",
+   "balanceLuna": "526317400000",
+   "stakers": 11,
+   "accent": "#ffc107"
+  },
+  {
+   "address": "NQ40 FC4D HAT6 9N1H P52H P4FX QL8P CE6Y 10VT",
+   "name": "NODENIMIQ1.NIMIQ-JU.FR by @Ju",
+   "fee": 0.01,
+   "payoutType": "restake",
+   "schedule": "",
+   "balanceLuna": "74304000000",
+   "stakers": 12,
+   "accent": "#0582CA"
+  },
+  {
+   "address": "NQ51 7BS3 0HVH 9R5M TUDH C5PG 490G S7XT KD4D",
+   "name": "NODENIMIQ2.NIMIQ-JU.FR by @Ju",
+   "fee": 0.01,
+   "payoutType": "restake",
+   "schedule": "",
+   "balanceLuna": "47903800000",
+   "stakers": 11,
+   "accent": "#0582CA"
+  },
+  {
+   "address": "NQ32 V144 LJDN FJND NLCQ PKBU HTPF KD8G J664",
+   "name": "CHIPMUNK POOL",
+   "fee": 0.05,
+   "payoutType": "direct",
+   "schedule": "0 */6 * * *",
+   "balanceLuna": "10319900000",
+   "stakers": 4,
+   "accent": "#bd802f"
+  }
+ ]
+}
