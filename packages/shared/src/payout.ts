@@ -65,12 +65,16 @@ export interface PoolWindow {
 export const RUN_GAP_BLOCKS = 300
 
 // The first run only settles accrual from before the data starts, so the whole run is dropped and
-// the window opens after it; it closes at the end of the last run, since later earnings are pending,
-// not short. cycles = median number of payouts a staker received inside the window.
+// the window opens after it; it closes at the end of the last complete run, since later earnings are
+// pending, not short. A run is complete once the data reaches RUN_GAP_BLOCKS past its last payout
+// (`reachBlock`, default: the newest tx given); data ending inside a run would count the run's
+// earnings without all of its payouts. cycles = median number of payouts a staker received inside
+// the window.
 export function buildPoolWindow(
   txs: NimTx[],
   pool: { rewardAddress: string },
   isStakerOfPool: (addr: string) => boolean | undefined,
+  opts: { reachBlock?: number } = {},
 ): PoolWindow {
   const sorted = [...txs].sort((a, b) => a.blockNumber - b.blockNumber)
   const items = sorted.map((tx) => ({ tx, c: classifyTx(tx, pool, isStakerOfPool) }))
@@ -85,6 +89,8 @@ export function buildPoolWindow(
   }
 
   const newest = runs.length ? runs[runs.length - 1]![runs[runs.length - 1]!.length - 1]!.tx : null
+  const reach = opts.reachBlock ?? sorted[sorted.length - 1]?.blockNumber ?? 0
+  if (newest && reach - newest.blockNumber < RUN_GAP_BLOCKS) runs.pop()
   const empty: PoolWindow = {
     earned: 0n, paidRestake: 0n, paidDirect: 0n, paidUnverified: 0n, otherOut: 0n, cycles: 0,
     lastPayoutTs: newest?.timestamp ?? null,
@@ -94,7 +100,7 @@ export function buildPoolWindow(
   if (runs.length < 2) return empty
 
   const startTx = runs[0]![runs[0]!.length - 1]!.tx
-  const endTx = newest!
+  const endTx = runs[runs.length - 1]![runs[runs.length - 1]!.length - 1]!.tx
   const w: PoolWindow = { ...empty, windowStartTs: startTx.timestamp, windowEndTs: endTx.timestamp }
 
   const perStaker = new Map<string, number>()

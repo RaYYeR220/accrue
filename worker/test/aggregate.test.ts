@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { COINBASE_ADDRESS, RUN_GAP_BLOCKS, addressFromBytesHex, buildPoolWindow, type NimTx } from '@accrue/shared'
+import { COINBASE_ADDRESS, RUN_GAP_BLOCKS, addressFromBytesHex, buildPoolWindow, poolVerdict, type NimTx } from '@accrue/shared'
 import { aggregate, canonicalAddress, delegationOracle, payoutRecipients, poolWindowFromAggregates, stakerFromHex } from '../src/indexer/aggregate'
 
 const load = (f: string) =>
@@ -218,5 +218,113 @@ describe('poolWindowFromAggregates', () => {
     const w = poolWindowFromAggregates(agg.hours, agg.stakerDays, span(siam))
     expect(w.cycles).toBe(0)
     expect(w.lastPayoutTs).toBeNull()
+  })
+})
+
+// Review r1: the window may only close at a payout run known to be complete.
+describe('poolWindowFromAggregates: complete runs only (review r1)', () => {
+  const GARUDA_CFG = { fee: 0.05, payoutType: 'restake' as const, scheduleMs: null }
+  const sorted = [...garuda.txs].sort((a, b) => a.blockNumber - b.blockNumber)
+  const isPay = (t: NimTx) => t.from === garuda.address && t.to !== garuda.address
+  const runs: NimTx[][] = []
+  for (const t of sorted.filter(isPay)) {
+    const last = runs[runs.length - 1]
+    if (last && t.blockNumber - last[last.length - 1]!.blockNumber < RUN_GAP_BLOCKS) last.push(t)
+    else runs.push([t])
+  }
+  const lastRun = runs[runs.length - 1]!
+  const prevRunEnd = runs[runs.length - 2]![runs[runs.length - 2]!.length - 1]!.timestamp
+  const windowAt = (cutBlock: number) => {
+    const cut = sorted.filter((t) => t.blockNumber <= cutBlock)
+    const agg = aggregate(cut, { rewardAddress: garuda.address }, () => true)
+    // the data reaches the cut block (coinbase lands every batch, so the newest tx is the reach)
+    const toTs = cut[cut.length - 1]!.timestamp + 1
+    return poolWindowFromAggregates(agg.hours, agg.stakerDays, { fromTs: cut[0]!.timestamp, toTs })
+  }
+
+  it('hour rows carry the first payout of the hour too', () => {
+    const agg = aggregate(garuda.txs, { rewardAddress: garuda.address }, () => true)
+    for (const h of agg.hours.filter((x) => x.lastPayoutTs !== null)) {
+      const inHour = sorted.filter((t) => isPay(t) && Math.floor(t.timestamp / HOUR) === h.hour)
+      expect(h.firstPayoutTs).toBe(Math.min(...inHour.map((t) => t.timestamp)))
+    }
+  })
+
+  it('Garuda cut anywhere inside its last run is never SHORT and closes at the previous run', () => {
+    const blocks = [...new Set(lastRun.map((t) => t.blockNumber))]
+    expect(blocks.length).toBeGreaterThan(1)
+    for (const b of blocks) {
+      const w = windowAt(b)
+      expect(w.windowEndTs).toBeLessThanOrEqual(prevRunEnd)
+      const v = poolVerdict(w, GARUDA_CFG, w.windowEndTs)
+      expect(v.verdict).not.toBe('SHORT')
+      expect(v.ratio ?? 1).toBeGreaterThan(0.93)
+    }
+  })
+
+  it('the last run counts once the data reaches RUN_GAP past it', () => {
+    const end = lastRun[lastRun.length - 1]!
+    const early = windowAt(end.blockNumber + RUN_GAP_BLOCKS - 61)
+    expect(early.windowEndTs).toBeLessThanOrEqual(prevRunEnd)
+    const late = windowAt(end.blockNumber + RUN_GAP_BLOCKS + 60)
+    expect(late.windowEndTs).toBe(end.timestamp)
+  })
+
+  // synthetic pools: 1 block per second, a coinbase every 60 blocks
+  const REWARD = 'NQ38 VK34 DRBL S3CN M9KM 8UJN 9JY2 2KFN VQQH'
+  const STAKERS = ['11'.repeat(20), '22'.repeat(20), '33'.repeat(20)]
+  let n = 0
+  const tx = (block: number, from: string, to: string, value: number, data = '', toType = 0) =>
+    ({ hash: `s${n++}`, blockNumber: block, timestamp: block * 1000, from, to, fromType: 0, toType, value, fee: 0, senderData: '', recipientData: data, relatedAddresses: [] }) as NimTx
+  const coinbase = (block: number) => tx(block, COINBASE_ADDRESS, REWARD, 1_000_000)
+  const restake = (block: number, staker: string, value: number) =>
+    tx(block, REWARD, 'NQ77 0000 0000 0000 0000 0000 0000 0000 0001', value, `06${staker}`, 3)
+  const START = 3_600 * 1_000_000 // an hour boundary, in blocks
+
+  it('a pool that pays every batch (one endless run) gets a window, and a fair ratio', () => {
+    const txs: NimTx[] = []
+    for (let b = START; b < START + 10 * 3600; b += 60) {
+      txs.push(coinbase(b))
+      for (const s of STAKERS) txs.push(restake(b + 30, s, 323_333))
+    }
+    const agg = aggregate(txs, { rewardAddress: REWARD }, () => true)
+    const toTs = (START + 10 * 3600) * 1000
+    const w = poolWindowFromAggregates(agg.hours, agg.stakerDays, { fromTs: START * 1000, toTs })
+    expect(w.windowEndTs).toBeGreaterThan(w.windowStartTs)
+    const ratio = Number(((w.paidRestake + w.paidDirect) * 1_000_000n) / w.earned) / 1e6
+    expect(Math.abs(ratio - 0.97)).toBeLessThan(0.01)
+    // and it never closes within RUN_GAP of the data's end
+    expect(w.windowEndTs).toBeLessThanOrEqual(toTs - RUN_GAP_BLOCKS * 1000)
+  })
+
+  it('a 12 h cycle paid out slowly over 3 h is a run, not a stream: a cut inside it is not SHORT', () => {
+    const txs: NimTx[] = []
+    const H = 3600
+    for (let b = START; b < START + 40 * H; b += 60) txs.push(coinbase(b))
+    for (const cycleStart of [START + 12 * H, START + 24 * H, START + 36 * H]) {
+      // 12 h of rewards (720 batches x 1_000_000) x 0.95, spread over 180 payouts 60 blocks apart
+      for (let k = 0; k < 180; k++) txs.push(restake(cycleStart + k * 60 + 10, STAKERS[k % 3]!, Math.floor((720 * 1_000_000 * 0.95) / 180)))
+    }
+    const cutBlock = START + 37 * H + 1800 // in the middle of the third payout
+    const cut = txs.filter((t) => t.blockNumber <= cutBlock)
+    const agg = aggregate(cut, { rewardAddress: REWARD }, () => true)
+    const w = poolWindowFromAggregates(agg.hours, agg.stakerDays, { fromTs: START * 1000, toTs: cutBlock * 1000 })
+    expect(w.windowEndTs).toBeLessThanOrEqual((START + 27 * H) * 1000)
+    const v = poolVerdict({ ...w, cycles: Math.max(w.cycles, 3) }, GARUDA_CFG, w.windowEndTs)
+    expect(v.verdict).not.toBe('SHORT')
+  })
+
+  it('a window never spans an open descent\'s hole', () => {
+    const agg = aggregate(garuda.txs, { rewardAddress: garuda.address }, () => true)
+    const lo = sorted[0]!.timestamp
+    const hi = sorted[sorted.length - 1]!.timestamp + 1
+    const mid = lo + (hi - lo) * 0.7
+    const hole = { fromTs: mid, toTs: mid + 4 * HOUR }
+    // the hole has no rows: drop them, as the indexer would not have folded them yet
+    const rows = agg.hours.filter((h) => (h.hour + 1) * HOUR <= hole.fromTs || h.hour * HOUR >= hole.toTs)
+    const w = poolWindowFromAggregates(rows, agg.stakerDays, { fromTs: lo, toTs: hi, hole })
+    expect(w.windowEndTs <= hole.fromTs || w.windowStartTs >= hole.toTs).toBe(true)
+    const backfilling = poolWindowFromAggregates(rows, agg.stakerDays, { fromTs: lo, toTs: hi, hole: { fromTs: 0, toTs: hole.toTs } })
+    expect(backfilling.windowStartTs).toBeGreaterThanOrEqual(hole.toTs)
   })
 })

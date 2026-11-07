@@ -35,15 +35,17 @@ export function hourUpsert(pool: string, h: HourAgg, g: Guard): Stmt {
   const w = guardSql(g, pool)
   return {
     sql:
-      'INSERT INTO pool_hour (pool, hour, earned, paid_restake, paid_direct, paid_unverified, other_out, payout_batches, last_payout_ts) ' +
-      `SELECT ${marks(9)} WHERE ${w.sql} ` +
+      'INSERT INTO pool_hour (pool, hour, earned, paid_restake, paid_direct, paid_unverified, other_out, payout_batches, first_payout_ts, last_payout_ts) ' +
+      `SELECT ${marks(10)} WHERE ${w.sql} ` +
       'ON CONFLICT(pool, hour) DO UPDATE SET earned = earned + excluded.earned, paid_restake = paid_restake + excluded.paid_restake, ' +
       'paid_direct = paid_direct + excluded.paid_direct, paid_unverified = paid_unverified + excluded.paid_unverified, ' +
       'other_out = other_out + excluded.other_out, payout_batches = payout_batches + excluded.payout_batches, ' +
+      'first_payout_ts = CASE WHEN first_payout_ts IS NULL THEN excluded.first_payout_ts ' +
+      'WHEN excluded.first_payout_ts IS NULL THEN first_payout_ts ELSE MIN(first_payout_ts, excluded.first_payout_ts) END, ' +
       'last_payout_ts = NULLIF(MAX(COALESCE(last_payout_ts, 0), COALESCE(excluded.last_payout_ts, 0)), 0)',
     params: [
       pool, h.hour, num(h.earned), num(h.paidRestake), num(h.paidDirect), num(h.paidUnverified), num(h.otherOut),
-      h.payoutBatches, h.lastPayoutTs, ...w.params,
+      h.payoutBatches, h.firstPayoutTs, h.lastPayoutTs, ...w.params,
     ],
   }
 }
@@ -60,12 +62,12 @@ export function stakerDayUpsert(pool: string, s: StakerDayAgg, g: Guard): Stmt {
 
 const CURSOR_COLS = [
   'newest_hash', 'newest_block', 'oldest_block', 'backfill_done', 'resume_hash', 'floor_block',
-  'last_payout_block', 'visited_at', 'txs_per_hour',
+  'last_payout_block', 'visited_at', 'txs_per_hour', 'reach_ts', 'hole_from_ts', 'hole_to_ts',
 ] as const
 
 const cursorValues = (c: Cursor): SqlValue[] => [
   c.newestHash, c.newestBlock, c.oldestBlock, c.backfillDone ? 1 : 0, c.resumeHash, c.floorBlock,
-  c.lastPayoutBlock, c.visitedAt, c.txsPerHour,
+  c.lastPayoutBlock, c.visitedAt, c.txsPerHour, c.reachTs, c.holeFromTs, c.holeToTs,
 ]
 
 /** Must come after the pool's aggregate statements in the same batch: it moves the guard. */

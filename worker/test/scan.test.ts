@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { BATCH_BLOCKS, type NimTx } from '@accrue/shared'
 import { aggregate } from '../src/indexer/aggregate'
-import { Budget, PAGE_SIZE, rpcSource, scanPool, type Cursor } from '../src/indexer/scan'
+import { Budget, PAGE_SIZE, freshCursor, rpcSource, scanPool, type Cursor } from '../src/indexer/scan'
 import { FakeChain, load } from './chain'
 
 const garuda = load('garuda-2026-11-07.json')
@@ -121,7 +121,7 @@ describe('scanPool', () => {
   it('a failure on the first page leaves the cursor untouched', async () => {
     const chain = new FakeChain(garuda.address, garuda.txs, top)
     chain.failNext = 1
-    const c: Cursor = { newestHash: 'x', newestBlock: top - 100, oldestBlock: 1, backfillDone: true, resumeHash: null, floorBlock: null, lastPayoutBlock: 7, visitedAt: 3, txsPerHour: 10 }
+    const c: Cursor = { ...freshCursor(), newestHash: 'x', newestBlock: top - 100, oldestBlock: 1, backfillDone: true, lastPayoutBlock: 7, visitedAt: 3, txsPerHour: 10 }
     const s = await scanPool(chain.source(), garuda.address, c, { maxPages: 3, now: 9, canFetch: () => true })
     expect(s.pages).toBe(0)
     expect(s.txs).toHaveLength(0)
@@ -130,7 +130,7 @@ describe('scanPool', () => {
 
   it('an empty head page for an address with history is an error, not "nothing new"', async () => {
     const chain = new FakeChain(garuda.address, garuda.txs, top)
-    const c: Cursor = { newestHash: 'x', newestBlock: top - 100, oldestBlock: 1, backfillDone: true, resumeHash: null, floorBlock: null, lastPayoutBlock: 7, visitedAt: 3, txsPerHour: 10 }
+    const c: Cursor = { ...freshCursor(), newestHash: 'x', newestBlock: top - 100, oldestBlock: 1, backfillDone: true, lastPayoutBlock: 7, visitedAt: 3, txsPerHour: 10 }
     const s = await scanPool({ ...chain.source(), txPage: async () => [] }, garuda.address, c, { maxPages: 3, now: 9, canFetch: () => true })
     expect(s.error).toMatch(/empty head page/)
     expect(s.pages).toBe(0)
@@ -139,7 +139,7 @@ describe('scanPool', () => {
 
   it('a changed reward address (head anchor) indexes forward only', async () => {
     const chain = new FakeChain(garuda.address, garuda.txs, top - 10_000)
-    const anchor: Cursor = { newestHash: null, newestBlock: null, oldestBlock: null, backfillDone: true, resumeHash: null, floorBlock: null, lastPayoutBlock: null, visitedAt: null, txsPerHour: null }
+    const anchor: Cursor = { ...freshCursor(), backfillDone: true }
     const s = await scanPool(chain.source(), garuda.address, anchor, { maxPages: 3, now: 1, canFetch: () => true })
     expect(s.txs).toHaveLength(0)
     expect(s.cursor.newestBlock).toBe(lastMacro(top - 10_000))
@@ -204,5 +204,163 @@ describe('Budget and rpcSource', () => {
     await expect(src.txPage('NQ00', null)).rejects.toThrow()
     expect(b.used).toBe(3)
     expect(b.can(1, 2)).toBe(false)
+  })
+})
+
+// Synthetic reward address for the paging edge cases: one tx per few blocks, newest first.
+const ADDR = 'NQ00 TEST'
+const mk = (i: number, block: number) =>
+  ({ hash: `h${i}`, blockNumber: block, timestamp: block * 1000, from: 'NQ81 C01N BASE 0000 0000 0000 0000 0000 0000', to: ADDR, fromType: 0, toType: 0, value: 1, fee: 0, senderData: '', recipientData: '', relatedAddresses: [] }) as NimTx
+function synth(all: NimTx[], head: { head: number }, emptyOn: number[] = []) {
+  let calls = 0
+  return {
+    calls: () => calls,
+    async txPage(_a: string, startAt: string | null) {
+      calls++
+      if (emptyOn.includes(calls)) return []
+      const vis = all.filter((t) => t.blockNumber <= head.head).sort((a, b) => b.blockNumber - a.blockNumber || (a.hash < b.hash ? 1 : -1))
+      const i = startAt === null ? 0 : vis.findIndex((t) => t.hash === startAt) + 1
+      if (startAt !== null && i === 0) return []
+      return vis.slice(i, i + PAGE_SIZE).map((t) => ({ ...t, confirmations: head.head - t.blockNumber + 1 })) as NimTx[]
+    },
+    async delegation() {
+      return ''
+    },
+    async rewardAddress(v: string) {
+      return v
+    },
+  }
+}
+const existing = (newestBlock: number): Cursor => ({ ...freshCursor(), newestHash: 'h0', newestBlock, oldestBlock: 1, backfillDone: true, visitedAt: 0, txsPerHour: 1 })
+const run = (src: ReturnType<typeof synth>, c: Cursor | null, maxPages: number, now = 1e9) =>
+  scanPool(src, ADDR, c, { maxPages, now, canFetch: () => true })
+
+describe('scanPool paging edge cases (review r1)', () => {
+  it('an empty page after a full one is an error that keeps the descent open; nothing is lost', async () => {
+    const txs = [...Array.from({ length: 2000 }, (_, i) => mk(i, 20_000 + i * 2)), ...Array.from({ length: 30 }, (_, i) => mk(5000 + i, 18_000 + i))]
+    const head = { head: 24_100 }
+    const src = synth(txs, head, [2])
+    const s1 = await run(src, existing(19_000), 5)
+    expect(s1.error).toMatch(/empty page/)
+    expect(s1.txs).toHaveLength(PAGE_SIZE)
+    expect(s1.cursor.resumeHash).toBe(s1.txs[s1.txs.length - 1]!.hash)
+    const s2 = await run(src, s1.cursor, 5)
+    expect(s2.error).toBeNull()
+    expect(s2.cursor.resumeHash).toBeNull()
+    const all = [...s1.txs, ...s2.txs].map((t) => t.hash)
+    const want = txs.filter((t) => t.blockNumber > 19_000 && t.blockNumber <= lastMacro(head.head))
+    expect(new Set(all).size).toBe(all.length)
+    expect(all.length).toBe(want.length)
+  })
+
+  it('an empty first page when continuing a descent is an error, the resume point stays', async () => {
+    const txs = Array.from({ length: 1200 }, (_, i) => mk(i, 30_000 + i * 2))
+    const head = { head: 32_500 }
+    const src = synth(txs, head, [2])
+    const s1 = await run(src, existing(29_000), 1)
+    expect(s1.cursor.resumeHash).not.toBeNull()
+    const s2 = await run(src, s1.cursor, 3)
+    expect(s2.error).toMatch(/empty page/)
+    expect(s2.cursor.resumeHash).toBe(s1.cursor.resumeHash)
+    expect(s2.txs).toHaveLength(0)
+  })
+
+  it('a short page is the end of history: no extra fetch', async () => {
+    const txs = Array.from({ length: 700 }, (_, i) => mk(i, 40_000 + i * 3))
+    const src = synth(txs, { head: 42_200 })
+    const s = await scanPool(src, ADDR, null, { maxPages: 10, now: 1e9, canFetch: () => true, backfillBlocks: 10_000 })
+    expect(src.calls()).toBe(2)
+    expect(s.cursor.backfillDone).toBe(true)
+    expect(s.cursor.resumeHash).toBeNull()
+    expect(s.txs).toHaveLength(700)
+  })
+
+  it('a backfill that meets the first tx at a page boundary asks once more, then ends', async () => {
+    const txs = Array.from({ length: 1000 }, (_, i) => mk(i, 70_000 + i * 2))
+    const src = synth(txs, { head: 72_100 })
+    const s = await scanPool(src, ADDR, null, { maxPages: 10, now: 1e9, canFetch: () => true, backfillBlocks: 50_000 })
+    expect(s.error).toBeNull()
+    expect(s.txs).toHaveLength(1000)
+    expect(s.cursor.backfillDone).toBe(true)
+    expect(src.calls()).toBe(4)
+  })
+
+  it('more than a page of txs above the last macro block is never folded twice', async () => {
+    const txs: NimTx[] = []
+    let n = 0
+    for (let b = 10_000; b < 11_980; b += 4) txs.push(mk(n++, b))
+    for (let k = 0; k < 600; k++) txs.push(mk(n++, 12_001 + (k % 58)))
+    const head = { head: 12_059 }
+    const src = synth(txs, head)
+    const s1 = await run(src, existing(11_000), 1)
+    const s2 = await run(src, s1.cursor, 5)
+    head.head = 12_200
+    const s3 = await run(src, s2.cursor, 5, 2e9)
+    const got = [...s1.txs, ...s2.txs, ...s3.txs].map((t) => t.hash)
+    expect(new Set(got).size).toBe(got.length)
+    expect(got.length).toBe(txs.filter((t) => t.blockNumber > 11_000 && t.blockNumber <= lastMacro(12_200)).length)
+  })
+
+  it('an empty head page never moves a fresh or reset cursor', async () => {
+    const src = synth([], { head: 50_000 })
+    const fresh = await run(src, null, 2)
+    expect(fresh.cursor.newestBlock).toBeNull()
+    expect(fresh.cursor.backfillDone).toBe(false)
+    const reset: Cursor = { ...freshCursor(), backfillDone: true }
+    const again = await run(src, reset, 2)
+    expect(again.cursor.newestBlock).toBeNull()
+  })
+
+  it('records where the data reaches and the hole an open descent leaves', async () => {
+    const txs = [...Array.from({ length: 1500 }, (_, i) => mk(i, 60_000 + i * 2)), ...Array.from({ length: 30 }, (_, i) => mk(5000 + i, 58_000 + i))]
+    const head = { head: 63_100 }
+    const src = synth(txs, head)
+    const before: Cursor = { ...existing(59_000), reachTs: 59_000_000 }
+    const s1 = await run(src, before, 1)
+    expect(s1.cursor.reachTs).toBe(lastMacro(head.head) * 1000)
+    expect(s1.cursor.holeFromTs).toBe(59_000_000)
+    expect(s1.cursor.holeToTs).toBe(s1.txs[s1.txs.length - 1]!.timestamp)
+    const s2 = await run(src, s1.cursor, 1)
+    expect(s2.cursor.holeToTs).toBe(s2.txs[s2.txs.length - 1]!.timestamp)
+    const s3 = await run(src, s2.cursor, 5)
+    expect(s3.cursor.resumeHash).toBeNull()
+    expect(s3.cursor.holeFromTs).toBeNull()
+    expect(s3.cursor.holeToTs).toBeNull()
+  })
+})
+
+describe('rpcSource negative answers (review r1)', () => {
+  afterEach(() => vi.unstubAllGlobals())
+  const env = { NIM_RPCS: 'https://rpc.test' }
+  const rpcErr = (data?: string) =>
+    new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, error: { code: -32603, message: 'Internal error', ...(data ? { data } : {}) } }))
+
+  it('a bare "Internal error" is not "not a staker": retried, then thrown', async () => {
+    const f = vi.fn(async () => rpcErr())
+    vi.stubGlobal('fetch', f)
+    const src = rpcSource(env, new Budget(10, Date.now() + 60_000), { sleep: async () => {} })
+    await expect(src.delegation('NQ94 UUV1 JPTM XN2K 5AH9 SH6Y MGUA MDHK F3ST')).rejects.toThrow(/Internal error/)
+    expect(f).toHaveBeenCalledTimes(3)
+  })
+
+  it('"No staker" / "No validator" in the error data are final answers', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_u: string, init: RequestInit) => {
+        const m = JSON.parse(String(init.body)).method
+        return rpcErr(m === 'getStakerByAddress' ? 'No staker with address: X' : 'No validator with address: Y')
+      }),
+    )
+    const b = new Budget(10, Date.now() + 60_000)
+    const src = rpcSource(env, b, { sleep: async () => {} })
+    expect(await src.delegation('NQ94 UUV1 JPTM XN2K 5AH9 SH6Y MGUA MDHK F3ST')).toBe('')
+    expect(await src.rewardAddress('NQ51 SURF MCTM AQXM 15PA K9FX 8EEX 29BE VGH8')).toBeNull()
+    expect(b.used).toBe(2)
+  })
+
+  it('a bare "Internal error" on getValidatorByAddress is not "not a validator"', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => rpcErr()))
+    const src = rpcSource(env, new Budget(10, Date.now() + 60_000), { sleep: async () => {} })
+    await expect(src.rewardAddress('NQ38 VK34 DRBL S3CN M9KM 8UJN 9JY2 2KFN VQQH')).rejects.toThrow()
   })
 })

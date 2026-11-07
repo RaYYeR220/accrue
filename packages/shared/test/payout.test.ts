@@ -5,6 +5,7 @@ import {
   classifyTx,
   parseSchedule,
   poolVerdict,
+  RUN_GAP_BLOCKS,
   userExpected,
   userVerdict,
   type NimTx,
@@ -127,6 +128,37 @@ describe('buildPoolWindow', () => {
     const w = buildPoolWindow(first.slice(0, 3), SIAM, () => undefined)
     expect(w.lastPayoutTs).toBe(Math.max(...first.slice(0, 3).map((t) => t.timestamp)))
     expect(w.cycles).toBe(0)
+  })
+
+  // data that ends inside a payout run would count the run's earnings without all of its payouts
+  describe('closes only at a complete run', () => {
+    const sorted = [...garuda.txs].sort((a, b) => a.blockNumber - b.blockNumber)
+    const pays = sorted.filter((t) => t.from === garuda.address && t.to !== garuda.address)
+    const runs: NimTx[][] = []
+    for (const t of pays) {
+      const last = runs[runs.length - 1]
+      if (last && t.blockNumber - last[last.length - 1]!.blockNumber < RUN_GAP_BLOCKS) last.push(t)
+      else runs.push([t])
+    }
+    const lastRun = runs[runs.length - 1]!
+    const prevEnd = runs[runs.length - 2]![runs[runs.length - 2]!.length - 1]!
+
+    it('Garuda cut at any block of its last run is never SHORT and ends at the previous run', () => {
+      for (const b of [...new Set(lastRun.map((t) => t.blockNumber))]) {
+        const cut = sorted.filter((t) => t.blockNumber <= b)
+        const w = buildPoolWindow(cut, GARUDA, () => true)
+        expect(w.windowEndTs).toBe(prevEnd.timestamp)
+        expect(poolVerdict(w, GARUDA, w.windowEndTs).verdict).not.toBe('SHORT')
+      }
+    })
+
+    it('the last run counts once the data reaches RUN_GAP_BLOCKS past it', () => {
+      const end = lastRun[lastRun.length - 1]!
+      const cut = sorted.filter((t) => t.blockNumber <= end.blockNumber)
+      expect(buildPoolWindow(cut, GARUDA, () => true).windowEndTs).toBe(prevEnd.timestamp)
+      const known = buildPoolWindow(cut, GARUDA, () => true, { reachBlock: end.blockNumber + RUN_GAP_BLOCKS })
+      expect(known.windowEndTs).toBe(end.timestamp)
+    })
   })
 
   it('unverified payouts are tracked and cleared by the staker oracle', () => {

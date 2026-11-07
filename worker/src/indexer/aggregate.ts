@@ -103,6 +103,7 @@ export interface HourAgg {
   paidUnverified: bigint
   otherOut: bigint
   payoutBatches: number
+  firstPayoutTs: number | null
   lastPayoutTs: number | null
 }
 
@@ -165,7 +166,7 @@ export function aggregate(
     const hour = hourOf(tx.timestamp)
     let h = hours.get(hour)
     if (!h) {
-      h = { hour, earned: 0n, paidRestake: 0n, paidDirect: 0n, paidUnverified: 0n, otherOut: 0n, payoutBatches: 0, lastPayoutTs: null }
+      h = { hour, earned: 0n, paidRestake: 0n, paidDirect: 0n, paidUnverified: 0n, otherOut: 0n, payoutBatches: 0, firstPayoutTs: null, lastPayoutTs: null }
       hours.set(hour, h)
     }
     if (c.kind === 'EARNED') {
@@ -181,6 +182,7 @@ export function aggregate(
     if (c.unverified) h.paidUnverified += c.value
     if (lastPayout === null || tx.blockNumber - lastPayout >= RUN_GAP_BLOCKS) h.payoutBatches++
     lastPayout = tx.blockNumber
+    h.firstPayoutTs = Math.min(h.firstPayoutTs ?? tx.timestamp, tx.timestamp)
     h.lastPayoutTs = Math.max(h.lastPayoutTs ?? 0, tx.timestamp)
 
     const staker = c.staker!
@@ -201,7 +203,7 @@ export function aggregate(
   }
 }
 
-type HourRow = Pick<HourAgg, 'hour' | 'earned' | 'paidRestake' | 'paidDirect' | 'paidUnverified' | 'otherOut' | 'lastPayoutTs'>
+type HourRow = Pick<HourAgg, 'hour' | 'earned' | 'paidRestake' | 'paidDirect' | 'paidUnverified' | 'otherOut' | 'firstPayoutTs' | 'lastPayoutTs'>
 type StakerDayRow = Pick<StakerDayAgg, 'staker' | 'day' | 'payouts'>
 
 /** pool_hour as D1 returns it (luna as numbers). */
@@ -213,6 +215,7 @@ export interface PoolHourDb {
   paid_unverified: number
   other_out: number
   payout_batches: number
+  first_payout_ts: number | null
   last_payout_ts: number | null
 }
 
@@ -224,24 +227,52 @@ export const hourFromDb = (r: PoolHourDb): HourAgg => ({
   paidUnverified: BigInt(r.paid_unverified ?? 0),
   otherOut: BigInt(r.other_out ?? 0),
   payoutBatches: r.payout_batches ?? 0,
+  firstPayoutTs: r.first_payout_ts ?? null,
   lastPayoutTs: r.last_payout_ts ?? null,
 })
 
+// RUN_GAP_BLOCKS in time (one block per second)
+export const RUN_GAP_MS = RUN_GAP_BLOCKS * 1000
+// A run spanning at least this many payout hours whose payouts track the hour's earnings is a
+// stream (a pool paying every batch): any of its inner hours is a safe place to cut.
+const STREAM_MIN_HOURS = 3
+
+export interface WindowRange {
+  fromTs: number
+  /** how far the data reaches (cursor `reach_ts`), not the wall clock */
+  toTs: number
+  /** open descent: no data between these (cursor `hole_from_ts`/`hole_to_ts`; fromTs 0 = backfill) */
+  hole?: { fromTs: number; toTs: number } | null
+}
+
 /**
  * Rebuilds the payout window of shared `buildPoolWindow` from stored aggregates.
- * The window opens at the newest payout of the first hour that has payouts (that hour settles
- * accrual from before the data) and closes at the newest payout of the last such hour. Edge-hour
- * earnings are pro-rated by time, since coinbase rewards arrive evenly once per batch; `toTs` is
- * how far the data reaches, so a partly indexed last hour is pro-rated over what it covers.
- * Only hours starting at or after `fromTs` count, so pass a `fromTs` the data fully covers.
+ *
+ * The window runs between two run boundaries, the first and the last one in range (the first run
+ * only settles accrual from before the data, so it is dropped, as in `buildPoolWindow`). Payout
+ * hours merge into runs when one hour's last payout and the next hour's first payout are less than
+ * RUN_GAP apart. A boundary is the end of a complete run (the next run started, or the data reaches
+ * RUN_GAP past it), or, inside a stream, the last payout of an inner hour. A run still in progress
+ * at the end of the data never closes a window: payouts still to come would be missing while the
+ * earnings they settle are already counted, which reads an honest pool as short.
+ *
+ * Edge-hour earnings are pro-rated by time, since coinbase rewards arrive evenly once per batch.
+ * Only hours starting at or after `fromTs` count, so pass a `fromTs` the data fully covers. With a
+ * hole, only the longer side of it is used, so a window never spans missing data.
  * cycles = median payouts per staker over the whole days after the opening day: day rows cannot be
  * split, so this undercounts by up to a day rather than ever overcounting.
  */
 export function poolWindowFromAggregates(
   hours: readonly HourRow[],
   stakerDays: readonly StakerDayRow[],
-  range: { fromTs: number; toTs: number },
+  range: WindowRange,
 ): PoolWindow {
+  if (range.hole) {
+    const below = { fromTs: range.fromTs, toTs: Math.min(range.toTs, range.hole.fromTs) }
+    const above = { fromTs: Math.max(range.fromTs, range.hole.toTs), toTs: range.toTs }
+    const side = above.toTs - above.fromTs >= below.toTs - below.fromTs ? above : below
+    return poolWindowFromAggregates(hours, stakerDays, side)
+  }
   const rows = hours
     .filter((h) => h.hour * HOUR_MS >= range.fromTs && h.hour * HOUR_MS < range.toTs)
     .sort((a, b) => a.hour - b.hour)
@@ -251,29 +282,51 @@ export function poolWindowFromAggregates(
     earned: 0n, paidRestake: 0n, paidDirect: 0n, paidUnverified: 0n, otherOut: 0n, cycles: 0,
     lastPayoutTs, windowStartTs: range.fromTs, windowEndTs: range.toTs,
   }
-  if (payoutHours.length < 2) return empty
 
-  const first = payoutHours[0]!
-  const last = payoutHours[payoutHours.length - 1]!
-  const startTs = first.lastPayoutTs!
-  const endTs = last.lastPayoutTs!
+  const runs: { hours: HourRow[]; endTs: number }[] = []
+  for (const h of payoutHours) {
+    const first = h.firstPayoutTs ?? h.lastPayoutTs!
+    const run = runs[runs.length - 1]
+    if (run && first - run.endTs < RUN_GAP_MS) {
+      run.hours.push(h)
+      run.endTs = h.lastPayoutTs!
+    } else runs.push({ hours: [h], endTs: h.lastPayoutTs! })
+  }
+  const bounds: { ts: number; hour: number }[] = []
+  runs.forEach((run, i) => {
+    const hs = run.hours
+    if (hs.length >= STREAM_MIN_HOURS) {
+      for (const h of hs.slice(1, -1)) {
+        const paid = h.paidRestake + h.paidDirect
+        if (h.earned > 0n && paid * 2n >= h.earned && paid * 2n <= h.earned * 3n) bounds.push({ ts: h.lastPayoutTs!, hour: h.hour })
+      }
+    }
+    const complete = i < runs.length - 1 || range.toTs - run.endTs >= RUN_GAP_MS
+    if (complete) bounds.push({ ts: run.endTs, hour: hs[hs.length - 1]!.hour })
+  })
+  bounds.sort((a, b) => a.ts - b.ts)
+  if (bounds.length < 2) return empty
+
+  const start = bounds[0]!
+  const end = bounds[bounds.length - 1]!
   const part = (v: bigint, ms: number, covered = HOUR_MS) =>
     (v * BigInt(Math.max(0, Math.min(covered, ms)))) / BigInt(Math.max(1, covered))
-  const lastCovered = Math.min(HOUR_MS, range.toTs - last.hour * HOUR_MS)
+  const endCovered = Math.min(HOUR_MS, range.toTs - end.hour * HOUR_MS)
+  const startRow = rows.find((h) => h.hour === start.hour)!
 
-  const w: PoolWindow = { ...empty, windowStartTs: startTs, windowEndTs: endTs }
-  w.earned += part(first.earned, (first.hour + 1) * HOUR_MS - startTs)
+  const w: PoolWindow = { ...empty, windowStartTs: start.ts, windowEndTs: end.ts }
+  w.earned += part(startRow.earned, (start.hour + 1) * HOUR_MS - start.ts)
   for (const h of rows) {
-    if (h.hour <= first.hour || h.hour > last.hour) continue
-    w.earned += h.hour === last.hour ? part(h.earned, endTs - h.hour * HOUR_MS, lastCovered) : h.earned
+    if (h.hour <= start.hour || h.hour > end.hour) continue
+    w.earned += h.hour === end.hour ? part(h.earned, end.ts - h.hour * HOUR_MS, endCovered) : h.earned
     w.paidRestake += h.paidRestake
     w.paidDirect += h.paidDirect
     w.paidUnverified += h.paidUnverified
     w.otherOut += h.otherOut
   }
 
-  const fromDay = dayOf(startTs)
-  const toDay = dayOf(endTs)
+  const fromDay = dayOf(start.ts)
+  const toDay = dayOf(end.ts)
   const perStaker = new Map<string, number>()
   for (const s of stakerDays) {
     if (s.day <= fromDay || s.day > toDay) continue

@@ -26,6 +26,7 @@ export interface PoolRow {
   schedule: string | null
   listed: number
   reward_checked_at: number | null
+  reward_misses?: number | null
 }
 
 export type PayoutType = 'restake' | 'direct' | 'none'
@@ -92,7 +93,12 @@ export function poolStatements(list: ApiValidator[], now: number, opts: { withLo
 }
 
 export function rewardStatement(pool: string, reward: string | null, now: number): Stmt {
-  return { sql: 'UPDATE pools SET reward_address = ?, reward_checked_at = ? WHERE address = ?', params: [reward, now, pool] }
+  return { sql: 'UPDATE pools SET reward_address = ?, reward_checked_at = ?, reward_misses = 0 WHERE address = ?', params: [reward, now, pool] }
+}
+
+/** A "No validator" for a pool with a known reward address: keep it and count the miss. */
+export function rewardMissStatement(pool: string, misses: number, checkedAt: number): Stmt {
+  return { sql: 'UPDATE pools SET reward_misses = ?, reward_checked_at = ? WHERE address = ?', params: [misses, checkedAt, pool] }
 }
 
 /** A changed reward address has its own history; index it from the head on, not backwards. */

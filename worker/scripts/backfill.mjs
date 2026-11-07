@@ -1,6 +1,6 @@
 // Seven-day backfill of every listed pool, run locally with the worker's own scan/aggregate code.
 //
-//   pnpm backfill -- --out <file.sql> [--cache <dir>] [--pools "Siam Pool,Garuda Pool"] [--refresh]
+//   pnpm backfill -- --out <file.sql> [--cache <dir>] [--pools "Siam Pool,Garuda Pool"] [--refresh] [--recheck-non-stakers]
 //   pnpm exec wrangler d1 execute accrue --remote --file <file.sql>
 //
 // Fetched pages and delegation lookups are cached in --cache, so a re-run only re-renders the SQL.
@@ -26,6 +26,7 @@ const only = opt('pools', '')
   .map((s) => s.trim())
   .filter(Boolean)
 const refresh = args.includes('--refresh')
+const recheckNonStakers = args.includes('--recheck-non-stakers')
 const env = { NIM_RPCS: process.env.NIM_RPCS ?? 'https://rpc.nimiqwatch.com' }
 const WINDOW_MS = 7 * 24 * HOUR_MS
 mkdirSync(cacheDir, { recursive: true })
@@ -149,7 +150,8 @@ async function main() {
   const deleg = new Map(Object.entries(readJson(delegFile, {})))
   const recipients = new Set()
   for (const s of scans.values()) for (const a of payoutRecipients(s.txs, s.reward)) recipients.add(a)
-  const todo = [...recipients].filter((a) => !deleg.has(a))
+  // --recheck-non-stakers asks again for cached '' answers (useful after a change to what counts as one)
+  const todo = [...recipients].filter((a) => !deleg.has(a) || (recheckNonStakers && deleg.get(a).delegation === ''))
   log(`recipients ${recipients.size}, to look up ${todo.length}`)
   let done = 0
   async function lookup() {
@@ -200,7 +202,12 @@ async function main() {
     }
     const oracle = delegationOracle(delegations, pool)
     const agg = aggregate(s.txs, { rewardAddress: s.reward }, oracle)
-    const cursor = { ...s.cursor, lastPayoutBlock: agg.lastPayoutBlock }
+    // the time of newest_block: from the cursor, or (caches written before reach_ts existed) dated
+    // from the newest tx at one block per second
+    const newestTx = s.txs.reduce((m, t) => (t.blockNumber > (m?.blockNumber ?? -1) ? t : m), null)
+    const reachTs =
+      s.cursor.reachTs ?? (newestTx ? newestTx.timestamp + (s.cursor.newestBlock - newestTx.blockNumber) * 1000 : s.visitedAt)
+    const cursor = { ...s.cursor, lastPayoutBlock: agg.lastPayoutBlock, reachTs, holeFromTs: null, holeToTs: null }
     const spanH = (s.visitedAt - s.txs.reduce((m, t) => Math.min(m, t.timestamp), s.visitedAt)) / HOUR_MS
     cursor.txsPerHour = spanH > 0 ? s.txs.length / spanH : null
     for (const h of agg.hours) sql.push(toSql(hourUpsert(pool, h, null)))
@@ -210,17 +217,21 @@ async function main() {
     counts.staker_day += agg.stakerDays.length
     counts.pool_cursor++
 
-    const range = { fromTs: s.visitedAt - WINDOW_MS, toTs: s.visitedAt }
+    // windows end where the data reaches, never at the wall clock
+    const range = { fromTs: reachTs - WINDOW_MS, toTs: reachTs }
     const w = poolWindowFromAggregates(agg.hours, agg.stakerDays, range)
-    const verdict = poolVerdict(w, cfg, s.visitedAt)
+    const verdict = poolVerdict(w, cfg, reachTs)
     // tx-level cross-check with shared buildPoolWindow; its oracle has no leg, so use the leg the
     // address was paid through
     const restaked = payoutRecipients(s.txs.filter((t) => t.toType === 3), s.reward)
     const inWindow = s.txs.filter((t) => t.timestamp >= range.fromTs && t.timestamp <= range.toTs)
-    const exact = buildPoolWindow(inWindow, { rewardAddress: s.reward }, (addr) =>
-      oracle(addr, restaked.has(canonicalAddress(addr)) ? 'restake' : 'direct'),
+    const exact = buildPoolWindow(
+      inWindow,
+      { rewardAddress: s.reward },
+      (addr) => oracle(addr, restaked.has(canonicalAddress(addr)) ? 'restake' : 'direct'),
+      { reachBlock: s.cursor.newestBlock },
     )
-    const exactVerdict = poolVerdict(exact, cfg, s.visitedAt)
+    const exactVerdict = poolVerdict(exact, cfg, reachTs)
     const sum = (k) => agg.hours.filter((h) => h.hour * HOUR_MS >= range.fromTs).reduce((a, h) => a + h[k], 0n)
     table.push({
       ...row,

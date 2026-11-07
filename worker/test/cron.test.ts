@@ -21,7 +21,7 @@ const validators = [
 const isRestake = (t: NimTx) => t.toType === 3 && t.recipientData.startsWith('06')
 const outsider = garuda.txs.find((t) => t.from === POOL && t.toType === 0)!.to
 
-function routes(chain: FakeChain, state: { rpcDown: boolean; fetches: number }) {
+function routes(chain: FakeChain, state: { rpcDown: boolean; fetches: number; validator: 'ok' | 'none' | 'fault' }) {
   return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     state.fetches++
     const url = String(input)
@@ -29,10 +29,13 @@ function routes(chain: FakeChain, state: { rpcDown: boolean; fetches: number }) 
     if (state.rpcDown) return new Response('', { status: 503 })
     const { method, params } = JSON.parse(String(init!.body)) as { method: string; params: unknown[] }
     const ok = (data: unknown) => new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { data } }))
-    const err = (data: string) => new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, error: { code: -32603, message: 'Internal error', data } }))
-    if (method === 'getValidatorByAddress') return params[0] === POOL ? ok({ address: POOL, rewardAddress: POOL }) : err('No validator')
+    const err = (data?: string) => new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, error: { code: -32603, message: 'Internal error', ...(data ? { data } : {}) } }))
+    if (method === 'getValidatorByAddress') {
+      if (params[0] !== POOL || state.validator === 'none') return err(`No validator with address: ${params[0]}`)
+      return state.validator === 'fault' ? err() : ok({ address: POOL, rewardAddress: POOL })
+    }
     if (method === 'getTransactionsByAddress') return ok(chain.page(params[0] as string, params[2] as string | null))
-    if (method === 'getStakerByAddress') return params[0] === outsider ? err('No staker') : ok({ address: params[0], delegation: POOL, balance: 1 })
+    if (method === 'getStakerByAddress') return params[0] === outsider ? err(`No staker with address: ${params[0]}`) : ok({ address: params[0], delegation: POOL, balance: 1 })
     return err('unknown method')
   })
 }
@@ -52,7 +55,7 @@ function expectedUpTo(block: number) {
 describe('runIndexerTick', () => {
   let db: FakeD1
   let chain: FakeChain
-  const state = { rpcDown: false, fetches: 0 }
+  const state = { rpcDown: false, fetches: 0, validator: 'ok' as 'ok' | 'none' | 'fault' }
   const env = () => ({ DB: db as never, NIM_RPCS: 'https://rpc.test', POLYGON_RPCS: '', RELAYER_ADDRESS: '', RELAYER: null as never })
   let t = Date.UTC(2026, 10, 7, 12)
   const tick = async (advanceMs = 5 * MIN) => {
@@ -73,6 +76,7 @@ describe('runIndexerTick', () => {
     db = new FakeD1()
     chain = new FakeChain(POOL, garuda.txs, top - 20_000)
     state.rpcDown = false
+    state.validator = 'ok'
     vi.stubGlobal('fetch', routes(chain, state))
   })
   afterEach(() => vi.unstubAllGlobals())
@@ -129,7 +133,7 @@ describe('runIndexerTick', () => {
   it('stored rows rebuild the same payout window as the in-memory aggregate', async () => {
     chain.head = top
     for (let i = 0; i < 30 && cursor()?.backfill_done !== 1; i++) await tick()
-    const rows = db.query<PoolHourDb>('SELECT hour, earned, paid_restake, paid_direct, paid_unverified, other_out, payout_batches, last_payout_ts FROM pool_hour WHERE pool = ?', POOL)
+    const rows = db.query<PoolHourDb>('SELECT hour, earned, paid_restake, paid_direct, paid_unverified, other_out, payout_batches, first_payout_ts, last_payout_ts FROM pool_hour WHERE pool = ?', POOL)
     const days = db.query<{ staker: string; day: number; payouts: number }>('SELECT staker, day, payouts FROM staker_day WHERE pool = ?', POOL)
     const range = { fromTs: Math.min(...garuda.txs.map((x) => x.timestamp)), toTs: t }
     const stored = poolWindowFromAggregates(rows.map(hourFromDb), days, range)
@@ -140,6 +144,39 @@ describe('runIndexerTick', () => {
     expect(stored.paidRestake + stored.paidDirect + stored.otherOut).toBe(direct.paidRestake + direct.paidDirect + direct.otherOut)
     expect(stored.cycles).toBe(direct.cycles)
     expect(stored.cycles).toBeGreaterThanOrEqual(3)
+  })
+
+  it('stores how far the data reaches', async () => {
+    await tick()
+    const c = cursor()!
+    const page = chain.page(POOL, null)
+    const head = page.reduce((m, x) => Math.max(m, x.blockNumber + (x as { confirmations?: number }).confirmations! - 1), 0)
+    expect(c.newest_block).toBe(lastMacro(head))
+    expect(c.reach_ts).toBe(page[0]!.timestamp + (lastMacro(head) - page[0]!.blockNumber) * 1000)
+    expect(c.hole_from_ts).toBe(0)
+    expect(c.hole_to_ts).not.toBeNull()
+  })
+
+  it('a single "No validator" keeps the reward address; only a second one drops it', async () => {
+    for (let i = 0; i < 12 && cursor()?.backfill_done !== 1; i++) await tick()
+    const pool = () => db.query<{ reward_address: string | null; reward_misses: number }>('SELECT reward_address, reward_misses FROM pools WHERE address = ?', POOL)[0]!
+    state.validator = 'none'
+    await tick(25 * 60 * MIN)
+    expect(pool()).toEqual({ reward_address: POOL, reward_misses: 1 })
+    expect(meta('indexer_last_error')!.value).toMatch(/validator not found/)
+    const cursorKept = cursor()
+    await tick(61 * MIN)
+    expect(pool()).toEqual({ reward_address: null, reward_misses: 0 })
+    expect(cursor()!.newest_block).toBe(cursorKept!.newest_block)
+  })
+
+  it('a server fault on getValidatorByAddress changes nothing', async () => {
+    for (let i = 0; i < 12 && cursor()?.backfill_done !== 1; i++) await tick()
+    state.validator = 'fault'
+    await tick(25 * 60 * MIN)
+    const p = db.query<{ reward_address: string | null; reward_misses: number }>('SELECT reward_address, reward_misses FROM pools WHERE address = ?', POOL)[0]!
+    expect(p).toEqual({ reward_address: POOL, reward_misses: 0 })
+    expect(meta('indexer_last_error')!.value).toMatch(/Internal error/)
   })
 
   it('an RPC outage keeps the data, records the error and never throws', async () => {

@@ -44,6 +44,15 @@ describe('nimRpc', () => {
   })
 })
 
+describe('nimRpc error detail', () => {
+  it('keeps error.data in the cause, so "No staker" can be told from a server fault', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => json({ error: { code: -32603, message: 'Internal error', data: 'No staker with address: NQ00' } })))
+    const e = await nimRpc({ NIM_RPCS: 'https://a.test' } as never, 'getStakerByAddress', ['NQ00']).catch((x) => x)
+    expect(e).toBeInstanceOf(RpcUnavailable)
+    expect((e as RpcUnavailable).causes[0]).toBe('https://a.test Internal error: No staker with address: NQ00')
+  })
+})
+
 describe('polygonUrls', () => {
   it('splits and trims the comma list', () => {
     expect(polygonUrls({ POLYGON_RPCS: ' https://x.test ,https://y.test,' } as never)).toEqual([

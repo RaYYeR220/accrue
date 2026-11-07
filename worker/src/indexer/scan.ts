@@ -58,15 +58,18 @@ export interface NimSource {
   rewardAddress(validator: string): Promise<string | null>
 }
 
-// Only an answer in JSON-RPC error form (or a plain 4xx) is final; anything else (5xx, 429, empty or
-// unparseable body, timeouts) is worth a retry. getStakerByAddress answers "Internal error" for a
-// non-staker, so misreading a hiccup as final would cache a wrong "not a staker".
-const DEFINITIVE = /\b(Internal error|Invalid params|Invalid request|Method not found|rpc error)\b|HTTP 4(?!08|25|29)\d\d/i
+// A JSON-RPC error is a final answer only when it says so ("No staker with address", "No validator
+// with address" - the detail nimRpc keeps from error.data). A bare "Internal error", 5xx, 429, an
+// empty or unparseable body or a timeout is a fault worth a retry, never a negative answer: reading
+// it as "not a staker" would cache a wrong verdict, as "not a validator" would drop a reward address.
+const NO_STAKER = /No staker/i
+const NO_VALIDATOR = /No validator/i
+const CLIENT_ERROR = /HTTP 4(?!08|25|29)\d\d/
 
 export function rpcSource(
   env: Pick<Env, 'NIM_RPCS'>,
   budget: Budget,
-  opts: { attempts?: number; backoffMs?: number; sleep?: (ms: number) => Promise<void>; reserve?: number } = {},
+  opts: { attempts?: number; backoffMs?: number; sleep?: (ms: number) => Promise<void>; reserve?: number | (() => number) } = {},
 ): NimSource {
   const attempts = opts.attempts ?? 3
   const backoffMs = opts.backoffMs ?? 400
@@ -75,19 +78,26 @@ export function rpcSource(
   // nimRpc may try every configured server, so charge for all of them
   const cost = Math.max(1, nimUrls(env).length)
 
-  // ok: data; definitive: the server answered with a JSON-RPC error (e.g. "no staker")
-  async function call<T>(method: string, params: unknown[], tokens: number): Promise<{ ok: true; data: T } | { ok: false; error: string }> {
+  // ok: data; negative: the server said the thing does not exist (`negative` matches its answer)
+  async function call<T>(
+    method: string,
+    params: unknown[],
+    tokens: number,
+    negative?: RegExp,
+  ): Promise<{ ok: true; data: T } | { ok: false; error: string }> {
     let last = ''
     let wait = 0
     for (let i = 0; i < attempts; i++) {
       if (i > 0) await sleep(wait)
-      if (!budget.can(cost, reserve, tokens)) throw new BudgetExhausted()
+      const keep = typeof reserve === 'function' ? reserve() : reserve
+      if (!budget.can(cost, keep, tokens)) throw new BudgetExhausted()
       budget.take(cost, tokens)
       try {
         return { ok: true, data: await nimRpc<T>(env, method, params) }
       } catch (e) {
         if (!(e instanceof RpcUnavailable)) throw e
-        if (e.causes.every((c) => DEFINITIVE.test(c))) return { ok: false, error: e.message }
+        if (negative && e.causes.length && e.causes.every((c) => negative.test(c))) return { ok: false, error: e.message }
+        if (e.causes.length && e.causes.every((c) => CLIENT_ERROR.test(c))) throw e
         last = e.message
         // a 429 only clears when the rate window rolls over
         wait = e.causes.some((c) => c.includes('HTTP 429')) ? RATE_WINDOW_MS + 500 : backoffMs * 3 ** i
@@ -103,11 +113,11 @@ export function rpcSource(
       return r.data
     },
     async delegation(address) {
-      const r = await call<{ delegation: string }>('getStakerByAddress', [address], 1)
+      const r = await call<{ delegation: string }>('getStakerByAddress', [address], 1, NO_STAKER)
       return r.ok ? canonicalAddress(r.data.delegation) : ''
     },
     async rewardAddress(validator) {
-      const r = await call<{ rewardAddress: string }>('getValidatorByAddress', [validator], 1)
+      const r = await call<{ rewardAddress: string }>('getValidatorByAddress', [validator], 1, NO_VALIDATOR)
       return r.ok ? canonicalAddress(r.data.rewardAddress) : null
     },
   }
@@ -118,7 +128,12 @@ export function rpcSource(
  * Everything at or below `newestBlock` is folded in, except an open descent: from `resumeHash`
  * (exclusive) down to `floorBlock` (exclusive) is still to do. A first visit is a descent with the
  * floor BACKFILL_BLOCKS below the head; a catch-up longer than a tick's pages is one too.
- * `newestBlock` null with `backfillDone` set means "start from the head" (reward address changed).
+ * `newestBlock` null means nothing is folded yet: a new pool (backfill) or, with `backfillDone`
+ * set, a changed reward address (start from the head, no backfill).
+ *
+ * Readers: `reachTs` is the time of `newestBlock`, how far the data reaches (use it, not the wall
+ * clock, as the end of a window). While a descent is open, no data exists between `holeFromTs` and
+ * `holeToTs`; a window must not span that range (`holeFromTs` 0 = nothing below, a backfill).
  */
 export interface Cursor {
   newestHash: string | null
@@ -130,11 +145,15 @@ export interface Cursor {
   lastPayoutBlock: number | null
   visitedAt: number | null
   txsPerHour: number | null
+  reachTs: number | null
+  holeFromTs: number | null
+  holeToTs: number | null
 }
 
 export const freshCursor = (): Cursor => ({
   newestHash: null, newestBlock: null, oldestBlock: null, backfillDone: false, resumeHash: null,
-  floorBlock: null, lastPayoutBlock: null, visitedAt: null, txsPerHour: null,
+  floorBlock: null, lastPayoutBlock: null, visitedAt: null, txsPerHour: null, reachTs: null,
+  holeFromTs: null, holeToTs: null,
 })
 
 export interface ScanStep {
@@ -147,6 +166,9 @@ export interface ScanStep {
   error: string | null
 }
 
+// Albatross produces a block per second; used only to date a macro block with no tx of ours in it.
+const BLOCK_MS = 1000
+
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e))
 const confirmations = (tx: NimTx) => (tx as { confirmations?: number }).confirmations ?? 1
 
@@ -156,15 +178,19 @@ export async function scanPool(
   cursor: Cursor | null,
   opts: { maxPages: number; now: number; canFetch: () => boolean; backfillBlocks?: number },
 ): Promise<ScanStep> {
-  const c: Cursor = cursor ? { ...cursor } : freshCursor()
-  const isNew = cursor === null
+  const c: Cursor = { ...freshCursor(), ...(cursor ?? {}) }
+  const isNew = c.newestBlock === null && !c.backfillDone
   const fromHead = c.resumeHash === null
   const txs: NimTx[] = []
   let startAt = c.resumeHash
   let boundary: number | null = fromHead ? c.newestBlock : c.floorBlock ?? -1
-  let lastMacro = Number.POSITIVE_INFINITY
+  // a descent never folds above the head it started from: those blocks belong to the next head step
+  let lastMacro = fromHead ? Number.POSITIVE_INFINITY : (c.newestBlock ?? Number.POSITIVE_INFINITY)
+  let reachTs: number | null = null
+  let lastFetchedTs: number | null = null
   let pages = 0
   let reached = false
+  let askedAgain = false
   let error: string | null = null
 
   while (pages < opts.maxPages && opts.canFetch()) {
@@ -176,9 +202,23 @@ export async function scanPool(
       if (!(e instanceof BudgetExhausted)) error = msg(e)
       break
     }
-    if (page.length === 0 && fromHead && pages === 0 && c.newestHash !== null) {
-      // an address we already saw txs on cannot have an empty head page
-      error = 'empty head page from RPC'
+    if (page.length === 0) {
+      if (fromHead && pages === 0 && c.newestBlock === null) {
+        // nothing on this address yet: note the visit, fold nothing, keep the cursor where it is
+        return { txs, cursor: { ...c, visitedAt: opts.now }, pages: 1, fromHead, error }
+      }
+      // The RPC returns full pages while more history exists, so after a full page (in this
+      // call or the one that left this resume point) an empty one is a fault, not the end. Only a
+      // backfill can run into an address's first tx at a page boundary; ask once more there.
+      if (!c.backfillDone && !askedAgain && opts.canFetch()) {
+        askedAgain = true
+        continue
+      }
+      if (!c.backfillDone && askedAgain) {
+        reached = true
+        break
+      }
+      error = fromHead && pages === 0 ? 'empty head page from RPC' : 'empty page from RPC after a full page'
       break
     }
     pages++
@@ -186,11 +226,8 @@ export async function scanPool(
       // only blocks up to the last macro block are final; younger ones wait for the next visit
       const head = page.reduce((m, t) => Math.max(m, t.blockNumber + confirmations(t) - 1), 0)
       lastMacro = Math.floor(head / BATCH_BLOCKS) * BATCH_BLOCKS
+      reachTs = page[0]!.timestamp + (lastMacro - page[0]!.blockNumber) * BLOCK_MS
       if (boundary === null) boundary = isNew ? lastMacro - (opts.backfillBlocks ?? BACKFILL_BLOCKS) : lastMacro
-    }
-    if (page.length === 0) {
-      reached = true
-      break
     }
     for (const tx of page) {
       if (tx.blockNumber > lastMacro) continue
@@ -201,16 +238,23 @@ export async function scanPool(
       txs.push(tx)
     }
     startAt = page[page.length - 1]!.hash
+    lastFetchedTs = page[page.length - 1]!.timestamp
     if (reached) break
+    if (page.length < PAGE_SIZE) {
+      reached = true
+      break
+    }
   }
 
   if (pages === 0) return { txs, cursor: c, pages, fromHead, error }
 
-  const lowest = txs.length ? txs[txs.length - 1]!.blockNumber : null
+  const lowest = txs.length ? txs[txs.length - 1]! : null
   const lower = (b: number | null) => {
     if (b !== null) c.oldestBlock = c.oldestBlock === null ? b : Math.min(c.oldestBlock, b)
   }
-  lower(lowest)
+  lower(lowest?.blockNumber ?? null)
+  // the folded data above an open descent starts here
+  const holeTop = lowest?.timestamp ?? lastFetchedTs
 
   if (fromHead) {
     // a rate measured over a few seconds is noise
@@ -225,18 +269,26 @@ export async function scanPool(
     } else {
       c.resumeHash = startAt
       c.floorBlock = boundary
+      c.holeFromTs = isNew ? 0 : c.reachTs
+      c.holeToTs = holeTop
       if (rate !== null) c.txsPerHour = Math.max(c.txsPerHour ?? 0, rate)
     }
     if (txs.length) c.newestHash = txs[0]!.hash
-    if (Number.isFinite(lastMacro)) c.newestBlock = Math.max(c.newestBlock ?? 0, lastMacro)
+    if (Number.isFinite(lastMacro) && lastMacro >= (c.newestBlock ?? 0)) {
+      c.newestBlock = lastMacro
+      c.reachTs = reachTs
+    }
     c.visitedAt = opts.now
   } else if (reached) {
     lower(c.floorBlock !== null ? c.floorBlock + 1 : null)
     c.resumeHash = null
     c.floorBlock = null
+    c.holeFromTs = null
+    c.holeToTs = null
     c.backfillDone = true
   } else {
     c.resumeHash = startAt
+    if (holeTop !== null) c.holeToTs = holeTop
   }
   return { txs, cursor: c, pages, fromHead, error }
 }
