@@ -10,6 +10,7 @@ crons = ["*/5 * * * *"]
 NIM_RPCS = "https://rpc.nimiqwatch.com"
 POLYGON_RPCS = "https://polygon-bor-rpc.publicnode.com,https://1rpc.io/matic,https://polygon.drpc.org"
 RELAYER_ADDRESS = ""
+ROUTER_ADDRESS = ""
 
 [[d1_databases]]
 binding = "DB"
