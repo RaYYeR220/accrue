@@ -30,7 +30,12 @@ export function classifyTx(
   if (from !== reward) return { kind: 'OTHER_IN', value }
 
   if (to === STAKING && tx.toType === 3 && /^06[0-9a-fA-F]{40}$/.test(tx.recipientData)) {
-    return { kind: 'RESTAKE_PAYOUT', staker: addressFromBytesHex(tx.recipientData.slice(2)), value }
+    const staker = addressFromBytesHex(tx.recipientData.slice(2))
+    const known = isStakerOfPool(staker)
+    if (known === false) return { kind: 'OTHER_OUT', value }
+    return known === undefined
+      ? { kind: 'RESTAKE_PAYOUT', staker, value, unverified: true }
+      : { kind: 'RESTAKE_PAYOUT', staker, value }
   }
   if (tx.toType === 0 && to !== reward) {
     const staker = isStakerOfPool(tx.to)
@@ -46,6 +51,8 @@ export interface PoolWindow {
   earned: bigint
   paidRestake: bigint
   paidDirect: bigint
+  // part of paidRestake/paidDirect sent to recipients that were not checked against the staker set
+  paidUnverified: bigint
   otherOut: bigint
   cycles: number
   lastPayoutTs: number | null
@@ -53,11 +60,13 @@ export interface PoolWindow {
   windowEndTs: number
 }
 
-export const CYCLE_GAP_BLOCKS = 120
+// Payouts fewer than this many blocks apart belong to one run (one scheduled distribution; a pool
+// may send its restake and direct legs a couple of minutes apart).
+export const RUN_GAP_BLOCKS = 300
 
-// Payout txs at most CYCLE_GAP_BLOCKS apart form one cycle (a payout batch). The first cycle only
-// settles accrual from before the data starts, so the window opens after it and closes at the last
-// payout: anything earned later is pending, not short.
+// The first run only settles accrual from before the data starts, so the whole run is dropped and
+// the window opens after it; it closes at the end of the last run, since later earnings are pending,
+// not short. cycles = median number of payouts a staker received inside the window.
 export function buildPoolWindow(
   txs: NimTx[],
   pool: { rewardAddress: string },
@@ -67,39 +76,44 @@ export function buildPoolWindow(
   const items = sorted.map((tx) => ({ tx, c: classifyTx(tx, pool, isStakerOfPool) }))
   const isPayout = (k: PayoutTxKind) => k === 'RESTAKE_PAYOUT' || k === 'DIRECT_PAYOUT'
 
-  const clusters: typeof items[] = []
+  const runs: (typeof items)[] = []
   for (const it of items) {
     if (!isPayout(it.c.kind)) continue
-    const last = clusters[clusters.length - 1]
-    if (last && it.tx.blockNumber - last[last.length - 1]!.tx.blockNumber <= CYCLE_GAP_BLOCKS) last.push(it)
-    else clusters.push([it])
+    const last = runs[runs.length - 1]
+    if (last && it.tx.blockNumber - last[last.length - 1]!.tx.blockNumber < RUN_GAP_BLOCKS) last.push(it)
+    else runs.push([it])
   }
 
+  const newest = runs.length ? runs[runs.length - 1]![runs[runs.length - 1]!.length - 1]!.tx : null
   const empty: PoolWindow = {
-    earned: 0n, paidRestake: 0n, paidDirect: 0n, otherOut: 0n, cycles: 0,
-    lastPayoutTs: null, windowStartTs: sorted[0]?.timestamp ?? 0, windowEndTs: sorted[sorted.length - 1]?.timestamp ?? 0,
+    earned: 0n, paidRestake: 0n, paidDirect: 0n, paidUnverified: 0n, otherOut: 0n, cycles: 0,
+    lastPayoutTs: newest?.timestamp ?? null,
+    windowStartTs: sorted[0]?.timestamp ?? 0,
+    windowEndTs: sorted[sorted.length - 1]?.timestamp ?? 0,
   }
-  if (clusters.length < 2) return empty
+  if (runs.length < 2) return empty
 
-  const used = clusters.slice(1)
-  const startBlock = clusters[0]![clusters[0]!.length - 1]!.tx.blockNumber
-  const lastCluster = used[used.length - 1]!
-  const endItem = lastCluster[lastCluster.length - 1]!
-  const endBlock = endItem.tx.blockNumber
+  const startTx = runs[0]![runs[0]!.length - 1]!.tx
+  const endTx = newest!
+  const w: PoolWindow = { ...empty, windowStartTs: startTx.timestamp, windowEndTs: endTx.timestamp }
 
-  const w: PoolWindow = {
-    ...empty,
-    cycles: used.length,
-    lastPayoutTs: endItem.tx.timestamp,
-    windowStartTs: clusters[0]![clusters[0]!.length - 1]!.tx.timestamp,
-    windowEndTs: endItem.tx.timestamp,
-  }
+  const perStaker = new Map<string, number>()
   for (const { tx, c } of items) {
-    if (tx.blockNumber <= startBlock || tx.blockNumber > endBlock) continue
+    if (tx.blockNumber <= startTx.blockNumber || tx.blockNumber > endTx.blockNumber) continue
     if (c.kind === 'EARNED') w.earned += c.value
-    else if (c.kind === 'RESTAKE_PAYOUT') w.paidRestake += c.value
-    else if (c.kind === 'DIRECT_PAYOUT') w.paidDirect += c.value
     else if (c.kind === 'OTHER_OUT') w.otherOut += c.value
+    else if (isPayout(c.kind)) {
+      if (c.kind === 'RESTAKE_PAYOUT') w.paidRestake += c.value
+      else w.paidDirect += c.value
+      if (c.unverified) w.paidUnverified += c.value
+      const key = normalizeAddress(c.staker ?? tx.to)
+      perStaker.set(key, (perStaker.get(key) ?? 0) + 1)
+    }
+  }
+  const counts = [...perStaker.values()].sort((x, y) => x - y)
+  if (counts.length) {
+    const m = counts.length >> 1
+    w.cycles = counts.length % 2 ? counts[m]! : Math.floor((counts[m - 1]! + counts[m]!) / 2)
   }
   return w
 }
@@ -118,6 +132,9 @@ export function poolVerdict(
   const out = (verdict: Verdict, ratio: number | null, reasons: string[]) => ({ verdict, ratio, expectedRatio, reasons })
 
   if (pool.payoutType === 'none') return out('NO_PAYOUTS_BY_DESIGN', null, ['Pool does not pay out; rewards are not distributed to stakers.'])
+  if (pool.scheduleMs !== null && w.lastPayoutTs !== null && nowTs - w.lastPayoutTs > 2 * pool.scheduleMs + HOUR_MS) {
+    return out('BEHIND_SCHEDULE', null, ['The last payout is more than twice the advertised interval ago.'])
+  }
   if (w.cycles < MIN_CYCLES || w.earned === 0n) {
     return out('NOT_ENOUGH_DATA', null, [`Only ${w.cycles} complete payout cycle(s) with ${w.earned} luna earned in the window; need at least ${MIN_CYCLES}.`])
   }
@@ -125,20 +142,22 @@ export function poolVerdict(
   const ppm = (a: bigint) => Number((a * 1_000_000n) / w.earned) / 1_000_000
   const ratio = ppm(w.paidRestake + w.paidDirect)
   const otherShare = ppm(w.otherOut)
+  const pct = (x: number) => (x * 100).toFixed(1)
+  const note = w.paidUnverified > 0n ? [`${pct(ppm(w.paidUnverified))}% of earnings was paid to recipients not checked against the staker set.`] : []
 
   if (otherShare >= 0.3) {
-    return out('CANT_VERIFY_ROUTED', ratio, [`${(otherShare * 100).toFixed(1)}% of earnings leave the reward address to non-staker destinations.`])
-  }
-  if (pool.scheduleMs !== null && w.lastPayoutTs !== null && nowTs - w.lastPayoutTs > 2 * pool.scheduleMs + HOUR_MS) {
-    return out('BEHIND_SCHEDULE', ratio, ['The last payout is more than twice the advertised interval ago.'])
+    return out('CANT_VERIFY_ROUTED', ratio, [`${pct(otherShare)}% of earnings leave the reward address to non-staker destinations.`, ...note])
   }
   if (ratio >= expectedRatio - TOLERANCE) {
-    return out('PAID_AS_PROMISED', ratio, [`Paid ${(ratio * 100).toFixed(1)}% of earnings against ${(expectedRatio * 100).toFixed(1)}% promised.`])
+    return out('PAID_AS_PROMISED', ratio, [`Paid ${pct(ratio)}% of earnings against ${pct(expectedRatio)}% promised.`, ...note])
   }
-  if (ratio < expectedRatio - SHORT_MARGIN && otherShare < 0.05) {
-    return out('SHORT', ratio, [`Paid ${(ratio * 100).toFixed(1)}% of earnings against ${(expectedRatio * 100).toFixed(1)}% promised over ${w.cycles} cycles.`])
+  if (ratio < expectedRatio - SHORT_MARGIN) {
+    if (otherShare < 0.05) {
+      return out('SHORT', ratio, [`Paid ${pct(ratio)}% of earnings against ${pct(expectedRatio)}% promised over ${w.cycles} cycles.`, ...note])
+    }
+    return out('NOT_ENOUGH_DATA', ratio, ['Other outflows too large to conclude.', ...note])
   }
-  return out('NOT_ENOUGH_DATA', ratio, ['Payout ratio is below the promise but inside the margin where a shortfall cannot be called with confidence.'])
+  return out('NOT_ENOUGH_DATA', ratio, ['Paid ratio within the uncertainty band; not conclusive.', ...note])
 }
 
 export function userExpected(args: { userActiveStake: bigint; poolStake: bigint; poolEarned: bigint; fee: number }): bigint {

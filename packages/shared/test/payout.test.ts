@@ -19,8 +19,9 @@ const SIAM = { rewardAddress: siam.address, fee: 0.03, payoutType: 'restake' as 
 const GARUDA = { rewardAddress: garuda.address, fee: 0.05, payoutType: 'restake' as const, scheduleMs: parseSchedule('Every 12 hours') }
 
 const HOUR = 3_600_000
+const GARUDA_FULL_CYCLES = 7
 const base: PoolWindow = {
-  earned: 1_000_000n, paidRestake: 970_000n, paidDirect: 0n, otherOut: 0n,
+  earned: 1_000_000n, paidRestake: 970_000n, paidDirect: 0n, paidUnverified: 0n, otherOut: 0n,
   cycles: 10, lastPayoutTs: 1_000_000_000, windowStartTs: 0, windowEndTs: 1_000_000_000,
 }
 const cfg = { fee: 0.03, payoutType: 'restake' as const, scheduleMs: 3 * HOUR }
@@ -58,6 +59,13 @@ describe('classifyTx', () => {
     expect(classifyTx(tx, GARUDA, () => false).kind).toBe('OTHER_OUT')
   })
 
+  it('restake payouts go through the staker oracle', () => {
+    const tx = siam.txs.find((t) => t.recipientData === '06e73a195f75f58532aa29d44dfac38aab63378f5b')!
+    expect(classifyTx(tx, SIAM, () => undefined)).toMatchObject({ kind: 'RESTAKE_PAYOUT', unverified: true })
+    expect(classifyTx(tx, SIAM, () => true).unverified).toBeFalsy()
+    expect(classifyTx(tx, SIAM, () => false).kind).toBe('OTHER_OUT')
+  })
+
   it('other flows', () => {
     const inc: NimTx = { ...siam.txs[0]!, from: 'NQ07 0000 0000 0000 0000 0000 0000 0000 0000', toType: 0 }
     expect(classifyTx(inc, SIAM, () => undefined).kind).toBe('OTHER_IN')
@@ -66,52 +74,65 @@ describe('classifyTx', () => {
   })
 })
 
-// Independent re-implementation of the batching rules for cross-checking buildPoolWindow:
-// payouts <= 120 blocks apart form one cycle; the first cycle only settles earlier accrual,
-// so the window runs from its end to the end of the last cycle.
-function referenceWindow(file: { address: string; txs: NimTx[] }) {
-  const txs = [...file.txs].sort((a, b) => a.blockNumber - b.blockNumber)
-  const payouts = txs.filter((t) => t.from === file.address && (t.toType === 3 || t.toType === 0))
-  const clusters: NimTx[][] = []
-  for (const p of payouts) {
-    const last = clusters[clusters.length - 1]
-    if (last && p.blockNumber - last[last.length - 1]!.blockNumber <= 120) last.push(p)
-    else clusters.push([p])
+// Independent check of `cycles`: count payouts per staker straight from the raw txs between the
+// window bounds the builder reports, then take the median. No run/cluster logic involved.
+function medianPayoutsPerStaker(file: { address: string; txs: NimTx[] }, w: PoolWindow) {
+  const per = new Map<string, number>()
+  for (const t of file.txs) {
+    if (t.from !== file.address || t.timestamp <= w.windowStartTs || t.timestamp > w.windowEndTs) continue
+    const key = t.toType === 3 ? t.recipientData.slice(2).toLowerCase() : t.to
+    if (t.toType !== 3 && t.toType !== 0) continue
+    per.set(key, (per.get(key) ?? 0) + 1)
   }
-  const used = clusters.slice(1)
-  const from = clusters[0]![clusters[0]!.length - 1]!.blockNumber
-  const lastCluster = used[used.length - 1]!
-  const to = lastCluster[lastCluster.length - 1]!.blockNumber
-  let earned = 0n
-  for (const t of txs) if (t.from.startsWith('NQ81') && t.blockNumber > from && t.blockNumber <= to) earned += BigInt(t.value)
-  let paid = 0n
-  for (const c of used) for (const p of c) paid += BigInt(p.value)
-  return { cycles: used.length, earned, paid }
+  const c = [...per.values()].sort((x, y) => x - y)
+  const m = c.length >> 1
+  return c.length % 2 ? c[m]! : Math.floor((c[m - 1]! + c[m]!) / 2)
 }
 
 describe('buildPoolWindow', () => {
-  it('matches an independent loop on Siam', () => {
+  it('Siam: cycles is the per-staker payout count (~24), not the number of batches', () => {
     const w = buildPoolWindow(siam.txs, SIAM, () => undefined)
-    const r = referenceWindow(siam)
-    expect(w.cycles).toBe(r.cycles)
-    expect(w.earned).toBe(r.earned)
-    expect(w.paidRestake + w.paidDirect).toBe(r.paid)
+    expect(w.cycles).toBe(medianPayoutsPerStaker(siam, w))
+    expect(w.cycles).toBeGreaterThanOrEqual(20)
+    expect(w.cycles).toBeLessThanOrEqual(28)
     expect(w.lastPayoutTs).toBe(siam.txs.find((t) => t.from === siam.address)!.timestamp)
   })
 
-  it('matches an independent loop on Garuda (restake and direct)', () => {
+  it('Garuda full fixture: restake and direct legs of one run count once', () => {
     const w = buildPoolWindow(garuda.txs, GARUDA, () => undefined)
-    const r = referenceWindow(garuda)
-    expect(w.cycles).toBe(r.cycles)
-    expect(w.earned).toBe(r.earned)
-    expect(w.paidRestake + w.paidDirect).toBe(r.paid)
+    expect(w.cycles).toBe(medianPayoutsPerStaker(garuda, w))
+    expect(w.cycles).toBe(GARUDA_FULL_CYCLES)
     expect(w.paidDirect).toBeGreaterThan(0n)
+    const v = poolVerdict(w, GARUDA, w.lastPayoutTs! + 60_000)
+    expect(v.verdict).toBe('PAID_AS_PROMISED')
+    expect(v.ratio).toBeCloseTo(0.9499, 3)
+    expect(v.reasons.join(' ')).toContain('not checked against the staker set')
+  })
+
+  it('Garuda newest 2000 txs is NOT_ENOUGH_DATA', () => {
+    const newest = [...garuda.txs].sort((a, b) => b.blockNumber - a.blockNumber).slice(0, 2000)
+    const w = buildPoolWindow(newest, GARUDA, () => undefined)
+    expect(w.cycles).toBeLessThan(3)
+    expect(poolVerdict(w, GARUDA, w.lastPayoutTs! + 60_000).verdict).toBe('NOT_ENOUGH_DATA')
   })
 
   it('works regardless of input order', () => {
     const a = buildPoolWindow(siam.txs, SIAM, () => undefined)
     const b = buildPoolWindow([...siam.txs].reverse(), SIAM, () => undefined)
     expect(b).toEqual(a)
+  })
+
+  it('a single run still reports lastPayoutTs', () => {
+    const first = siam.txs.filter((t) => t.from === siam.address)
+    const w = buildPoolWindow(first.slice(0, 3), SIAM, () => undefined)
+    expect(w.lastPayoutTs).toBe(Math.max(...first.slice(0, 3).map((t) => t.timestamp)))
+    expect(w.cycles).toBe(0)
+  })
+
+  it('unverified payouts are tracked and cleared by the staker oracle', () => {
+    expect(buildPoolWindow(siam.txs, SIAM, () => undefined).paidUnverified).toBeGreaterThan(0n)
+    const verified = buildPoolWindow(siam.txs, SIAM, () => true)
+    expect(verified.paidUnverified).toBe(0n)
   })
 })
 
@@ -165,8 +186,23 @@ describe('poolVerdict rules', () => {
   })
   it('SHORT is never issued with other outflow >= 5 %', () =>
     expect(poolVerdict({ ...base, paidRestake: 700_000n, otherOut: 60_000n }, cfg, now).verdict).not.toBe('SHORT'))
-  it('shortfall between 2 and 5 pp is not called SHORT', () =>
-    expect(poolVerdict({ ...base, paidRestake: 930_000n }, cfg, now).verdict).not.toBe('SHORT'))
+  it('shortfall between 2 and 5 pp is inconclusive with its own reason', () => {
+    const v = poolVerdict({ ...base, paidRestake: 930_000n }, cfg, now)
+    expect(v.verdict).toBe('NOT_ENOUGH_DATA')
+    expect(v.reasons.join(' ')).toContain('uncertainty band')
+  })
+  it('big shortfall with 5-30 % other outflow says other outflows are too large', () => {
+    const v = poolVerdict({ ...base, paidRestake: 650_000n, otherOut: 100_000n }, cfg, now)
+    expect(v.verdict).toBe('NOT_ENOUGH_DATA')
+    expect(v.reasons.join(' ')).toContain('Other outflows too large')
+  })
+  it('unverified payouts add a reason', () => {
+    const v = poolVerdict({ ...base, paidUnverified: 200_000n }, cfg, now)
+    expect(v.verdict).toBe('PAID_AS_PROMISED')
+    expect(v.reasons.join(' ')).toContain('not checked against the staker set')
+  })
+  it('single cycle but last payout far past schedule -> BEHIND_SCHEDULE', () =>
+    expect(poolVerdict({ ...base, cycles: 0 }, { ...cfg, scheduleMs: 12 * HOUR }, base.lastPayoutTs! + 30 * HOUR).verdict).toBe('BEHIND_SCHEDULE'))
   it('direct payouts count toward the ratio', () =>
     expect(poolVerdict({ ...base, paidRestake: 500_000n, paidDirect: 470_000n }, cfg, now).verdict).toBe('PAID_AS_PROMISED'))
 })
