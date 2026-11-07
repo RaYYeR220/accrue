@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest'
-import { hostFiat, makeFiat, parseRates, type Rates } from '../src/fiat/useFiat'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { fetchRates, hostFiat, makeFiat, parseRates, type Rates } from '../src/fiat/useFiat'
+import { HttpError } from '../src/providers/errors'
 
 const rates: Rates = { asOf: 1_762_500_000_000, nimUsd: 0.0003, fx: { USD: 1, EUR: 0.9, CRC: 500, GMD: 70 }, source: ['test'] }
 const NIM = 100_000n
@@ -68,5 +69,22 @@ describe('parseRates', () => {
     expect(() => parseRates({ ...rates, nimUsd: 'x' })).toThrow()
     expect(() => parseRates({ ...rates, fx: 'x' })).toThrow()
     expect(() => parseRates({ ...rates, fx: { ...rates.fx, EUR: 'x' } })).toThrow()
+  })
+})
+
+describe('fetchRates', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('works in a WebView without AbortSignal.timeout, and keeps HttpError for a failed answer', async () => {
+    const timeout = AbortSignal.timeout
+    Object.defineProperty(AbortSignal, 'timeout', { value: undefined, configurable: true, writable: true })
+    try {
+      vi.stubGlobal('fetch', async () => new Response(JSON.stringify(rates), { status: 200 }))
+      expect((await fetchRates()).nimUsd).toBe(rates.nimUsd)
+      vi.stubGlobal('fetch', async () => new Response('down', { status: 503 }))
+      await expect(fetchRates()).rejects.toBeInstanceOf(HttpError)
+    } finally {
+      Object.defineProperty(AbortSignal, 'timeout', { value: timeout, configurable: true, writable: true })
+    }
   })
 })

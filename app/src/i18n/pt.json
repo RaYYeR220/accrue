@@ -1,7 +1,6 @@
 {
   "app.name": "Accrue",
   "app.tagline": "Coloque seus dólares e NIM para render e confira se o seu pool paga de verdade.",
-
   "action.continue": "Continuar",
   "action.cancel": "Cancelar",
   "action.close": "Fechar",
@@ -12,23 +11,19 @@
   "action.connectNim": "Ver meus NIM",
   "action.connectDollars": "Ver meus dólares",
   "action.switchToPolygon": "Mudar para a Polygon",
-
   "onboarding.title": "Seu dinheiro rendendo, às claras",
   "onboarding.body": "O Accrue aplica seus dólares parados no Aave, na Polygon, e ajuda você a fazer staking de NIM com um pool que paga de verdade.",
   "onboarding.noPromptYet": "Nada é pedido à sua carteira até você tocar.",
   "onboarding.nimHint": "Lê seu saldo de NIM e seu stake. O Nimiq Pay pergunta uma única vez.",
   "onboarding.dollarsHint": "Lê seus USDT e USDC na Polygon. O Nimiq Pay pergunta uma única vez.",
-
   "status.loading": "Carregando…",
   "status.testnet": "Testnet",
   "status.nimBalance": "{amount} NIM",
   "status.tokenBalance": "{amount} {asset} na Polygon",
   "status.worth": "≈ {amount}",
-
   "landing.title": "O Accrue funciona dentro do Nimiq Pay",
   "landing.body": "Abra no app Nimiq Pay para colocar seus dólares e NIM para render.",
   "landing.open": "Abrir no Nimiq Pay",
-
   "error.generic": "Algo deu errado.",
   "error.USER_REJECTED": "Você cancelou na sua carteira. Nada foi enviado.",
   "error.PROVIDER_MISSING": "Abra o Accrue dentro do Nimiq Pay para usar sua carteira.",
@@ -45,7 +40,6 @@
   "error.insufficientGas": "POL insuficiente para pagar a taxa de rede.",
   "error.serviceDown": "O serviço do Accrue não está respondendo. Tente de novo em um minuto.",
   "error.availableNow": "Disponível agora: {amount}",
-
   "error.ASSET_NOT_ALLOWED": "Este token não é aceito. Use USDT ou USDC na Polygon.",
   "error.AMOUNT_TOO_SMALL": "O mínimo é 1 USD.",
   "error.AMOUNT_TOO_LARGE": "O máximo por transação é 10.000 USD.",
@@ -60,7 +54,6 @@
   "error.AAVE_LIQUIDITY": "O Aave não consegue pagar este valor agora. Tente um valor menor ou mais tarde.",
   "error.RPC_UNAVAILABLE": "A Polygon não está respondendo agora. Tente de novo.",
   "error.INTERNAL": "O Accrue teve um problema. Tente de novo.",
-
   "nim.step.deactivate": "Parar de fazer staking deste valor",
   "nim.step.wait": "Esperar a rede liberá-lo",
   "nim.step.retire": "Desbloqueá-lo",
@@ -84,5 +77,9 @@
   "nim.error.NOT_STAKING": "Você não tem NIM em staking.",
   "nim.error.NOT_CONNECTED": "Conecte sua carteira NIM primeiro.",
   "nim.error.BUSY": "Conclua primeiro a solicitação aberta no Nimiq Pay.",
-  "nim.error.TX_FAILED": "A rede recusou esta transação, então seu staking não mudou."
+  "nim.error.TX_FAILED": "A rede recusou esta transação, então seu staking não mudou.",
+  "dollars.error.pending": "Sua última transação com este token ainda está a caminho. Espere até ela ser concluída e tente de novo.",
+  "dollars.error.notDeployed": "Os depósitos em dólares ainda não estão abertos: o contrato do Accrue ainda não está ativo na Polygon.",
+  "dollars.error.connectFirst": "Conecte primeiro sua carteira da Polygon e tente de novo.",
+  "dollars.error.ownerHasCode": "USDC não pode ser movido com uma assinatura deste tipo de carteira. Use USDT."
 }

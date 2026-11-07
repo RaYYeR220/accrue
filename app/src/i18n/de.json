@@ -1,7 +1,6 @@
 {
   "app.name": "Accrue",
   "app.tagline": "Lass deine Dollars und NIM arbeiten und prüfe, ob dein Pool wirklich auszahlt.",
-
   "action.continue": "Weiter",
   "action.cancel": "Abbrechen",
   "action.close": "Schließen",
@@ -12,23 +11,19 @@
   "action.connectNim": "Meine NIM anzeigen",
   "action.connectDollars": "Meine Dollars anzeigen",
   "action.switchToPolygon": "Zu Polygon wechseln",
-
   "onboarding.title": "Dein Geld arbeitet, und du siehst wie",
   "onboarding.body": "Accrue legt ungenutzte Dollars bei Aave auf Polygon an und hilft dir, NIM bei einem Pool zu staken, der wirklich auszahlt.",
   "onboarding.noPromptYet": "Deine Wallet wird erst gefragt, wenn du tippst.",
   "onboarding.nimHint": "Liest dein NIM-Guthaben und deinen Stake. Nimiq Pay fragt dich einmal.",
   "onboarding.dollarsHint": "Liest deine USDT und USDC auf Polygon. Nimiq Pay fragt dich einmal.",
-
   "status.loading": "Wird geladen …",
   "status.testnet": "Testnet",
   "status.nimBalance": "{amount} NIM",
   "status.tokenBalance": "{amount} {asset} auf Polygon",
   "status.worth": "≈ {amount}",
-
   "landing.title": "Accrue läuft in Nimiq Pay",
   "landing.body": "Öffne es in der Nimiq-Pay-App, um deine Dollars und NIM arbeiten zu lassen.",
   "landing.open": "In Nimiq Pay öffnen",
-
   "error.generic": "Etwas ist schiefgelaufen.",
   "error.USER_REJECTED": "Du hast in deiner Wallet abgebrochen. Es wurde nichts gesendet.",
   "error.PROVIDER_MISSING": "Öffne Accrue in Nimiq Pay, um deine Wallet zu nutzen.",
@@ -45,7 +40,6 @@
   "error.insufficientGas": "Nicht genug POL für die Netzwerkgebühr.",
   "error.serviceDown": "Der Accrue-Dienst antwortet nicht. Versuche es in einer Minute erneut.",
   "error.availableNow": "Jetzt verfügbar: {amount}",
-
   "error.ASSET_NOT_ALLOWED": "Dieser Token wird nicht unterstützt. Nutze USDT oder USDC auf Polygon.",
   "error.AMOUNT_TOO_SMALL": "Der Mindestbetrag ist 1 US-Dollar.",
   "error.AMOUNT_TOO_LARGE": "Pro Transaktion sind höchstens 10.000 US-Dollar möglich.",
@@ -60,7 +54,6 @@
   "error.AAVE_LIQUIDITY": "Aave kann diesen Betrag gerade nicht auszahlen. Wähle einen kleineren Betrag oder versuche es später.",
   "error.RPC_UNAVAILABLE": "Polygon antwortet gerade nicht. Versuche es erneut.",
   "error.INTERNAL": "Bei Accrue ist ein Fehler aufgetreten. Versuche es erneut.",
-
   "nim.step.deactivate": "Diesen Betrag nicht mehr staken",
   "nim.step.wait": "Warten, bis das Netzwerk ihn freigibt",
   "nim.step.retire": "Freischalten",
@@ -84,5 +77,9 @@
   "nim.error.NOT_STAKING": "Du hast keine NIM gestakt.",
   "nim.error.NOT_CONNECTED": "Verbinde zuerst deine NIM-Wallet.",
   "nim.error.BUSY": "Schließe zuerst die offene Anfrage in Nimiq Pay ab.",
-  "nim.error.TX_FAILED": "Das Netzwerk hat diese Transaktion abgelehnt, dein Stake ist unverändert."
+  "nim.error.TX_FAILED": "Das Netzwerk hat diese Transaktion abgelehnt, dein Stake ist unverändert.",
+  "dollars.error.pending": "Deine letzte Transaktion mit diesem Token ist noch unterwegs. Warte, bis sie durch ist, und versuche es dann erneut.",
+  "dollars.error.notDeployed": "Dollar-Einzahlungen sind noch nicht offen: Der Accrue-Vertrag ist auf Polygon noch nicht live.",
+  "dollars.error.connectFirst": "Verbinde zuerst deine Polygon-Wallet und versuche es dann erneut.",
+  "dollars.error.ownerHasCode": "USDC lässt sich mit einer Signatur aus dieser Art von Wallet nicht bewegen. Nutze stattdessen USDT."
 }

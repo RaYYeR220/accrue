@@ -1,4 +1,5 @@
 import { RELAY_ERROR_CODES, type RelayErrorCode } from '@accrue/shared'
+import { isRecord } from '../lib/util'
 
 export type UiErrorCode =
   | RelayErrorCode
@@ -8,6 +9,8 @@ export type UiErrorCode =
   | 'TIMEOUT'
   | 'UNKNOWN_OUTCOME'
   | 'WRONG_CHAIN'
+  // an earlier action on the same token is still on its way; a new one waits until it resolves
+  | 'PENDING'
 
 // none: nothing to retry automatically (the user changes something or checks activity first)
 // same: send the identical request again
@@ -73,7 +76,6 @@ const RELAY_RETRY: Record<RelayErrorCode, Retry> = {
 }
 
 const isRelayCode = (s: string): s is RelayErrorCode => (RELAY_ERROR_CODES as readonly string[]).includes(s)
-const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 
 function ui(code: UiErrorCode, retry: Retry, messageKey: string = `error.${code}`, detail?: unknown): UiError {
   return isRecord(detail) ? { code, retry, messageKey, detail } : { code, retry, messageKey }
@@ -83,7 +85,10 @@ const generic = (): UiError => ui('INTERNAL', 'none', 'error.generic')
 const insufficientGas = (message: string) => /insufficient funds/i.test(message)
 
 function fromRelay(code: string, detail: unknown): UiError {
-  return isRelayCode(code) ? ui(code, RELAY_RETRY[code], `error.${code}`, detail) : generic()
+  if (!isRelayCode(code)) return generic()
+  // the relay could not parse the request: sending the identical body again can only fail the same way
+  if (code === 'INTERNAL' && isRecord(detail) && detail.reason === 'bad_request') return ui(code, 'none', 'error.generic', detail)
+  return ui(code, RELAY_RETRY[code], `error.${code}`, detail)
 }
 
 function fromHttp(status: number, body: unknown): UiError {

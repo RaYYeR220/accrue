@@ -1,6 +1,6 @@
 import { ASSETS, permitToJson, POLYGON, type AssetKey, type PermitTypedData } from '@accrue/shared'
 import { createClient, fallback, getAddress, http, numberToHex, type Address, type Client, type Hex } from 'viem'
-import { getBalance, readContract } from 'viem/actions'
+import { getBalance, getGasPrice, readContract } from 'viem/actions'
 import { polygon } from 'viem/chains'
 import { ProviderMissingError, RpcUnavailableError, WrongChainError } from './errors'
 
@@ -176,12 +176,26 @@ export function createEvm(opts: { provider?: () => Eip1193 | undefined; rpcs?: r
       return read(c => readContract(c, { address: token, abi: ERC20_READS, functionName: 'balanceOf', args: [owner] }))
     },
 
-    async permitNonce(token: Address, owner: Address): Promise<bigint> {
-      return read(c => readContract(c, { address: token, abi: ERC20_READS, functionName: 'nonces', args: [owner] }))
+    // `blockNumber` pins the read, so a node that is behind cannot answer with older state
+    async permitNonce(token: Address, owner: Address, blockNumber?: bigint): Promise<bigint> {
+      return read(c =>
+        readContract(c, { address: token, abi: ERC20_READS, functionName: 'nonces', args: [owner], ...(blockNumber === undefined ? {} : { blockNumber }) }),
+      )
     },
 
     async polBalance(owner: Address): Promise<bigint> {
       return read(c => getBalance(c, { address: owner }))
+    },
+
+    async gasPrice(): Promise<bigint> {
+      return read(c => getGasPrice(c))
+    },
+
+    // For transactions the user's own wallet sent (self-paid fallback). null = not mined yet.
+    async txReceipt(hash: Hex): Promise<{ status: 'success' | 'reverted'; blockNumber: bigint } | null> {
+      const receipt = await read(c => c.request({ method: 'eth_getTransactionReceipt', params: [hash] }))
+      if (!receipt) return null
+      return { status: receipt.status === '0x1' ? 'success' : 'reverted', blockNumber: BigInt(receipt.blockNumber) }
     },
   }
 }

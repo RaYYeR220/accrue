@@ -1,5 +1,6 @@
 import type { Staker } from '@accrue/shared'
 import { init, type NimiqProvider } from '@nimiq/mini-app-sdk'
+import { isRecord } from '../lib/util'
 import { ProviderMissingError } from './errors'
 
 export interface NimAccounts {
@@ -13,7 +14,6 @@ export interface NimBalances {
   total: bigint
 }
 
-const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null
 
 function toAccounts(list: unknown): NimAccounts {
   if (!Array.isArray(list) || typeof list[0] !== 'string') throw new Error('Nimiq Pay returned no account')

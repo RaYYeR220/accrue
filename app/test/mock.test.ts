@@ -93,9 +93,11 @@ describe('mock relay', () => {
     expect(byOwner.jobs).toHaveLength(1)
   })
 
-  it('relay-down: 503 without a body code', async () => {
+  it('relay-down: 503 RPC_UNAVAILABLE, as the worker answers when the relayer cannot be reached', async () => {
     installMock('?mock=relay-down&delay=0', window)
-    expect((await relay(req)).status).toBe(503)
+    const res = await relay(req)
+    expect(res.status).toBe(503)
+    expect(await res.json()).toEqual({ error: 'RPC_UNAVAILABLE', detail: { reason: 'relayer_unavailable' } })
   })
 
   it('stale-nonce: the first permit is stale, a re-signed one goes through', async () => {

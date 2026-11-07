@@ -1,6 +1,7 @@
 import type { AssetKey, Job } from '@accrue/shared'
 import { ASSETS } from '@accrue/shared'
 import { keccak256, numberToHex, padHex, type Address, type Hex } from 'viem'
+import { sleep } from '../lib/util'
 import { POLYGON_RPCS } from '../providers/evm'
 import { isScenarioName, MOCK_RATES, SCENARIO_NAMES, SCENARIOS, type RelayOutcome, type Scenario, type ScenarioName } from './scenarios'
 
@@ -37,7 +38,6 @@ interface Installed {
 
 const installed = new WeakMap<Window, Installed>()
 
-const sleep = (ms: number) => (ms > 0 ? new Promise<void>(r => setTimeout(r, ms)) : Promise.resolve())
 
 function randomHex(bytes: number): string {
   const b = crypto.getRandomValues(new Uint8Array(bytes))
@@ -99,7 +99,7 @@ export function installMock(search: string, w: Window = window): MockHandle {
   // NIM provider
   const accountListeners = new Set<(a: string[]) => void>()
   // hashes the mock handed out; they look up as included one block later
-  const sentTxs = new Set<string>()
+  const nimSentTxs = new Set<string>()
   const nimTx = (method: string) =>
     recorded('nimiq', method, async (_tx: object): Promise<string> => {
       switch (sc.nim.tx) {
@@ -111,7 +111,7 @@ export function installMock(search: string, w: Window = window): MockHandle {
           throw providerError('Transaction sent, outcome unknown', { type: 'TRANSACTION_OUTCOME_UNKNOWN' })
         default: {
           const hash = randomHex(32)
-          sentTxs.add(hash)
+          nimSentTxs.add(hash)
           return hash
         }
       }
@@ -129,7 +129,7 @@ export function installMock(search: string, w: Window = window): MockHandle {
       case 'getBlockNumber':
         return { data: 41_000_000, metadata: null }
       case 'getTransactionByHash':
-        if (typeof arg === 'string' && sentTxs.has(arg)) {
+        if (typeof arg === 'string' && nimSentTxs.has(arg)) {
           return { data: { hash: arg, blockNumber: 41_000_001, executionResult: true }, metadata: null }
         }
         throw rpcNotFound(`Transaction not found: ${String(arg)}`)
@@ -184,6 +184,8 @@ export function installMock(search: string, w: Window = window): MockHandle {
   let chainId = q.get('chain') ?? '0x1'
   const balances = new Map<string, bigint>(Object.entries(sc.evm.tokens).map(([k, v]) => [k.toLowerCase(), v]))
   const nonces = new Map<string, bigint>()
+  // hashes the wallet "sent", so the public-RPC stand-in can hand back their receipts
+  const evmSentTxs = new Set<string>()
 
   function evmRead(method: string, params: unknown[]): unknown {
     switch (method) {
@@ -193,6 +195,12 @@ export function installMock(search: string, w: Window = window): MockHandle {
         return numberToHex(80_000_000)
       case 'eth_getBalance':
         return numberToHex(sc.evm.polWei)
+      case 'eth_gasPrice':
+        return numberToHex(100n * 10n ** 9n)
+      case 'eth_getTransactionReceipt': {
+        const hash = String(params[0] ?? '').toLowerCase()
+        return evmSentTxs.has(hash) ? { transactionHash: hash, status: '0x1', blockNumber: numberToHex(80_000_001) } : null
+      }
       case 'eth_call': {
         const { to, data } = (params[0] ?? {}) as { to?: string; data?: string }
         const token = (to ?? '').toLowerCase()
@@ -227,10 +235,13 @@ export function installMock(search: string, w: Window = window): MockHandle {
         }
         return `0x${randomHex(65)}`
       }
-      case 'eth_sendTransaction':
+      case 'eth_sendTransaction': {
         if (sc.evm.send === 'reject') throw providerError('User rejected the request.', { code: 4001 })
         if (sc.evm.polWei === 0n) throw providerError('insufficient funds for gas * price + value', { code: -32000 })
-        return `0x${randomHex(32)}`
+        const hash = `0x${randomHex(32)}`
+        evmSentTxs.add(hash)
+        return hash
+      }
       default:
         return evmRead(method, params)
     }
@@ -271,7 +282,8 @@ export function installMock(search: string, w: Window = window): MockHandle {
       })
     }
     if (!path.startsWith('/api/relay')) return null
-    if (sc.relay.supply.kind === 'down') return new Response('Service Unavailable', { status: 503 })
+    // what the worker answers when its relayer Durable Object cannot be reached
+    if (sc.relay.supply.kind === 'down') return json(503, { error: 'RPC_UNAVAILABLE', detail: { reason: 'relayer_unavailable' } })
 
     if (path === '/api/relay' && method === 'POST') {
       const req = JSON.parse(body || '{}') as { kind: 'supply' | 'withdraw'; asset: AssetKey; owner: Address; amount: string; signature: Hex }

@@ -2,7 +2,7 @@ import { formatFiat, LUNA_PER_NIM, type Fiat } from '@accrue/shared'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
 import { currentLang } from '../i18n'
-import { HttpError } from '../providers/errors'
+import { fetchJson } from '../lib/api'
 
 export const FIATS = ['USD', 'EUR', 'CRC', 'GMD'] as const satisfies readonly Fiat[]
 
@@ -65,10 +65,7 @@ export function makeFiat(host: Fiat, rates: Rates | null, failed: boolean, local
 }
 
 export async function fetchRates(): Promise<Rates> {
-  const res = await fetch('/api/rates', { signal: AbortSignal.timeout(8_000) })
-  const body: unknown = await res.json().catch(() => null)
-  if (!res.ok) throw new HttpError(res.status, body)
-  return parseRates(body)
+  return parseRates(await fetchJson('/api/rates', {}, 8_000))
 }
 
 export function useFiat(): FiatApi {
