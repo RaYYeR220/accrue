@@ -49,6 +49,15 @@ and time passing so interest accrues. After every call, each owner's wallet unde
 least what it was before that call, less Aave's rounding on the owner's own router calls (at most
 `index / 1e27 + 2` units per call). No non-owner may ever hold any of the four tokens.
 
+Test evidence, as of commit `46d24cb` on forge 1.8.3:
+
+- 26 tests in 3 suites pass:
+  - 22 fork tests, including 2 fuzz tests at 256 runs each;
+  - 3 deploy-script tests;
+  - the invariant campaign: 64 runs × depth 20 = 1,280 handler calls, both invariants, 0 reverts.
+- `forge coverage` reports 100 % of lines (29/29), statements, branches (13/13) and functions for
+  `AccrueRouter.sol`.
+
 ## Trust assumptions
 
 - **Aave v3 on Polygon** (pool and aTokens are upgradeable by Aave governance). A malicious upgrade is outside what
