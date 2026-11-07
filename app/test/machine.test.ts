@@ -92,6 +92,20 @@ describe('action state machine', () => {
       expect(reduce(downFailed, { type: 'RETRY' })).toMatchObject({ s: 'signing', draft })
     })
 
+    it('a relay that may still have the job can offer self-gas while it is checked (unknown + offer)', () => {
+      const offer = { kind: 'selfGas', estimateWei: 1n } as const
+      const lost = reduce(signing, { type: 'ERROR', error: relayDown, jobId: J, offer })
+      expect(lost).toEqual({ s: 'unknown', jobId: J, draft, offer })
+      // later "still no answer" reports keep the offer
+      expect(reduce(lost, { type: 'ERROR', error: relayDown, jobId: J })).toBe(lost)
+      expect(reduce(lost, { type: 'SELF_GAS' })).toEqual({ s: 'signing', draft })
+      expect(reduce(lost, { type: 'RETRY' })).toBe(lost)
+      // the relay turns out to have it: the offer goes away
+      expect(reduce(lost, { type: 'ACCEPTED', jobId: J, txHash: TX })).toEqual({ s: 'submitted', jobId: J, txHash: TX, draft })
+      // an unknown without an offer cannot self-send
+      expect(reduce(unknown, { type: 'SELF_GAS' })).toBe(unknown)
+    })
+
     it('SELF_GAS is only legal when it was offered', () => {
       expect(reduce(downFailed, { type: 'SELF_GAS' })).toBe(downFailed)
       const offered = reduce(signing, { type: 'FAILED', error: relayDown, offer: { kind: 'selfGas', estimateWei: 1n } })

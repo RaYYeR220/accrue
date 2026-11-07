@@ -147,14 +147,15 @@ export function isNoAnswer(e: unknown): boolean {
 // The relay may have taken (and broadcast) the request without us getting its answer: no answer at all,
 // or a 5xx that is not one of its own JSON errors (a Cloudflare 1102 after the relayer already sent).
 export function mayHaveArrived(e: unknown): boolean {
-  if (isNoAnswer(e)) return true
+  if (isNoAnswer(e) || isRelayerDown(e)) return true
   return e instanceof HttpError && e.status >= 500 && !(isRecord(e.body) && typeof e.body.error === 'string')
 }
 
-// "Nonce already used" where the relay could not look up which tx used it.
-export function isStaleUnchecked(e: unknown): boolean {
-  if (!(e instanceof HttpError) || !isRecord(e.body) || e.body.error !== 'PERMIT_NONCE_STALE') return false
-  return isRecord(e.body.detail) && e.body.detail.landedCheck === 'unavailable'
+// The worker could not reach its relayer Durable Object. That call can fail after the relayer already
+// recorded and broadcast the tx (a storage write or a deploy reset mid-call), so it is not a refusal.
+export function isRelayerDown(e: unknown): boolean {
+  if (!(e instanceof HttpError) || e.status !== 503 || !isRecord(e.body) || e.body.error !== 'RPC_UNAVAILABLE') return false
+  return isRecord(e.body.detail) && e.body.detail.reason === 'relayer_unavailable'
 }
 
 // Worth sending again with the same signature (the relay is idempotent on it): no answer, or a 5xx
@@ -292,19 +293,53 @@ const pastGrace = (r: LocalJob) => r.deadline !== undefined && nowSec() >= r.dea
 
 const permitToken = (r: LocalJob) => (r.kind === 'supply' ? ASSETS[r.asset].address : ASSETS[r.asset].aToken)
 
+const permitNonceOf = (r: LocalJob) => r.nonce ?? r.body?.nonce
+
 // Whether the permit's nonce has been used on-chain; null when the record does not know its nonce.
-async function nonceUsed(r: LocalJob): Promise<boolean | null> {
-  const nonce = r.nonce ?? r.body?.nonce
+// `atBlock` pins the read (after a revert: the state that made it revert).
+async function nonceUsed(r: LocalJob, atBlock?: bigint): Promise<boolean | null> {
+  const nonce = permitNonceOf(r)
   if (nonce === undefined) return null
-  return (await evm.permitNonce(permitToken(r), r.owner)) > BigInt(nonce)
+  const current = atBlock === undefined ? await evm.permitNonce(permitToken(r), r.owner) : await evm.permitNonce(permitToken(r), r.owner, atBlock)
+  return current > BigInt(nonce)
 }
 
 // The permit ran, but not through the tx this record followed, so its hash is not known.
-export function resolveLanded(r: LocalJob): LocalJob {
-  const next: LocalJob = { ...r, status: 'confirmed', detail: { landed: 'elsewhere' } }
+export function resolveLanded(r: LocalJob, jobId = r.jobId): LocalJob {
+  const next: LocalJob = { ...r, jobId, status: 'confirmed', detail: { landed: 'elsewhere' } }
   delete next.txHash
   delete next.error
   return store(next, r.jobId)
+}
+
+// For a re-send of a signature that already went out, "nonce already used" most likely means this one ran.
+// The relay's own "not ours" (its log lookup) can miss it when free RPCs only serve the newest 50 blocks.
+export async function staleMeansLanded(e: unknown, r: LocalJob): Promise<boolean> {
+  if (!(e instanceof HttpError) || !isRecord(e.body) || e.body.error !== 'PERMIT_NONCE_STALE') return false
+  const detail = isRecord(e.body.detail) ? e.body.detail : {}
+  // another signature over this nonce is in flight: that one decides
+  if (detail.reason === 'in_flight') return false
+  const nonce = permitNonceOf(r)
+  if (nonce === undefined) return false
+  if (typeof detail.expected === 'string' && /^\d{1,78}$/.test(detail.expected)) return BigInt(detail.expected) > BigInt(nonce)
+  return (await nonceUsed(r)) === true
+}
+
+// A failed relay job that leaves our permit nonce in doubt ("our nonce is used but no receipt", or a
+// cancel around the deadline): asking for a new signature while this one ran would deposit twice.
+const nonceInDoubt = (v: JobView) => v.status === 'failed' && (v.error === 'RPC_UNAVAILABLE' || v.error === 'DEADLINE_INVALID')
+
+// Applies a relay answer, letting the chain decide a failure that may not be one.
+export async function settleView(r: LocalJob, view: JobView): Promise<LocalJob> {
+  if (!nonceInDoubt(view)) return acknowledge(r, view)
+  let used: boolean | null
+  try {
+    used = await nonceUsed(r)
+  } catch {
+    // unreadable right now: the job stays open and the next poll asks again
+    return store({ ...r, jobId: view.jobId, status: r.status === 'sent' ? 'submitted' : r.status }, r.jobId)
+  }
+  return used ? resolveLanded(r, view.jobId) : acknowledge(r, view)
 }
 
 // Past its deadline the permit can no longer execute; once the relay has had time to settle,
@@ -353,18 +388,17 @@ function refusal(r: LocalJob, e: HttpError): LocalJob {
 
 async function checkRelay(r: LocalJob): Promise<LocalJob> {
   try {
-    return acknowledge(r, await getJob(r.jobId))
+    return await settleView(r, await getJob(r.jobId))
   } catch (e) {
     if (!(e instanceof HttpError && e.status === 404)) throw e
     // too close to the deadline to send again: keep asking until the grace period settles it
     if (!canResend(r, nowSec())) throw e
     // the relay lost it or never got it: the same signature again, which the relay treats idempotently
     try {
-      return acknowledge(r, await postRelay(r.body!))
+      return await settleView(r, await postRelay(r.body!))
     } catch (e2) {
       if (!(e2 instanceof HttpError) || isTransient(e2)) throw e2
-      // an earlier send of this very signature most likely used the nonce
-      if (isStaleUnchecked(e2)) return resolveLanded(r)
+      if (await staleMeansLanded(e2, r)) return resolveLanded(r)
       forget(r.jobId)
       return refusal(r, e2)
     }
@@ -372,11 +406,12 @@ async function checkRelay(r: LocalJob): Promise<LocalJob> {
 }
 
 async function checkWallet(r: LocalJob): Promise<LocalJob> {
-  const status = await evm.txStatus(r.jobId as Hex)
-  if (status === null) return r
-  if (status === 'success') return store({ ...r, status: 'confirmed' })
-  // the relay may have landed the same permit first, which makes this tx revert on the spent allowance
-  if (await nonceUsed(r)) return resolveLanded(r)
+  const receipt = await evm.txReceipt(r.jobId as Hex)
+  if (receipt === null) return r
+  if (receipt.status === 'success') return store({ ...r, status: 'confirmed' })
+  // the relay may have landed the same permit first, which makes this tx revert on the spent allowance.
+  // Read at the revert's block: a node still behind it would answer with the nonce from before.
+  if (await nonceUsed(r, receipt.blockNumber)) return resolveLanded(r)
   return store({ ...r, status: 'failed', error: 'SIMULATION_FAILED', detail: { reason: 'reverted_onchain' } })
 }
 
@@ -486,6 +521,8 @@ export async function resumePending(owner: Address): Promise<Job[]> {
     if (j.txHash) view.txHash = j.txHash
     if (j.error) view.error = j.error
     if (j.detail && isRecord(j.detail)) view.detail = j.detail
+    // an open local record knows its permit nonce: its poller lets the chain decide this failure
+    if (prev && !isFinal(prev.status) && nonceInDoubt(view)) continue
     store(withView(base, view))
   }
 

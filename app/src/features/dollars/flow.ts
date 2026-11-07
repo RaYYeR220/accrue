@@ -1,10 +1,9 @@
 import { ASSETS, buildPermit, LIMITS, POLYGON, type AssetKey } from '@accrue/shared'
 import { encodeFunctionData, parseAbi, type Address, type Hex } from 'viem'
 import {
-  acknowledge,
   forget,
   getLocal,
-  isStaleUnchecked,
+  isRelayerDown,
   isTransient,
   jobIdOf,
   mayHaveArrived,
@@ -13,6 +12,8 @@ import {
   remember,
   resolveLanded,
   resumePending,
+  settleView,
+  staleMeansLanded,
   track,
   unresolved,
   type LocalJob,
@@ -138,14 +139,9 @@ function refine(e: UiError): UiError {
   return e
 }
 
-async function offerFor(err: unknown, e: UiError, owner: Address): Promise<Offer | undefined> {
-  if (e.code === 'AAVE_LIQUIDITY') {
-    const raw = e.detail?.available
-    const amount = typeof raw === 'string' && /^\d{1,78}$/.test(raw) ? BigInt(raw) : 0n
-    return amount > 0n ? { kind: 'withdrawAvailable', amount } : undefined
-  }
-  const relayCannotPay = SELF_GAS_CODES.includes(e.code) || (err instanceof HttpError && err.status >= 500)
-  if (!relayCannotPay || !flowConfig.router) return undefined
+// Paying the fee yourself, offered only when the wallet's POL covers it with margin.
+async function selfGasOffer(owner: Address): Promise<Offer | undefined> {
+  if (!flowConfig.router) return undefined
   try {
     const [pol, price] = await Promise.all([evm.polBalance(owner), evm.gasPrice()])
     const estimateWei = flowConfig.selfGasLimit * price * flowConfig.selfGasPriceMargin
@@ -153,6 +149,16 @@ async function offerFor(err: unknown, e: UiError, owner: Address): Promise<Offer
   } catch {
     return undefined
   }
+}
+
+async function offerFor(err: unknown, e: UiError, owner: Address): Promise<Offer | undefined> {
+  if (e.code === 'AAVE_LIQUIDITY') {
+    const raw = e.detail?.available
+    const amount = typeof raw === 'string' && /^\d{1,78}$/.test(raw) ? BigInt(raw) : 0n
+    return amount > 0n ? { kind: 'withdrawAvailable', amount } : undefined
+  }
+  const relayCannotPay = SELF_GAS_CODES.includes(e.code) || (err instanceof HttpError && err.status >= 500)
+  return relayCannotPay ? selfGasOffer(owner) : undefined
 }
 
 // POST with the same signature until the relay answers for real. Never re-signs.
@@ -191,30 +197,44 @@ async function relay(body: RelayBody, out: Emit, signal?: AbortSignal, sentBefor
   // any attempt that may have reached the relay unanswered makes the whole send uncertain,
   // whatever the later attempts say: the first one may already have broadcast
   let unsure = false
+  let relayerDown = false
   for (;;) {
     attempts += 1
     try {
-      const job = acknowledge(getLocal(localId) ?? record, await postRelay(body))
+      const job = await settleView(getLocal(localId) ?? record, await postRelay(body))
       report(job, out)
       return follow(job.jobId, out, signal)
     } catch (e) {
       err = e
       unsure ||= mayHaveArrived(e)
+      relayerDown ||= isRelayerDown(e)
       if (!isTransient(e) || attempts > flowConfig.retryDelaysMs.length) break
     }
     await sleep(flowConfig.retryDelaysMs[attempts - 1] ?? 0)
     if (signal?.aborted) return
   }
 
-  if (unsure) {
-    // the record stays: the poller asks for the job by id, and sends the same signature again if it is unknown
-    out({ type: 'ERROR', error: toUiError(err), jobId: localId })
-    return follow(localId, out, signal)
+  if (sentBefore || attempts > 1) {
+    // this signature went out before and the relay now says its nonce is used: most likely by that
+    // earlier send, so signing a new permit could deposit twice
+    let landed: boolean | null
+    try {
+      landed = await staleMeansLanded(err, getLocal(localId) ?? record)
+    } catch {
+      landed = null
+    }
+    if (landed) return report(resolveLanded(getLocal(localId) ?? record), out)
+    // the nonce could not be read: treat the send as uncertain and keep following it
+    if (landed === null) unsure = true
   }
 
-  // this signature went out before and its nonce is now used by a tx the relay could not identify:
-  // most likely that earlier send, so signing a new permit could deposit twice
-  if ((sentBefore || attempts > 1) && isStaleUnchecked(err)) return report(resolveLanded(getLocal(localId) ?? record), out)
+  if (unsure) {
+    // the record stays: the poller asks for the job by id, and sends the same signature again if it is unknown.
+    // With the relayer unreachable, the same permit may also go out from the user's wallet meanwhile.
+    const offer = relayerDown ? await selfGasOffer(body.owner) : undefined
+    out({ type: 'ERROR', error: toUiError(err), jobId: localId, ...(offer ? { offer } : {}) })
+    return follow(localId, out, signal)
+  }
 
   // a real answer saying no: this signature never became a job
   forget(localId)

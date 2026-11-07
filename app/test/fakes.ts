@@ -7,6 +7,8 @@ export const ROUTER = '0x2222222222222222222222222222222222222222' as Address
 export const TX = `0x${'ab'.repeat(32)}` as Hex
 
 // r = n, s = 7, v = 27: well-formed and distinct per n
+export const mined = (status: 'success' | 'reverted', blockNumber = 100n) => ({ status, blockNumber })
+
 export const sig = (n: number) => `0x${n.toString(16).padStart(64, '0')}${'7'.padStart(64, '0')}1b` as Hex
 
 export interface Call {
@@ -62,6 +64,6 @@ export function stubEvm(o: EvmStubOpts = {}) {
     polBalance: vi.spyOn(evm, 'polBalance').mockResolvedValue(o.polWei ?? 3n * 10n ** 17n),
     gasPrice: vi.spyOn(evm, 'gasPrice').mockResolvedValue(100n * 10n ** 9n),
     sendTx: vi.spyOn(evm, 'sendTx').mockResolvedValue(TX),
-    txStatus: vi.spyOn(evm, 'txStatus').mockResolvedValue('success'),
+    txReceipt: vi.spyOn(evm, 'txReceipt').mockResolvedValue(mined('success')),
   }
 }

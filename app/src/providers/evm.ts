@@ -176,8 +176,11 @@ export function createEvm(opts: { provider?: () => Eip1193 | undefined; rpcs?: r
       return read(c => readContract(c, { address: token, abi: ERC20_READS, functionName: 'balanceOf', args: [owner] }))
     },
 
-    async permitNonce(token: Address, owner: Address): Promise<bigint> {
-      return read(c => readContract(c, { address: token, abi: ERC20_READS, functionName: 'nonces', args: [owner] }))
+    // `blockNumber` pins the read, so a node that is behind cannot answer with older state
+    async permitNonce(token: Address, owner: Address, blockNumber?: bigint): Promise<bigint> {
+      return read(c =>
+        readContract(c, { address: token, abi: ERC20_READS, functionName: 'nonces', args: [owner], ...(blockNumber === undefined ? {} : { blockNumber }) }),
+      )
     },
 
     async polBalance(owner: Address): Promise<bigint> {
@@ -189,10 +192,10 @@ export function createEvm(opts: { provider?: () => Eip1193 | undefined; rpcs?: r
     },
 
     // For transactions the user's own wallet sent (self-paid fallback). null = not mined yet.
-    async txStatus(hash: Hex): Promise<'success' | 'reverted' | null> {
+    async txReceipt(hash: Hex): Promise<{ status: 'success' | 'reverted'; blockNumber: bigint } | null> {
       const receipt = await read(c => c.request({ method: 'eth_getTransactionReceipt', params: [hash] }))
       if (!receipt) return null
-      return receipt.status === '0x1' ? 'success' : 'reverted'
+      return { status: receipt.status === '0x1' ? 'success' : 'reverted', blockNumber: BigInt(receipt.blockNumber) }
     },
   }
 }

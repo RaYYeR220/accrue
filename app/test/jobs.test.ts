@@ -20,7 +20,7 @@ import { reduce, type ActionState } from '../src/actions/machine'
 import { deposit } from '../src/features/dollars/deposit'
 import { flowConfig } from '../src/features/dollars/flow'
 import { ASSETS } from '@accrue/shared'
-import { json, OWNER, posts, relayError, ROUTER, sig, stubEvm, stubFetch, TX } from './fakes'
+import { json, mined, OWNER, posts, relayError, ROUTER, sig, stubEvm, stubFetch, TX } from './fakes'
 
 const X = OWNER
 const S = sig(1)
@@ -201,7 +201,7 @@ describe('resumePending (Review Focus 2: app killed after signing)', () => {
       seed(stored(S, { jobId: TX, via: 'wallet', txHash: TX, body: undefined, deadline: late(), nonce: '3', kind: 'withdraw' }))
       stubFetch(() => json(200, { jobs: [] }))
       const ev = stubEvm()
-      ev.txStatus.mockResolvedValue(null)
+      ev.txReceipt.mockResolvedValue(null)
       ev.permitNonce.mockResolvedValue(4n)
       await resumePending(X)
       await vi.waitFor(() => expect(getLocal(TX)).toMatchObject({ status: 'confirmed', detail: { landed: 'elsewhere' } }))
@@ -213,7 +213,7 @@ describe('resumePending (Review Focus 2: app killed after signing)', () => {
       seed(stored(S, { jobId: TX, via: 'wallet', txHash: TX, body: undefined, deadline: late(), nonce: '3' }))
       stubFetch(() => json(200, { jobs: [] }))
       const ev = stubEvm()
-      ev.txStatus.mockResolvedValue(null)
+      ev.txReceipt.mockResolvedValue(null)
       ev.permitNonce.mockResolvedValue(3n)
       await resumePending(X)
       await vi.waitFor(() =>
@@ -239,7 +239,7 @@ describe('resumePending (Review Focus 2: app killed after signing)', () => {
     stubFetch(() => json(200, { jobs: [] }))
     const ev = stubEvm()
     const at: number[] = []
-    ev.txStatus.mockImplementation(async () => {
+    ev.txReceipt.mockImplementation(async () => {
       at.push(performance.now())
       return null
     })
@@ -261,17 +261,99 @@ describe('resumePending (Review Focus 2: app killed after signing)', () => {
     await vi.waitFor(() => expect(getLocal(J)).toMatchObject({ status: 'confirmed', detail: { landed: 'elsewhere' } }))
   })
 
-  it('a re-send answered "nonce used by another signature" fails and asks for a fresh one', async () => {
+  it('a re-send answered plain stale with the nonce moved past ours is landed: the relay\'s "not ours" is not trusted', async () => {
     seed(stored(S, { status: 'sent' }))
-    const seen: unknown[] = []
     stubFetch(c => {
       if (c.path === `/api/relay/by-owner/${X}`) return json(200, { jobs: [] })
       if (c.method === 'POST') return relayError(409, 'PERMIT_NONCE_STALE', { expected: '1' })
       return notFound()
     })
     await resumePending(X)
+    await vi.waitFor(() => expect(getLocal(J)).toMatchObject({ status: 'confirmed', detail: { landed: 'elsewhere' } }))
+  })
+
+  it('a re-send answered stale without "expected" reads the nonce itself', async () => {
+    seed(stored(S, { status: 'sent' }))
+    stubFetch(c => {
+      if (c.path === `/api/relay/by-owner/${X}`) return json(200, { jobs: [] })
+      if (c.method === 'POST') return relayError(409, 'PERMIT_NONCE_STALE')
+      return notFound()
+    })
+    stubEvm().permitNonce.mockResolvedValue(1n)
+    await resumePending(X)
+    await vi.waitFor(() => expect(getLocal(J)).toMatchObject({ status: 'confirmed', detail: { landed: 'elsewhere' } }))
+  })
+
+  it('a re-send answered "another signature for this nonce is in flight" is never claimed as landed', async () => {
+    seed(stored(S, { status: 'sent' }))
+    const other = `0x${'9'.repeat(64)}`
+    stubFetch(c => {
+      if (c.path === `/api/relay/by-owner/${X}`) return json(200, { jobs: [] })
+      if (c.method === 'POST') return relayError(409, 'PERMIT_NONCE_STALE', { reason: 'in_flight', jobId: other })
+      return notFound()
+    })
+    const ev = stubEvm()
+    ev.permitNonce.mockResolvedValue(1n)
+    const seen: unknown[] = []
+    await resumePending(X)
     await track(J, u => seen.push(u))
     expect(seen.at(-1)).toMatchObject({ job: { status: 'failed', error: 'PERMIT_NONCE_STALE' } })
+    expect(ev.permitNonce).not.toHaveBeenCalled()
+  })
+
+  it('a re-send answered stale for a nonce not yet reached fails and asks for a fresh one', async () => {
+    seed(stored(S, { status: 'sent', body: { ...bodyFor(S), nonce: '3' } }))
+    const seen: unknown[] = []
+    stubFetch(c => {
+      if (c.path === `/api/relay/by-owner/${X}`) return json(200, { jobs: [] })
+      if (c.method === 'POST') return relayError(409, 'PERMIT_NONCE_STALE', { expected: '2' })
+      return notFound()
+    })
+    await resumePending(X)
+    await track(J, u => seen.push(u))
+    expect(seen.at(-1)).toMatchObject({ job: { status: 'failed', error: 'PERMIT_NONCE_STALE' } })
+  })
+
+  describe('a final relay job "dropped" (our nonce used, no receipt) is decided by the permit nonce (item 1)', () => {
+    const dropped = (extra: object = {}) =>
+      json(200, { jobId: J, status: 'failed', txHash: TX, error: 'RPC_UNAVAILABLE', detail: { reason: 'dropped', ...extra } })
+
+    it('nonce used past ours: landed', async () => {
+      seed(stored(S, { nonce: '0' }))
+      stubFetch(c => (c.path === `/api/relay/by-owner/${X}` ? json(200, { jobs: [] }) : dropped({ landedCheck: 'unavailable' })))
+      const ev = stubEvm()
+      ev.permitNonce.mockResolvedValue(1n)
+      await resumePending(X)
+      await vi.waitFor(() => expect(getLocal(J)).toMatchObject({ status: 'confirmed', detail: { landed: 'elsewhere' } }))
+      expect(ev.permitNonce).toHaveBeenCalledWith(ASSETS.USDT0.address, X)
+    })
+
+    it('nonce not used: failed, and a fresh signature is safe', async () => {
+      seed(stored(S, { nonce: '0' }))
+      stubFetch(c => (c.path === `/api/relay/by-owner/${X}` ? json(200, { jobs: [] }) : dropped()))
+      stubEvm().permitNonce.mockResolvedValue(0n)
+      await resumePending(X)
+      await vi.waitFor(() => expect(getLocal(J)).toMatchObject({ status: 'failed', error: 'RPC_UNAVAILABLE', detail: { reason: 'dropped' } }))
+    })
+
+    it('nonce unreadable: the job stays open and is checked again', async () => {
+      seed(stored(S, { nonce: '0' }))
+      stubFetch(c => (c.path === `/api/relay/by-owner/${X}` ? json(200, { jobs: [] }) : dropped()))
+      const ev = stubEvm()
+      ev.permitNonce.mockRejectedValueOnce(new Error('rpc down')).mockResolvedValue(1n)
+      await resumePending(X)
+      await vi.waitFor(() => expect(getLocal(J)?.status).toBe('confirmed'))
+    })
+
+    it('listed as dropped by by-owner on resume: the open local record is not overwritten, the poller decides', async () => {
+      seed(stored(S, { nonce: '0' }))
+      const job = serverJob('failed', { txHash: TX, error: 'RPC_UNAVAILABLE', detail: { reason: 'dropped' } })
+      stubFetch(c => (c.path === `/api/relay/by-owner/${X}` ? json(200, { jobs: [job] }) : dropped()))
+      stubEvm().permitNonce.mockResolvedValue(1n)
+      const jobs = await resumePending(X)
+      expect(jobs[0]).not.toMatchObject({ status: 'failed' })
+      await vi.waitFor(() => expect(getLocal(J)).toMatchObject({ status: 'confirmed', detail: { landed: 'elsewhere' } }))
+    })
   })
 
   it('with the relay unreachable, resume keeps the local record and keeps polling until it answers', async () => {
@@ -294,18 +376,18 @@ describe('resumePending (Review Focus 2: app killed after signing)', () => {
     seed(stored(S, { jobId: TX, via: 'wallet', txHash: TX, body: undefined }))
     const calls = stubFetch(c => (c.path === `/api/relay/by-owner/${X}` ? json(200, { jobs: [] }) : notFound()))
     const ev = stubEvm()
-    ev.txStatus.mockResolvedValueOnce(null).mockResolvedValue('success')
+    ev.txReceipt.mockResolvedValueOnce(null).mockResolvedValue(mined('success'))
 
     expect(await resumePending(X)).toEqual([expect.objectContaining({ jobId: TX, status: 'submitted' })])
     await vi.waitFor(() => expect(getLocal(TX)?.status).toBe('confirmed'))
-    expect(ev.txStatus).toHaveBeenCalledWith(TX)
+    expect(ev.txReceipt).toHaveBeenCalledWith(TX)
     expect(calls.filter(c => c.path === `/api/relay/${TX}`)).toHaveLength(0)
   })
 
   it('a reverted self-paid transaction fails for good', async () => {
     seed(stored(S, { jobId: TX, via: 'wallet', txHash: TX, body: undefined }))
     stubFetch(() => json(200, { jobs: [] }))
-    stubEvm().txStatus.mockResolvedValue('reverted')
+    stubEvm().txReceipt.mockResolvedValue(mined('reverted'))
     await resumePending(X)
     await vi.waitFor(() => expect(getLocal(TX)).toMatchObject({ status: 'failed', error: 'SIMULATION_FAILED' }))
   })

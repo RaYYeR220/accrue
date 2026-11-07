@@ -23,8 +23,9 @@ export type ActionState =
   | { s: 'confirmed'; txHash?: Hex; jobId?: string; draft?: Draft; elsewhere?: true }
   | { s: 'failed'; error: UiError; txHash?: Hex; jobId?: string; draft?: Draft; offer?: Offer }
   | { s: 'cancelled'; draft?: Draft }
-  // the job may still land: keeps polling, and nothing new is sent until it resolves
-  | { s: 'unknown'; jobId?: string; draft?: Draft }
+  // the job may still land: keeps polling, and nothing new is sent until it resolves.
+  // offer: the relayer said it is unreachable, so the same permit may be sent from the wallet meanwhile
+  | { s: 'unknown'; jobId?: string; draft?: Draft; offer?: Offer }
 
 // Taps. Each one is applied only when the current state allows it, so a double tap is a no-op.
 export type UserEvent =
@@ -45,7 +46,7 @@ export type FlowEvent =
   // the wallet or the relay said no, or the job failed for good
   | { type: 'FAILED'; error: UiError; txHash?: Hex; jobId?: string; offer?: Offer }
   // no answer: whether the job exists or lands is not known yet
-  | { type: 'ERROR'; error: UiError; jobId?: string }
+  | { type: 'ERROR'; error: UiError; jobId?: string; offer?: Offer }
   // a job found on resume
   | { type: 'ATTACH'; jobId: string; txHash?: Hex; lost?: boolean }
 
@@ -109,7 +110,7 @@ export function reduce(st: ActionState, ev: ActionEvent): ActionState {
       return st.s === 'failed' && st.draft && st.error.retry === 'same' ? { s: 'signing', draft: st.draft } : st
 
     case 'SELF_GAS':
-      return st.s === 'failed' && st.draft && st.offer?.kind === 'selfGas' ? { s: 'signing', draft: st.draft } : st
+      return (st.s === 'failed' || st.s === 'unknown') && st.draft && st.offer?.kind === 'selfGas' ? { s: 'signing', draft: st.draft } : st
 
     case 'SIGNED':
       return st.s === 'signing' ? { ...st, jobId: ev.jobId } : st
@@ -150,7 +151,7 @@ export function reduce(st: ActionState, ev: ActionEvent): ActionState {
     case 'ERROR': {
       if (st.s === 'signing') {
         const jobId = ev.jobId ?? st.jobId
-        return withDraft({ s: 'unknown', ...(jobId ? { jobId } : {}) }, st.draft)
+        return withDraft({ s: 'unknown', ...(jobId ? { jobId } : {}), ...(ev.offer ? { offer: ev.offer } : {}) }, st.draft)
       }
       if (st.s === 'submitted' && (!ev.jobId || sameJob(st, ev.jobId))) return withDraft({ s: 'unknown', jobId: st.jobId }, st.draft)
       return st
