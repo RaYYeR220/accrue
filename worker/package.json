@@ -1,0 +1,23 @@
+{
+  "name": "@accrue/worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@accrue/shared": "workspace:*",
+    "hono": "4.13.17",
+    "viem": "2.57.16"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20261107.1",
+    "@types/node": "22.12.0",
+    "typescript": "5.9.3",
+    "vitest": "3.2.4",
+    "wrangler": "4.135.0"
+  }
+}
