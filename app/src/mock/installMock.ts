@@ -47,7 +47,12 @@ function randomHex(bytes: number): string {
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
 
-const providerError = (message: string, fields: { type?: string; code?: number }) => Object.assign(new Error(message), fields)
+const providerError = (message: string, fields: { type?: string; code?: number; data?: unknown }) =>
+  Object.assign(new Error(message), fields)
+
+// What the Albatross RPC really answers for unknown stakers and unmined transactions:
+// a generic message with the reason in `data`.
+const rpcNotFound = (data: string) => providerError('Internal error', { code: -32603, data })
 
 function requestUrl(input: RequestInfo | URL, base: string): URL {
   const raw = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
@@ -93,6 +98,8 @@ export function installMock(search: string, w: Window = window): MockHandle {
 
   // NIM provider
   const accountListeners = new Set<(a: string[]) => void>()
+  // hashes the mock handed out; they look up as included one block later
+  const sentTxs = new Set<string>()
   const nimTx = (method: string) =>
     recorded('nimiq', method, async (_tx: object): Promise<string> => {
       switch (sc.nim.tx) {
@@ -102,24 +109,43 @@ export function installMock(search: string, w: Window = window): MockHandle {
           throw providerError('Insufficient funds', { type: 'INVALID_TRANSACTION', code: -32602 })
         case 'unknown-outcome':
           throw providerError('Transaction sent, outcome unknown', { type: 'TRANSACTION_OUTCOME_UNKNOWN' })
-        default:
-          return randomHex(32)
+        default: {
+          const hash = randomHex(32)
+          sentTxs.add(hash)
+          return hash
+        }
       }
     })
 
+  const testnet = w.nimiqPay?.network === 'testnet'
   const nimRead = async ({ method, params }: { method: string; params?: unknown[] }): Promise<unknown> => {
     const arg = params?.[0]
     switch (method) {
       case 'getStakerByAddress':
         if (arg === sc.nim.wallet && sc.nim.staker) return { data: { address: sc.nim.wallet, ...sc.nim.staker }, metadata: null }
-        throw providerError(`Staker not found: ${String(arg)}`, { code: -32603 })
+        throw rpcNotFound(`No staker with address: ${String(arg)}`)
       case 'getAccountByAddress':
         return { data: { address: arg, balance: sc.nim.luna[String(arg)] ?? 0, type: 'basic' }, metadata: null }
       case 'getBlockNumber':
         return { data: 41_000_000, metadata: null }
+      case 'getTransactionByHash':
+        if (typeof arg === 'string' && sentTxs.has(arg)) {
+          return { data: { hash: arg, blockNumber: 41_000_001, executionResult: true }, metadata: null }
+        }
+        throw rpcNotFound(`Transaction not found: ${String(arg)}`)
+      case 'getValidatorByAddress':
+        return { data: { address: arg, jailedFrom: null, retired: false }, metadata: null }
       case 'getPolicyConstants':
         return {
-          data: { blocksPerBatch: 60, batchesPerEpoch: 720, blocksPerEpoch: 43_200, minimumStake: 10_000_000 },
+          data: {
+            blocksPerBatch: 60,
+            batchesPerEpoch: 720,
+            blocksPerEpoch: 43_200,
+            minimumStake: 10_000_000,
+            blockSeparationTime: 1_000,
+            jailEpochs: 8,
+            genesisBlockNumber: testnet ? 3_032_010 : 3_456_000,
+          },
           metadata: null,
         }
       default:

@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { installMock, uninstallMock } from '../src/mock/installMock'
 import { toUiError, WrongChainError } from '../src/providers/errors'
 import { createEvm, type Eip1193 } from '../src/providers/evm'
-import { createNimiq } from '../src/providers/nimiq'
+import { createNimiq, isNotFound, parseStaker } from '../src/providers/nimiq'
 
 afterEach(() => uninstallMock(window))
 
@@ -54,6 +54,36 @@ describe('nimiq provider wrapper', () => {
     expect(typeof s!.activeLuna).toBe('bigint')
     expect(s!.delegation).toMatch(/^NQ/)
     expect(await n.staker('NQ00 0000 0000 0000 0000 0000 0000 0000 0000')).toBeNull()
+  })
+
+  // Shapes recorded on testnet (task-12 report): a non-staker is "Internal error" with the hint in
+  // `data`, and a staker created without a pool has `delegation: null`.
+  it('recognises the real "No staker" error, which carries the hint in data', () => {
+    expect(isNotFound({ code: -32603, message: 'Internal error', data: 'No staker with address: NQ09 NMEX 1FAS 6BKD JDG1 GC0F XGM3 Q49B VL90' })).toBe(true)
+    expect(isNotFound(Object.assign(new Error('Internal error'), { code: -32603, data: 'No staker with address: NQ09' }))).toBe(true)
+    expect(isNotFound(new Error('Staker not found: NQ09'))).toBe(true)
+    expect(isNotFound({ code: -32603, message: 'Internal error', data: 'Transaction not found: abc' })).toBe(false)
+    expect(isNotFound({ code: -32603, message: 'Internal error' })).toBe(false)
+  })
+
+  it('a staker without a pool parses, with an empty delegation', () => {
+    const s = parseStaker({
+      address: 'NQ22 11TS NJ8N BMD0 UVUM E0KL 2RPU NHM1 2RS8',
+      balance: 0,
+      delegation: null,
+      inactiveBalance: 10_000_000,
+      inactiveFrom: 16_208_010,
+      retiredBalance: 0,
+    })
+    expect(s).toEqual({
+      address: 'NQ22 11TS NJ8N BMD0 UVUM E0KL 2RPU NHM1 2RS8',
+      delegation: '',
+      activeLuna: 0n,
+      inactiveLuna: 10_000_000n,
+      inactiveFrom: 16_208_010,
+      retiredLuna: 0n,
+    })
+    expect(() => parseStaker({ address: 'NQ22', balance: 0, delegation: 42 })).toThrow()
   })
 
   it('staking calls pass luna as numbers in the SDK shape and return the tx hash', async () => {

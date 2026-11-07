@@ -60,6 +60,10 @@ describe('epoch arithmetic', () => {
     expect(releaseBlock({ inactiveFrom: INACTIVE_FROM, policy: testnet, jailedFrom })).toBe(jailedFrom + 8 * 43_200 + 1)
     expect(releaseBlock({ inactiveFrom: INACTIVE_FROM, policy: testnet, jailedFrom: 10_000_000 })).toBe(RELEASE)
   })
+
+  it('with nothing inactive only the jail counts', () => {
+    expect(releaseBlock({ inactiveFrom: null, policy: testnet, jailedFrom: 16_200_000 })).toBe(16_200_000 + 8 * 43_200 + 1)
+  })
 })
 
 describe('unstakeSteps', () => {
@@ -79,7 +83,9 @@ describe('unstakeSteps', () => {
     expect(steps[1]!.etaMs! / 3_600_000).toBeCloseTo(21.9, 1)
   })
 
-  it('the election block itself is not enough: retiring there failed on testnet', () => {
+  // Testnet A5/B3 showed retire refused before inactiveFrom; the release one epoch + 1 block after
+  // it is Policy::block_after_collateral_lockup in core-rs-albatross (staker.rs is_inactive_stake_released).
+  it('passing inactiveFrom is not enough: the stake stays locked for one more epoch', () => {
     const steps = unstakeSteps({ staker: deactivated(), amount: nim('250'), blockNow: INACTIVE_FROM + 10, policy: testnet })
     expect(steps[1]).toMatchObject({ step: 'wait', done: false, readyAtBlock: RELEASE })
   })
@@ -128,6 +134,22 @@ describe('unstakeSteps', () => {
       policy: { blocksPerEpoch: 43_200, blockSeparationTimeMs: 1_000 },
     })
     expect(steps[1]).toMatchObject({ readyAtBlock: 66_312_000 + 43_200 + 1 })
+  })
+
+  // A staker with no pool has nothing a pool could be punished for, so nothing is locked
+  // (testnet C2 -> C4: retired right after deactivating, inactiveFrom notwithstanding).
+  it('without a pool there is no wait: no future block, no 12-24 h projection', () => {
+    const noPool = staker({ delegation: '', inactiveLuna: nim('250'), inactiveFrom: INACTIVE_FROM })
+    const steps = unstakeSteps({ staker: noPool, amount: nim('250'), blockNow: 16_172_568, policy: testnet })
+    expect(steps).toEqual([
+      { step: 'deactivate', done: true },
+      { step: 'wait', etaMs: 0, done: true },
+      { step: 'retire', done: false },
+      { step: 'remove', done: false },
+    ])
+    const active = unstakeSteps({ staker: staker({ delegation: '', activeLuna: nim('250') }), amount: nim('250'), blockNow: 16_172_560, policy: testnet })
+    expect(active[1]).toEqual({ step: 'wait', etaMs: 0, done: false })
+    expect(active[2]).toEqual({ step: 'retire', done: false })
   })
 
   it('rejects amounts it cannot plan', () => {
@@ -202,6 +224,20 @@ describe('switchPoolPlan', () => {
 
   it('a staker holding only retired stake can switch directly', () => {
     expect(switchPoolPlan(staker({ retiredLuna: nim('200') }), at(16_172_352))).toEqual({ kind: 'direct' })
+  })
+
+  // is_inactive_stake_released checks the jail for any delegated staker, even with nothing inactive.
+  it('a retired-only staker of a jailed pool waits for the jail too', () => {
+    const jailedFrom = 16_200_000
+    const jailEnd = jailedFrom + 8 * 43_200 + 1
+    expect(switchPoolPlan(staker({ retiredLuna: nim('200') }), { ...at(16_172_352), jailedFrom })).toEqual({
+      kind: 'deactivate-first',
+      steps: [
+        { step: 'deactivate', done: true },
+        { step: 'wait', readyAtBlock: jailEnd, etaMs: (jailEnd - 16_172_352) * 1_000, done: false },
+      ],
+    })
+    expect(switchPoolPlan(staker({ retiredLuna: nim('200') }), { ...at(jailEnd), jailedFrom })).toEqual({ kind: 'direct' })
   })
 
   it('a staker without a pool can pick one directly (testnet C7)', () => {

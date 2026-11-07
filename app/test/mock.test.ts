@@ -126,6 +126,33 @@ describe('mock relay', () => {
     expect((await (await fetch(`/api/relay/${jobId}`)).json()).status).toBe('submitted')
   })
 
+  // Same shapes the testnet RPC returned (task-12 report).
+  it('NIM reads answer like the real RPC: no-staker error, tx lookups, validators, policy', async () => {
+    installMock('?mock=htlc-only-balance&delay=0', window)
+    const nimiq = window.nimiq!
+    const wallet = ((await nimiq.listAccounts()) as string[])[0]!
+    const noStaker = await nimiq.request({ method: 'getStakerByAddress', params: [wallet] }).catch((e: unknown) => e)
+    expect(noStaker).toMatchObject({ code: -32603, message: 'Internal error', data: `No staker with address: ${wallet}` })
+    const unknownTx = await nimiq.request({ method: 'getTransactionByHash', params: ['ab'] }).catch((e: unknown) => e)
+    expect(unknownTx).toMatchObject({ code: -32603, message: 'Internal error', data: 'Transaction not found: ab' })
+    const hash = await nimiq.sendNewStakerTransaction({ delegation: 'NQ38 VK34 DRBL S3CN M9KM 8UJN 9JY2 2KFN VQQH', value: 20_000_000 })
+    const tx = await nimiq.request({ method: 'getTransactionByHash', params: [hash] })
+    expect(tx).toMatchObject({ data: { hash, executionResult: true } })
+    expect((tx as { data: { blockNumber: number } }).data.blockNumber).toBeGreaterThan(0)
+    const v = await nimiq.request({ method: 'getValidatorByAddress', params: ['NQ38 VK34 DRBL S3CN M9KM 8UJN 9JY2 2KFN VQQH'] })
+    expect(v).toMatchObject({ data: { jailedFrom: null } })
+    const p = await nimiq.request({ method: 'getPolicyConstants', params: [] })
+    expect(p).toMatchObject({ data: { blocksPerEpoch: 43_200, blockSeparationTime: 1_000, genesisBlockNumber: 3_456_000, jailEpochs: 8 } })
+    const missing = await nimiq.request({ method: 'getNothing', params: [] }).catch((e: unknown) => e)
+    expect(missing).toMatchObject({ code: -32601 })
+  })
+
+  it('the testnet scenario reports testnet policy constants', async () => {
+    installMock('?mock=testnet&delay=0', window)
+    const p = await window.nimiq!.request({ method: 'getPolicyConstants', params: [] })
+    expect(p).toMatchObject({ data: { genesisBlockNumber: 3_032_010 } })
+  })
+
   it('restores the real fetch and globals on uninstall', () => {
     const realFetch = window.fetch
     installMock('?mock=happy&delay=0', window)

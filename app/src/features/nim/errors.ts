@@ -6,6 +6,7 @@ import { toUiError, type Retry, type UiError, type UiErrorCode } from '../../pro
 export const NIM_ERROR_CODES = [
   'BELOW_MINIMUM',
   'INSUFFICIENT_BALANCE',
+  'FUNDS_SPLIT',
   'LEAVES_DUST',
   'INVALID_AMOUNT',
   'NOT_READY',
@@ -17,8 +18,12 @@ export const NIM_ERROR_CODES = [
 ] as const
 export type NimErrorCode = (typeof NIM_ERROR_CODES)[number]
 
+// detail fills the message's placeholders (FUNDS_SPLIT: {amount} in NIM).
 export class NimPlanError extends Error {
-  constructor(readonly code: Exclude<NimErrorCode, 'TX_FAILED'>) {
+  constructor(
+    readonly code: Exclude<NimErrorCode, 'TX_FAILED'>,
+    readonly detail?: Record<string, string>,
+  ) {
     super(`NIM staking refused: ${code}`)
     this.name = 'NimPlanError'
   }
@@ -39,7 +44,10 @@ export interface NimUiError extends Omit<UiError, 'code'> {
 }
 
 export function toNimUiError(e: unknown): NimUiError {
-  if (e instanceof NimPlanError) return { code: e.code, retry: 'none', messageKey: `nim.error.${e.code}` }
+  if (e instanceof NimPlanError) {
+    const base = { code: e.code, retry: 'none' as const, messageKey: `nim.error.${e.code}` }
+    return e.detail ? { ...base, detail: e.detail } : base
+  }
   if (e instanceof NimTxFailedError) return { code: 'TX_FAILED', retry: 'none', messageKey: 'nim.error.TX_FAILED', detail: { hash: e.hash } }
   return toUiError(e)
 }

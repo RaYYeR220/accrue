@@ -1,4 +1,4 @@
-import { LUNA_PER_NIM, normalizeAddress, type Staker } from '@accrue/shared'
+import { LUNA_PER_NIM, lunaToNim, normalizeAddress, type Staker } from '@accrue/shared'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { nimiq, type NimAccounts, type NimBalances, type Nimiq } from '../../providers/nimiq'
@@ -16,7 +16,7 @@ import {
 } from './api'
 import { NimPlanError, NimTxFailedError } from './errors'
 import { restakeSuggestion } from './restake'
-import { spendableOf, stakePlan, type StakePlan } from './staking'
+import { stakeFundsOf, stakePlan, type StakePlan } from './staking'
 import {
   checkUnstake,
   deactivateTarget,
@@ -41,14 +41,19 @@ export interface TxOutcome {
   status: Exclude<TxStatus, 'failed'>
 }
 
+// Actions resolve to null when there was nothing to send.
 export interface NimApi {
   network: Network
   connected: boolean
   ready: boolean
+  // a wallet dialog is open (other actions are refused as BUSY)
   busy: boolean
+  // a sent transaction is being looked up on chain (nim.tx.confirming); taps are allowed
+  confirming: boolean
   accounts: NimAccounts | null
+  // balances.total is the user's NIM; stakeable is what one staking transaction can draw on
   balances: NimBalances | undefined
-  spendable: bigint | undefined
+  stakeable: bigint | undefined
   staker: Staker | null | undefined
   chain: ChainState | undefined
   jailedFrom: number | null
@@ -62,11 +67,11 @@ export interface NimApi {
   planStake(amount: bigint): StakePlan | null
   planUnstake(amount: bigint): { check: ReturnType<typeof checkUnstake>; steps: UnstakeStep[] } | null
   planSwitch(): ReturnType<typeof switchPoolPlan> | null
-  stake(amount: bigint, delegation?: string): Promise<TxOutcome>
+  stake(amount: bigint, delegation?: string): Promise<TxOutcome | null>
   deactivate(amount: bigint): Promise<TxOutcome | null>
   deactivateAll(): Promise<TxOutcome | null>
   retire(amount: bigint): Promise<TxOutcome | null>
-  remove(): Promise<TxOutcome>
+  remove(): Promise<TxOutcome | null>
   switchPool(delegation: string): Promise<TxOutcome | null>
 }
 
@@ -95,7 +100,7 @@ function estimateBlock(c: ChainState): number {
 }
 
 // Advisory: a host that cannot read validators reports no jail, and the countdown may then end
-// early for a jailed pool; the retire guard re-reads the staker, not the jail.
+// early for a jailed pool.
 async function readJail(client: Nimiq, delegation: string): Promise<number | null> {
   try {
     const v = await client.rpc<{ jailedFrom?: unknown }>('getValidatorByAddress', [delegation])
@@ -104,6 +109,8 @@ async function readJail(client: Nimiq, delegation: string): Promise<number | nul
     return null
   }
 }
+
+type Run = Promise<TxOutcome | null>
 
 // NIM side of Accrue. Nothing touches the wallet until connect() runs from a tap; every action
 // re-reads the chain, refuses what the protocol would reject, and opens at most one dialog.
@@ -115,7 +122,9 @@ export function useNim(opts: UseNimOptions = {}): NimApi {
   const qc = useQueryClient()
   const [accounts, setAccounts] = useState<NimAccounts | null>(() => client.accounts())
   const [busy, setBusy] = useState(false)
-  const inFlight = useRef<{ key: string; p: Promise<unknown> } | null>(null)
+  const [confirmingCount, setConfirmingCount] = useState(0)
+  const dialog = useRef<{ key: string; p: Run } | null>(null)
+  const confirming = useRef(new Map<string, Run>())
   const wallet = accounts?.wallet ?? null
   const connected = wallet !== null
   const scope = ['nim', network, wallet] as const
@@ -149,30 +158,48 @@ export function useNim(opts: UseNimOptions = {}): NimApi {
   const staker = stakerQ.data
   const chain = chainQ.data
   const jailedFrom = jailQ.data ?? null
-  const spendable = balances ? spendableOf(balances) : undefined
+  const stakeable = accounts && balances ? stakeFundsOf(accounts, balances) : undefined
   const myPool = useMemo(
     () => (delegation ? poolsQ.data?.pools.find(p => same(p.address, delegation)) : undefined),
     [poolsQ.data, delegation],
   )
   const restake = useMemo(() => {
-    if (!staker || !myPool || spendable === undefined) return null
+    if (!staker || !myPool || stakeable === undefined) return null
     const apr = checkQ.data ? poolApr(checkQ.data) : null
-    return restakeSuggestion({ walletIdle: spendable, payoutType: myPool.payoutType, reserve, apr: apr ?? Number.NaN })
-  }, [staker, myPool, spendable, checkQ.data, reserve])
+    return restakeSuggestion({ walletIdle: stakeable, payoutType: myPool.payoutType, reserve, apr: apr ?? Number.NaN })
+  }, [staker, myPool, stakeable, checkQ.data, reserve])
 
   const blockNow = useCallback(() => (chain ? estimateBlock(chain) : null), [chain])
 
-  // One wallet dialog at a time: a second tap on the same action joins the first, any other
-  // action waits until it is done.
-  function run<T>(key: string, fn: () => Promise<T>): Promise<T> {
-    const cur = inFlight.current
-    if (cur) return cur.key === key ? (cur.p as Promise<T>) : Promise.reject(new NimPlanError('BUSY'))
+  // One wallet dialog at a time. `key` names the action and its arguments: a double tap of the
+  // same request joins it (while the dialog is open or while it confirms); any other request is
+  // BUSY until the wallet has answered. Confirming on chain does not hold the dialog lock.
+  function run(key: string, send: () => Promise<string | null>): Run {
+    const joined = confirming.current.get(key) ?? (dialog.current?.key === key ? dialog.current.p : undefined)
+    if (joined) return joined
+    if (dialog.current) return Promise.reject(new NimPlanError('BUSY'))
+    // the body reads p only after its first await, by which time p is assigned
+    let p!: Run
+    p = (async () => {
+      let hash: string | null
+      try {
+        hash = await send()
+      } finally {
+        dialog.current = null
+        setBusy(false)
+      }
+      if (hash === null) return null
+      confirming.current.set(key, p)
+      setConfirmingCount(n => n + 1)
+      try {
+        return await settle(hash)
+      } finally {
+        confirming.current.delete(key)
+        setConfirmingCount(n => n - 1)
+      }
+    })()
+    dialog.current = { key, p }
     setBusy(true)
-    const p = fn().finally(() => {
-      inFlight.current = null
-      setBusy(false)
-    })
-    inFlight.current = { key, p }
     return p
   }
 
@@ -182,11 +209,6 @@ export function useNim(opts: UseNimOptions = {}): NimApi {
     return w
   }
 
-  async function fresh(w: string): Promise<{ s: Staker | null; c: ChainState }> {
-    const [s, c] = await Promise.all([client.staker(w), readChain(client)])
-    return { s, c }
-  }
-
   async function settle(hash: string): Promise<TxOutcome> {
     const status = await waitForNimTx((m, p) => client.rpc(m, p), hash, opts.txWait)
     await qc.invalidateQueries({ queryKey: scope })
@@ -194,14 +216,21 @@ export function useNim(opts: UseNimOptions = {}): NimApi {
     return { hash, status }
   }
 
+  async function stakerOrThrow(): Promise<Staker> {
+    const s = await client.staker(requireWallet())
+    if (!s) throw new NimPlanError('NOT_STAKING')
+    return s
+  }
+
   const api: NimApi = {
     network,
     connected,
     ready: connected && balances !== undefined && staker !== undefined && chain !== undefined,
     busy,
+    confirming: confirmingCount > 0,
     accounts,
     balances,
-    spendable,
+    stakeable,
     staker,
     chain,
     jailedFrom,
@@ -211,17 +240,19 @@ export function useNim(opts: UseNimOptions = {}): NimApi {
     restake,
     blockNow,
 
-    connect: () =>
-      run('connect', async () => {
-        setAccounts(await client.connect())
-      }),
+    // the provider wrapper already joins a double tap on connect
+    connect: async () => {
+      setAccounts(await client.connect())
+    },
 
     refresh: async () => {
       await qc.invalidateQueries({ queryKey: ['nim', network] })
     },
 
     planStake: amount =>
-      spendable === undefined || staker === undefined ? null : stakePlan({ staker, spendable, amount }),
+      stakeable === undefined || staker === undefined || !balances
+        ? null
+        : stakePlan({ staker, spendable: stakeable, total: balances.total, amount }),
 
     planUnstake: amount => {
       if (!staker || !chain) return null
@@ -235,43 +266,45 @@ export function useNim(opts: UseNimOptions = {}): NimApi {
 
     // Adding always goes to the pool the staker already has; only a new staker picks one.
     stake: (amount, pool) =>
-      run('stake', async () => {
+      run(`stake:${amount}:${pool ?? ''}`, async () => {
         const w = requireWallet()
+        const acc = client.accounts() ?? { wallet: w }
         const [b, s] = await Promise.all([client.balances(), client.staker(w)])
-        const plan = stakePlan({ staker: s, spendable: spendableOf(b), amount })
-        if ('error' in plan) throw new NimPlanError(plan.error)
+        const plan = stakePlan({ staker: s, spendable: stakeFundsOf(acc, b), total: b.total, amount })
+        if ('error' in plan) {
+          throw plan.error === 'FUNDS_SPLIT'
+            ? new NimPlanError('FUNDS_SPLIT', { amount: lunaToNim(plan.available) })
+            : new NimPlanError(plan.error)
+        }
         if (plan.kind === 'new' && !pool) throw new NimPlanError('NO_POOL')
-        return settle(plan.kind === 'new' ? await client.newStaker(pool!, amount) : await client.addStake(amount))
+        return plan.kind === 'new' ? client.newStaker(pool!, amount) : client.addStake(amount)
       }),
 
     deactivate: amount =>
-      run('deactivate', async () => {
-        const { s } = await fresh(requireWallet())
-        if (!s) throw new NimPlanError('NOT_STAKING')
+      run(`deactivate:${amount}`, async () => {
+        const s = await stakerOrThrow()
         const check = checkUnstake({ staker: s, amount })
         if (check !== 'ok') throw new NimPlanError(check)
         const target = deactivateTarget(s, amount)
-        return target ? settle(await client.setActive(target.newActive)) : null
+        return target ? client.setActive(target.newActive) : null
       }),
 
     // First step of a pool switch: everything stops earning so the delegation can change.
     deactivateAll: () =>
-      run('deactivate', async () => {
-        const { s } = await fresh(requireWallet())
-        if (!s) throw new NimPlanError('NOT_STAKING')
-        return s.activeLuna > 0n ? settle(await client.setActive(0n)) : null
+      run('deactivateAll', async () => {
+        const s = await stakerOrThrow()
+        return s.activeLuna > 0n ? client.setActive(0n) : null
       }),
 
     retire: amount =>
-      run('retire', async () => {
-        const { s, c } = await fresh(requireWallet())
-        if (!s) throw new NimPlanError('NOT_STAKING')
+      run(`retire:${amount}`, async () => {
+        const [s, c] = await Promise.all([stakerOrThrow(), readChain(client)])
         const check = checkUnstake({ staker: s, amount })
         if (check !== 'ok') throw new NimPlanError(check)
         const steps = unstakeSteps({ staker: s, amount, blockNow: c.blockNow, policy: c.policy, jailedFrom })
         if (steps[2]!.done) return null
         if (!steps[1]!.done) throw new NimPlanError('NOT_READY')
-        return settle(await client.retire(retireAmount(s, amount)))
+        return client.retire(retireAmount(s, amount))
       }),
 
     remove: () =>
@@ -279,17 +312,16 @@ export function useNim(opts: UseNimOptions = {}): NimApi {
         const s = await client.staker(requireWallet())
         const value = s ? removeAmount(s) : 0n
         if (value === 0n) throw new NimPlanError('NOT_READY')
-        return settle(await client.remove(value))
+        return client.remove(value)
       }),
 
     switchPool: pool =>
-      run('switch', async () => {
-        const { s, c } = await fresh(requireWallet())
-        if (!s) throw new NimPlanError('NOT_STAKING')
+      run(`switch:${normalizeAddress(pool)}`, async () => {
+        const [s, c] = await Promise.all([stakerOrThrow(), readChain(client)])
         if (s.delegation && same(s.delegation, pool)) return null
         const plan = switchPoolPlan(s, { blockNow: c.blockNow, policy: c.policy, jailedFrom })
         if (plan.kind !== 'direct') throw new NimPlanError('NOT_READY')
-        return settle(await client.updateDelegation(pool, true))
+        return client.updateDelegation(pool, true)
       }),
   }
   return api

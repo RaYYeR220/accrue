@@ -39,8 +39,11 @@ function unwrap(r: unknown): unknown {
   return isRecord(r) && 'data' in r ? r.data : r
 }
 
-function parseStaker(r: unknown): Staker {
-  if (!isRecord(r) || typeof r.address !== 'string' || typeof r.delegation !== 'string') {
+// A staker created without a pool reads `delegation: null` (seen on testnet); the shared Staker
+// keeps delegation a string, so no pool is ''.
+export function parseStaker(r: unknown): Staker {
+  const delegation = isRecord(r) ? (r.delegation === null ? '' : r.delegation) : undefined
+  if (!isRecord(r) || typeof r.address !== 'string' || typeof delegation !== 'string') {
     throw new Error('unexpected getStakerByAddress result')
   }
   const inactiveFrom = r.inactiveFrom
@@ -49,7 +52,7 @@ function parseStaker(r: unknown): Staker {
   }
   return {
     address: r.address,
-    delegation: r.delegation,
+    delegation,
     activeLuna: lunaFrom(r.balance),
     inactiveLuna: lunaFrom(r.inactiveBalance ?? 0),
     inactiveFrom: inactiveFrom ?? null,
@@ -57,8 +60,13 @@ function parseStaker(r: unknown): Staker {
   }
 }
 
-const isNotFound = (e: unknown) =>
-  isRecord(e) && typeof e.message === 'string' && /not\s*found|does not exist|no staker|unknown staker/i.test(e.message)
+// The RPC answers a non-staker with message "Internal error" and the reason in `data`
+// ("No staker with address: ..."), so both are read.
+export function isNotFound(e: unknown): boolean {
+  if (!isRecord(e)) return false
+  const text = [e.message, e.data].filter(v => typeof v === 'string').join(' ')
+  return /no staker|staker not found|unknown staker|staker does not exist/i.test(text)
+}
 
 export function createNimiq(opts: { timeout?: number } = {}) {
   let provider: Promise<NimiqProvider> | null = null

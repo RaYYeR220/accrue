@@ -37,11 +37,12 @@ export function electionBlockAfter(block: number, policy: StakingPolicy): number
 
 // Set-active stores inactiveFrom = the next election block. The stake can be retired (or
 // re-delegated) from block_after_collateral_lockup(inactiveFrom) = inactiveFrom + one epoch + 1,
-// and not while the pool it is delegated to sits in jail (jailedFrom + jailEpochs epochs + 1).
-// Confirmed on testnet: deactivated in 16,172,364 -> inactiveFrom 16,208,010; retire refused before.
-export function releaseBlock(args: { inactiveFrom: number; policy: StakingPolicy; jailedFrom?: number | null }): number {
+// and not while the pool it is delegated to sits in jail (jailedFrom + jailEpochs epochs + 1);
+// with nothing inactive only the jail counts (core-rs-albatross staker.rs is_inactive_stake_released).
+// Testnet: deactivated in 16,172,364 -> inactiveFrom 16,208,010; retire refused before it.
+export function releaseBlock(args: { inactiveFrom: number | null; policy: StakingPolicy; jailedFrom?: number | null }): number {
   const { inactiveFrom, policy, jailedFrom } = args
-  const lockup = inactiveFrom + policy.blocksPerEpoch + 1
+  const lockup = inactiveFrom === null ? 0 : inactiveFrom + policy.blocksPerEpoch + 1
   if (jailedFrom === null || jailedFrom === undefined) return lockup
   const jail = jailedFrom + policy.blocksPerEpoch * (policy.jailEpochs ?? DEFAULT_JAIL_EPOCHS) + 1
   return Math.max(lockup, jail)
@@ -82,15 +83,19 @@ interface Timing {
   jailedFrom?: number | null
 }
 
-// No delegation means no lock-up (the protocol only locks stake that a pool could be punished for).
-function released(staker: Staker, readyAt: number, blockNow: number): boolean {
-  return !staker.delegation || blockNow >= readyAt
+interface Wait {
+  readyAtBlock?: number
+  etaMs: number
+  done: boolean
 }
 
-function waitStep(staker: Staker, deactivated: boolean, t: Timing): { readyAtBlock: number; etaMs: number; done: boolean } {
-  const from = deactivated && staker.inactiveFrom !== null ? staker.inactiveFrom : electionBlockAfter(t.blockNow, t.policy)
+function waitStep(staker: Staker, deactivated: boolean, t: Timing): Wait {
+  // No pool, no lock-up: the protocol only locks stake a pool could be punished for
+  // (testnet C2 -> C4 retired right after deactivating).
+  if (!staker.delegation) return { etaMs: 0, done: deactivated }
+  const from = deactivated ? staker.inactiveFrom : electionBlockAfter(t.blockNow, t.policy)
   const readyAtBlock = releaseBlock({ inactiveFrom: from, policy: t.policy, jailedFrom: t.jailedFrom })
-  const done = deactivated && released(staker, readyAtBlock, t.blockNow)
+  const done = deactivated && t.blockNow >= readyAtBlock
   const etaMs = done ? 0 : Math.max(0, readyAtBlock - t.blockNow) * t.policy.blockSeparationTimeMs
   return { readyAtBlock, etaMs, done }
 }
@@ -115,7 +120,7 @@ export function unstakeSteps(args: {
   }
   const deactivated = deactivateTarget(staker, amount) === null
   const wait = waitStep(staker, deactivated, args)
-  const gate = { readyAtBlock: wait.readyAtBlock, etaMs: wait.etaMs }
+  const gate = wait.readyAtBlock === undefined ? {} : { readyAtBlock: wait.readyAtBlock, etaMs: wait.etaMs }
   return [
     { step: 'deactivate', done: deactivated },
     { step: 'wait', ...wait },
@@ -124,16 +129,16 @@ export function unstakeSteps(args: {
   ]
 }
 
-// Changing pool needs active stake 0 and the inactive stake released (testnet: A2 with active
-// stake and A4 with locked inactive stake both failed). Then one update-staker transaction with
-// reactivateAllStake moves everything to the new pool.
+// Changing pool needs active stake 0 and the inactive stake released, and the current pool out of
+// jail even when nothing is inactive (testnet: A2 with active stake and A4 with locked inactive
+// stake both failed). Then one update-staker transaction with reactivateAllStake moves
+// everything to the new pool.
 export function switchPoolPlan(
   staker: Staker,
   at: Timing,
 ): { kind: 'direct' } | { kind: 'deactivate-first'; steps: ReturnType<typeof unstakeSteps> } {
   if (!staker.delegation) return { kind: 'direct' }
   const deactivated = staker.activeLuna === 0n
-  if (deactivated && staker.inactiveLuna === 0n) return { kind: 'direct' }
   const wait = waitStep(staker, deactivated, at)
   if (wait.done) return { kind: 'direct' }
   return { kind: 'deactivate-first', steps: [{ step: 'deactivate', done: deactivated }, { step: 'wait', ...wait }] }

@@ -16,12 +16,12 @@ import {
 } from '../src/features/nim/api'
 import { NIM_ERROR_CODES, NimPlanError, NimTxFailedError, toNimUiError } from '../src/features/nim/errors'
 import { restakeSuggestion } from '../src/features/nim/restake'
-import { guardRemove, spendableOf, stakePlan } from '../src/features/nim/staking'
+import { guardRemove, stakeFundsOf, stakePlan } from '../src/features/nim/staking'
 import { STEP_KEYS } from '../src/features/nim/unstake'
 import { useNim, type NimApi } from '../src/features/nim/useNim'
 import { dicts } from '../src/i18n'
 import { installMock, uninstallMock } from '../src/mock/installMock'
-import { createNimiq } from '../src/providers/nimiq'
+import { createNimiq, type NimAccounts, type NimBalances, type Nimiq } from '../src/providers/nimiq'
 
 const nim = (s: string) => nimToLuna(s)
 const SIAM = 'NQ38 VK34 DRBL S3CN M9KM 8UJN 9JY2 2KFN VQQH'
@@ -37,12 +37,31 @@ const staker = (over: Partial<Staker> = {}): Staker => ({
   ...over,
 })
 
-describe('stakePlan', () => {
+const WALLET = 'NQ68 L6GS 38D1 L6GS 38D1 L6GS 38D1 L6GS 38D1'
+const HTLC = 'NQ03 NARB 5CMJ NARB 5CMJ NARB 5CMJ NARB 5CMJ'
+const bal = (wallet: string, htlc: string) => ({ wallet: nim(wallet), htlc: nim(htlc), total: nim(wallet) + nim(htlc) })
+
+describe('stake funding', () => {
   it('stakes from the HTLC when the wallet address holds nothing', () => {
-    const spendable = spendableOf({ wallet: 0n, htlc: nim('500'), total: nim('500') })
+    const spendable = stakeFundsOf({ wallet: WALLET, htlc: HTLC }, bal('0', '500'))
     expect(spendable).toBe(nim('500'))
-    expect(stakePlan({ staker: null, spendable, amount: nim('200') })).toEqual({ kind: 'new', delegationRequired: true })
+    expect(stakePlan({ staker: null, spendable, total: nim('500'), amount: nim('200') })).toEqual({ kind: 'new', delegationRequired: true })
   })
+
+  it('one transaction is funded from one account: the HTLC when there is one, else the wallet', () => {
+    expect(stakeFundsOf({ wallet: WALLET, htlc: HTLC }, bal('100', '150'))).toBe(nim('150'))
+    expect(stakeFundsOf({ wallet: WALLET }, bal('300', '0'))).toBe(nim('300'))
+  })
+
+  it('wallet 100 + HTLC 150 cannot fund a 200 NIM stake, and says how much can', () => {
+    const b = bal('100', '150')
+    const spendable = stakeFundsOf({ wallet: WALLET, htlc: HTLC }, b)
+    expect(stakePlan({ staker: null, spendable, total: b.total, amount: nim('200') })).toEqual({ error: 'FUNDS_SPLIT', available: nim('150') })
+    expect(stakePlan({ staker: null, spendable, total: b.total, amount: nim('300') })).toEqual({ error: 'INSUFFICIENT_BALANCE' })
+  })
+})
+
+describe('stakePlan', () => {
 
   it('a new staker below 100 NIM is refused before anything is sent', () => {
     expect(stakePlan({ staker: null, spendable: nim('500'), amount: nim('50') })).toEqual({ error: 'BELOW_MINIMUM' })
@@ -269,6 +288,49 @@ describe('waitForNimTx', () => {
     })
     await expect(waitForNimTx(rpc, 'h', { sleep })).resolves.toBe('pending')
     expect(rpc).toHaveBeenCalledTimes(1)
+    const byCode = vi.fn(async () => {
+      throw Object.assign(new Error('nope'), { code: -32601 })
+    })
+    await expect(waitForNimTx(byCode, 'h', { sleep })).resolves.toBe('pending')
+    expect(byCode).toHaveBeenCalledTimes(1)
+  })
+
+  // The shape testnet returned for C0 and C5: the hint is in `data`, not in `message`.
+  const notMinedYet = () => Object.assign(new Error('Internal error'), { code: -32603, data: 'Transaction not found: h' })
+
+  it('the real "not mined yet" error keeps polling, and a failure is still caught', async () => {
+    const rpc = vi
+      .fn()
+      .mockRejectedValueOnce(notMinedYet())
+      .mockRejectedValueOnce(notMinedYet())
+      .mockResolvedValueOnce({ hash: 'h', blockNumber: 16_172_345, executionResult: false })
+    await expect(waitForNimTx(rpc, 'h', { sleep })).resolves.toBe('failed')
+    expect(rpc).toHaveBeenCalledTimes(3)
+  })
+
+  it('a plain JSON-RPC error object with data works too', async () => {
+    const rpc = vi
+      .fn()
+      .mockRejectedValueOnce({ code: -32603, message: 'Internal error', data: 'Transaction not found: h' })
+      .mockResolvedValueOnce({ hash: 'h', blockNumber: 1, executionResult: true })
+    await expect(waitForNimTx(rpc, 'h', { sleep })).resolves.toBe('confirmed')
+  })
+
+  it('a transient RPC error does not end the wait', async () => {
+    const rpc = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError('fetch failed'))
+      .mockRejectedValueOnce(Object.assign(new Error('Service Unavailable'), { code: 503 }))
+      .mockResolvedValueOnce({ hash: 'h', blockNumber: 1, executionResult: true })
+    await expect(waitForNimTx(rpc, 'h', { sleep })).resolves.toBe('confirmed')
+  })
+
+  it('fail-closed: without an explicit executionResult it is not confirmed', async () => {
+    const rpc = vi.fn(async () => ({ hash: 'h', blockNumber: 1 }))
+    await expect(waitForNimTx(rpc, 'h', { sleep, timeoutMs: 6_000, intervalMs: 2_000 })).resolves.toBe('pending')
+    expect(rpc.mock.calls.length).toBeGreaterThan(1)
+    const odd = vi.fn(async () => ({ hash: 'h', blockNumber: 1, executionResult: 'yes' }))
+    await expect(waitForNimTx(odd, 'h', { sleep, timeoutMs: 2_000, intervalMs: 2_000 })).resolves.toBe('pending')
   })
 })
 
@@ -276,18 +338,26 @@ describe('NIM error messages', () => {
   it('every NIM error code and step has an English string', () => {
     for (const code of NIM_ERROR_CODES) expect(dicts.en[`nim.error.${code}`], code).toBeTypeOf('string')
     for (const key of Object.values(STEP_KEYS)) expect(dicts.en[key], key).toBeTypeOf('string')
-    for (const key of ['nim.switch.deactivateFirst', 'nim.switch.direct', 'nim.wait.resetsTimer', 'nim.wait.noRewards', 'nim.restake.suggestion', 'nim.tx.pending'])
+    for (const key of ['nim.switch.deactivateFirst', 'nim.switch.direct', 'nim.wait.resetsTimer', 'nim.wait.noRewards', 'nim.restake.suggestion', 'nim.tx.pending', 'nim.tx.confirming'])
       expect(dicts.en[key], key).toBeTypeOf('string')
+    expect(dicts.en['nim.error.FUNDS_SPLIT']).toContain('{amount}')
   })
 
   it('plan errors and failed transactions map to their own messages; others go through toUiError', () => {
     expect(toNimUiError(new NimPlanError('LEAVES_DUST'))).toEqual({ code: 'LEAVES_DUST', retry: 'none', messageKey: 'nim.error.LEAVES_DUST' })
+    expect(toNimUiError(new NimPlanError('FUNDS_SPLIT', { amount: '150' }))).toEqual({
+      code: 'FUNDS_SPLIT',
+      retry: 'none',
+      messageKey: 'nim.error.FUNDS_SPLIT',
+      detail: { amount: '150' },
+    })
     expect(toNimUiError(new NimTxFailedError('abc'))).toEqual({ code: 'TX_FAILED', retry: 'none', messageKey: 'nim.error.TX_FAILED', detail: { hash: 'abc' } })
     expect(toNimUiError({ type: 'PERMISSION_DENIED', code: 4001 })).toMatchObject({ code: 'USER_REJECTED' })
   })
 })
 
-// The hook against the dev mock: reads only after a tap, guards before any wallet dialog.
+// The hook against the dev mock (and a scripted client where the mock has no knob): reads only
+// after a tap, guards before any wallet dialog, one dialog at a time.
 describe('useNim', () => {
   let cleanup: (() => void) | null = null
   afterEach(() => {
@@ -307,10 +377,7 @@ describe('useNim', () => {
     })
   }
 
-  async function render(scenario: string) {
-    stubApi()
-    const m = installMock(`?mock=${scenario}&delay=0`, window)
-    const client = createNimiq()
+  async function mount(client: Nimiq) {
     const ref: { current: NimApi | null } = { current: null }
     function Probe() {
       ref.current = useNim({ client })
@@ -321,11 +388,49 @@ describe('useNim', () => {
     root.render(createElement(QueryClientProvider, { client: qc }, createElement(Probe)))
     cleanup = () => root.unmount()
     await vi.waitFor(() => expect(ref.current).not.toBeNull())
-    const api = () => ref.current!
+    return () => ref.current!
+  }
+
+  async function render(scenario: string) {
+    stubApi()
+    const m = installMock(`?mock=${scenario}&delay=0`, window)
+    const api = await mount(createNimiq())
     return { m, api }
   }
 
+  // A connected client with fixed state; records what it would have sent.
+  function scripted(o: { accounts: NimAccounts; balances: NimBalances; staker: Staker | null; lookup?: () => Promise<unknown> }) {
+    stubApi()
+    const sent: Array<[string, unknown]> = []
+    const tx = (name: string) => async (arg: unknown) => {
+      sent.push([name, arg])
+      return `hash-${sent.length}`
+    }
+    const client = {
+      connect: async () => o.accounts,
+      accounts: () => o.accounts,
+      balances: async () => o.balances,
+      staker: async () => o.staker,
+      rpc: async (method: string) => {
+        if (method === 'getBlockNumber') return 16_172_400
+        if (method === 'getPolicyConstants') return { blocksPerEpoch: 43_200, blockSeparationTime: 1_000, genesisBlockNumber: 3_032_010, jailEpochs: 8 }
+        if (method === 'getValidatorByAddress') return { jailedFrom: null }
+        if (method === 'getTransactionByHash') return o.lookup ? o.lookup() : { blockNumber: 16_172_401, executionResult: true }
+        throw new Error(`unexpected ${method}`)
+      },
+      newStaker: (delegation: string, luna: bigint) => tx('newStaker')({ delegation, luna }),
+      addStake: tx('addStake'),
+      setActive: tx('setActive'),
+      updateDelegation: tx('updateDelegation'),
+      retire: tx('retire'),
+      remove: tx('remove'),
+      onAccountsChanged: () => () => {},
+    } as unknown as Nimiq
+    return { client, sent }
+  }
+
   const sends = (m: ReturnType<typeof installMock>) => m.calls.filter(c => c.method.startsWith('send')).map(c => c.method)
+  const pooled = staker({ address: WALLET, delegation: SIAM, activeLuna: nim('200') })
 
   it('mounting asks the wallet nothing', async () => {
     const { m, api } = await render('htlc-only-balance')
@@ -334,18 +439,33 @@ describe('useNim', () => {
     expect(api().connected).toBe(false)
   })
 
-  it('HTLC-only balance: 1250 NIM spendable and 200 NIM is a new stake, not "insufficient"', async () => {
+  it('HTLC-only balance: 1250 NIM stakeable and 200 NIM is a new stake, not "insufficient"', async () => {
     const { m, api } = await render('htlc-only-balance')
     await api().connect()
     await vi.waitFor(() => expect(api().ready).toBe(true))
     expect(api().balances).toEqual({ wallet: 0n, htlc: nim('1250'), total: nim('1250') })
-    expect(api().spendable).toBe(nim('1250'))
+    expect(api().stakeable).toBe(nim('1250'))
+    // the mock answers a non-staker the way the RPC does ("Internal error", hint in data)
     expect(api().staker).toBeNull()
     expect(api().planStake(nim('200'))).toEqual({ kind: 'new', delegationRequired: true })
     const out = await api().stake(nim('200'), SIAM)
-    expect(out).toMatchObject({ status: 'pending' })
+    expect(out).toMatchObject({ status: 'confirmed' })
     const sent = m.calls.find(c => c.method === 'sendNewStakerTransaction')
     expect(sent?.params[0]).toEqual({ delegation: SIAM, value: 20_000_000 })
+  })
+
+  it('wallet 100 + HTLC 150: a 200 NIM stake is refused with how much can be staked, before any dialog', async () => {
+    const { client, sent } = scripted({ accounts: { wallet: WALLET, htlc: HTLC }, balances: bal('100', '150'), staker: null })
+    const api = await mount(client)
+    await vi.waitFor(() => expect(api().ready).toBe(true))
+    expect(api().balances?.total).toBe(nim('250'))
+    expect(api().stakeable).toBe(nim('150'))
+    expect(api().planStake(nim('200'))).toEqual({ error: 'FUNDS_SPLIT', available: nim('150') })
+    const e = await api().stake(nim('200'), SIAM).catch(err => err)
+    expect(toNimUiError(e)).toEqual({ code: 'FUNDS_SPLIT', retry: 'none', messageKey: 'nim.error.FUNDS_SPLIT', detail: { amount: '150' } })
+    expect(sent).toEqual([])
+    await api().stake(nim('150'), SIAM)
+    expect(sent).toEqual([['newStaker', { delegation: SIAM, luna: nim('150') }]])
   })
 
   it('a new stake without a chosen pool, or below 100 NIM, never opens a dialog', async () => {
@@ -381,6 +501,63 @@ describe('useNim', () => {
     await vi.waitFor(() => expect(api().ready).toBe(true))
     await Promise.all([api().stake(nim('10')), api().stake(nim('10'))])
     expect(sends(m)).toEqual(['sendStakeTransaction'])
+  })
+
+  it('different requests never share a result: the second is BUSY, not silently joined', async () => {
+    const { m, api } = await render('happy')
+    await api().connect()
+    await vi.waitFor(() => expect(api().ready).toBe(true))
+    const [a, b] = await Promise.allSettled([api().stake(nim('10')), api().stake(nim('20'))])
+    expect(a.status).toBe('fulfilled')
+    expect(b).toMatchObject({ status: 'rejected', reason: { code: 'BUSY' } })
+    const [c, d] = await Promise.allSettled([api().deactivate(nim('1000')), api().deactivateAll()])
+    expect(c.status).toBe('fulfilled')
+    expect(d).toMatchObject({ status: 'rejected', reason: { code: 'BUSY' } })
+    expect(m.calls.filter(x => x.method.startsWith('send')).map(x => [x.method, x.params[0]])).toEqual([
+      ['sendStakeTransaction', { value: 1_000_000 }],
+      ['sendSetActiveStakeTransaction', { newActiveBalance: 0 }],
+    ])
+  })
+
+  it('the dialog lock ends when the wallet returns; confirming on chain does not block other taps', async () => {
+    let finish: ((v: unknown) => void) | undefined
+    const lookup = () => new Promise(r => (finish = r))
+    const { client, sent } = scripted({ accounts: { wallet: WALLET, htlc: HTLC }, balances: bal('0', '500'), staker: pooled, lookup })
+    const api = await mount(client)
+    await vi.waitFor(() => expect(api().ready).toBe(true))
+    const first = api().stake(nim('10'))
+    await vi.waitFor(() => expect(finish).toBeDefined())
+    await vi.waitFor(() => expect(api().confirming).toBe(true))
+    expect(api().busy).toBe(false)
+    // another action is judged on its own (nothing retired yet), not refused as BUSY
+    await expect(api().remove()).rejects.toMatchObject({ code: 'NOT_READY' })
+    // the same request while it confirms joins it instead of sending again
+    const again = api().stake(nim('10'))
+    finish!({ blockNumber: 16_172_401, executionResult: true })
+    await expect(first).resolves.toMatchObject({ status: 'confirmed', hash: 'hash-1' })
+    await expect(again).resolves.toMatchObject({ status: 'confirmed', hash: 'hash-1' })
+    expect(sent).toHaveLength(1)
+    await vi.waitFor(() => expect(api().confirming).toBe(false))
+  })
+
+  it('a transaction the network includes as failed surfaces as TX_FAILED', async () => {
+    const lookup = async () => ({ blockNumber: 16_172_401, executionResult: false })
+    const { client } = scripted({ accounts: { wallet: WALLET, htlc: HTLC }, balances: bal('0', '500'), staker: pooled, lookup })
+    const api = await mount(client)
+    await vi.waitFor(() => expect(api().ready).toBe(true))
+    const e = await api().stake(nim('10')).catch(err => err)
+    expect(e).toBeInstanceOf(NimTxFailedError)
+    expect(toNimUiError(e)).toMatchObject({ code: 'TX_FAILED', detail: { hash: 'hash-1' } })
+  })
+
+  it('a staker without a pool plans an unstake with no wait', async () => {
+    const noPool = staker({ address: WALLET, delegation: '', inactiveLuna: nim('250'), inactiveFrom: 16_208_010 })
+    const { client } = scripted({ accounts: { wallet: WALLET, htlc: HTLC }, balances: bal('0', '500'), staker: noPool })
+    const api = await mount(client)
+    await vi.waitFor(() => expect(api().ready).toBe(true))
+    expect(api().myPool).toBeUndefined()
+    expect(api().planUnstake(nim('250'))?.steps[1]).toEqual({ step: 'wait', etaMs: 0, done: true })
+    expect(api().planSwitch()).toEqual({ kind: 'direct' })
   })
 
   it('a rejected dialog maps to USER_REJECTED', async () => {

@@ -94,12 +94,14 @@ export function parseCheck(body: unknown, address: string): CheckResponse {
     const active = luna(s.activeLuna)
     const inactive = luna(s.inactiveLuna)
     const retired = luna(s.retiredLuna)
-    if (active === null || inactive === null || retired === null || typeof s.delegation !== 'string') {
+    // no pool: null on the wire, '' in Staker (as in providers/nimiq parseStaker)
+    const delegation = s.delegation === null ? '' : s.delegation
+    if (active === null || inactive === null || retired === null || typeof delegation !== 'string') {
       throw new Error('check: unexpected staker')
     }
     staker = {
       address,
-      delegation: s.delegation,
+      delegation,
       activeLuna: active,
       inactiveLuna: inactive,
       inactiveFrom: finite(s.inactiveFrom) ? s.inactiveFrom : null,
@@ -182,10 +184,20 @@ export function parsePolicy(raw: unknown): Required<StakingPolicy> {
 
 export type TxStatus = 'confirmed' | 'failed' | 'pending'
 
-const message = (e: unknown) => (isRecord(e) && typeof e.message === 'string' ? e.message : String(e))
+// The RPC puts the reason in `data` ({code:-32603, message:"Internal error", data:"Transaction not
+// found: ..."}), so both fields are read.
+function errorText(e: unknown): string {
+  if (!isRecord(e)) return String(e)
+  return [e.message, e.data].filter(v => typeof v === 'string').join(' ')
+}
+
+// Only a host that cannot look transactions up at all stops the wait early.
+const lookupUnsupported = (e: unknown) => (isRecord(e) && e.code === -32601) || /method not found/i.test(errorText(e))
 
 // A sent staking transaction can still fail on chain (included with executionResult false) or be
-// dropped and never appear; only a lookup tells. "pending" means we could not tell yet.
+// dropped and never appear; only a lookup tells. Fail-closed: only an explicit executionResult
+// true is "confirmed". Not-mined-yet and transient errors keep polling until the timeout;
+// "pending" means we could not tell.
 export async function waitForNimTx(
   rpc: (method: string, params: unknown[]) => Promise<unknown>,
   hash: string,
@@ -197,9 +209,12 @@ export async function waitForNimTx(
   for (let waited = 0; ; waited += intervalMs) {
     try {
       const tx = await rpc('getTransactionByHash', [hash])
-      if (isRecord(tx) && finite(tx.blockNumber)) return tx.executionResult === false ? 'failed' : 'confirmed'
+      if (isRecord(tx) && finite(tx.blockNumber)) {
+        if (tx.executionResult === true) return 'confirmed'
+        if (tx.executionResult === false) return 'failed'
+      }
     } catch (e) {
-      if (!/transaction not found/i.test(message(e))) return 'pending'
+      if (lookupUnsupported(e)) return 'pending'
     }
     if (waited + intervalMs > timeoutMs) return 'pending'
     await sleep(intervalMs)
