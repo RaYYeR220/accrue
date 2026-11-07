@@ -201,7 +201,7 @@ async function main() {
     const oracle = delegationOracle(delegations, pool)
     const agg = aggregate(s.txs, { rewardAddress: s.reward }, oracle)
     const cursor = { ...s.cursor, lastPayoutBlock: agg.lastPayoutBlock }
-    const spanH = (s.visitedAt - Math.min(...s.txs.map((t) => t.timestamp), s.visitedAt)) / HOUR_MS
+    const spanH = (s.visitedAt - s.txs.reduce((m, t) => Math.min(m, t.timestamp), s.visitedAt)) / HOUR_MS
     cursor.txsPerHour = spanH > 0 ? s.txs.length / spanH : null
     for (const h of agg.hours) sql.push(toSql(hourUpsert(pool, h, null)))
     for (const d of agg.stakerDays) sql.push(toSql(stakerDayUpsert(pool, d, null)))

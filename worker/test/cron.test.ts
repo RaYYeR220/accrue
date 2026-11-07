@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { BATCH_BLOCKS, COINBASE_ADDRESS, addressFromBytesHex, type NimTx } from '@accrue/shared'
+import { aggregate, hourFromDb, poolWindowFromAggregates, type PoolHourDb } from '../src/indexer/aggregate'
 import { runIndexerTick } from '../src/indexer/cron'
 import { VALIDATORS_API } from '../src/indexer/pools'
 import { FakeChain, load } from './chain'
@@ -123,6 +124,22 @@ describe('runIndexerTick', () => {
     expect(sums().other).toBeLessThanOrEqual(e2.outsider)
     const someStaker = addressFromBytesHex(garuda.txs.find((x) => x.from === POOL && isRestake(x))!.recipientData.slice(2))
     expect(db.query('SELECT * FROM staker_day WHERE pool = ? AND staker = ?', POOL, someStaker).length).toBeGreaterThan(0)
+  })
+
+  it('stored rows rebuild the same payout window as the in-memory aggregate', async () => {
+    chain.head = top
+    for (let i = 0; i < 30 && cursor()?.backfill_done !== 1; i++) await tick()
+    const rows = db.query<PoolHourDb>('SELECT hour, earned, paid_restake, paid_direct, paid_unverified, other_out, payout_batches, last_payout_ts FROM pool_hour WHERE pool = ?', POOL)
+    const days = db.query<{ staker: string; day: number; payouts: number }>('SELECT staker, day, payouts FROM staker_day WHERE pool = ?', POOL)
+    const range = { fromTs: Math.min(...garuda.txs.map((x) => x.timestamp)), toTs: t }
+    const stored = poolWindowFromAggregates(rows.map(hourFromDb), days, range)
+    const txs = garuda.txs.filter((x) => x.blockNumber <= lastMacro(top))
+    const mem = aggregate(txs, { rewardAddress: POOL }, () => true)
+    const direct = poolWindowFromAggregates(mem.hours, mem.stakerDays, range)
+    expect(stored.earned).toBe(direct.earned)
+    expect(stored.paidRestake + stored.paidDirect + stored.otherOut).toBe(direct.paidRestake + direct.paidDirect + direct.otherOut)
+    expect(stored.cycles).toBe(direct.cycles)
+    expect(stored.cycles).toBeGreaterThanOrEqual(3)
   })
 
   it('an RPC outage keeps the data, records the error and never throws', async () => {

@@ -204,6 +204,29 @@ export function aggregate(
 type HourRow = Pick<HourAgg, 'hour' | 'earned' | 'paidRestake' | 'paidDirect' | 'paidUnverified' | 'otherOut' | 'lastPayoutTs'>
 type StakerDayRow = Pick<StakerDayAgg, 'staker' | 'day' | 'payouts'>
 
+/** pool_hour as D1 returns it (luna as numbers). */
+export interface PoolHourDb {
+  hour: number
+  earned: number
+  paid_restake: number
+  paid_direct: number
+  paid_unverified: number
+  other_out: number
+  payout_batches: number
+  last_payout_ts: number | null
+}
+
+export const hourFromDb = (r: PoolHourDb): HourAgg => ({
+  hour: r.hour,
+  earned: BigInt(r.earned ?? 0),
+  paidRestake: BigInt(r.paid_restake ?? 0),
+  paidDirect: BigInt(r.paid_direct ?? 0),
+  paidUnverified: BigInt(r.paid_unverified ?? 0),
+  otherOut: BigInt(r.other_out ?? 0),
+  payoutBatches: r.payout_batches ?? 0,
+  lastPayoutTs: r.last_payout_ts ?? null,
+})
+
 /**
  * Rebuilds the payout window of shared `buildPoolWindow` from stored aggregates.
  * The window opens at the newest payout of the first hour that has payouts (that hour settles
