@@ -1,6 +1,6 @@
 import { ASSETS, permitToJson, POLYGON, type AssetKey, type PermitTypedData } from '@accrue/shared'
 import { createClient, fallback, getAddress, http, numberToHex, type Address, type Client, type Hex } from 'viem'
-import { getBalance, readContract } from 'viem/actions'
+import { getBalance, getGasPrice, readContract } from 'viem/actions'
 import { polygon } from 'viem/chains'
 import { ProviderMissingError, RpcUnavailableError, WrongChainError } from './errors'
 
@@ -182,6 +182,17 @@ export function createEvm(opts: { provider?: () => Eip1193 | undefined; rpcs?: r
 
     async polBalance(owner: Address): Promise<bigint> {
       return read(c => getBalance(c, { address: owner }))
+    },
+
+    async gasPrice(): Promise<bigint> {
+      return read(c => getGasPrice(c))
+    },
+
+    // For transactions the user's own wallet sent (self-paid fallback). null = not mined yet.
+    async txStatus(hash: Hex): Promise<'success' | 'reverted' | null> {
+      const receipt = await read(c => c.request({ method: 'eth_getTransactionReceipt', params: [hash] }))
+      if (!receipt) return null
+      return receipt.status === '0x1' ? 'success' : 'reverted'
     },
   }
 }

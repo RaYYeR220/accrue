@@ -8,6 +8,8 @@ export type UiErrorCode =
   | 'TIMEOUT'
   | 'UNKNOWN_OUTCOME'
   | 'WRONG_CHAIN'
+  // an earlier action on the same token is still on its way; a new one waits until it resolves
+  | 'PENDING'
 
 // none: nothing to retry automatically (the user changes something or checks activity first)
 // same: send the identical request again

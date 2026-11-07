@@ -59,5 +59,10 @@
   "error.SIMULATION_FAILED": "Cette transaction échouerait sur Polygon, elle n'a donc pas été envoyée.",
   "error.AAVE_LIQUIDITY": "Aave ne peut pas verser ce montant pour le moment. Essayez un montant plus petit ou réessayez plus tard.",
   "error.RPC_UNAVAILABLE": "Polygon ne répond pas pour le moment. Réessayez.",
-  "error.INTERNAL": "Accrue a rencontré un problème. Réessayez."
+  "error.INTERNAL": "Accrue a rencontré un problème. Réessayez.",
+
+  "dollars.error.pending": "Votre dernière transaction avec ce jeton est encore en cours. Attendez qu'elle aboutisse, puis réessayez.",
+  "dollars.error.notDeployed": "Les dépôts en dollars ne sont pas encore ouverts : le contrat Accrue n'est pas encore actif sur Polygon.",
+  "dollars.error.connectFirst": "Connectez d'abord votre portefeuille Polygon, puis réessayez.",
+  "dollars.error.ownerHasCode": "Les USDC ne peuvent pas être déplacés avec une signature de ce type de portefeuille. Utilisez plutôt des USDT."
 }

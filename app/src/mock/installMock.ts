@@ -158,6 +158,8 @@ export function installMock(search: string, w: Window = window): MockHandle {
   let chainId = q.get('chain') ?? '0x1'
   const balances = new Map<string, bigint>(Object.entries(sc.evm.tokens).map(([k, v]) => [k.toLowerCase(), v]))
   const nonces = new Map<string, bigint>()
+  // hashes the wallet "sent", so the public-RPC stand-in can hand back their receipts
+  const sentTxs = new Set<string>()
 
   function evmRead(method: string, params: unknown[]): unknown {
     switch (method) {
@@ -167,6 +169,12 @@ export function installMock(search: string, w: Window = window): MockHandle {
         return numberToHex(80_000_000)
       case 'eth_getBalance':
         return numberToHex(sc.evm.polWei)
+      case 'eth_gasPrice':
+        return numberToHex(100n * 10n ** 9n)
+      case 'eth_getTransactionReceipt': {
+        const hash = String(params[0] ?? '').toLowerCase()
+        return sentTxs.has(hash) ? { transactionHash: hash, status: '0x1', blockNumber: numberToHex(80_000_001) } : null
+      }
       case 'eth_call': {
         const { to, data } = (params[0] ?? {}) as { to?: string; data?: string }
         const token = (to ?? '').toLowerCase()
@@ -201,10 +209,13 @@ export function installMock(search: string, w: Window = window): MockHandle {
         }
         return `0x${randomHex(65)}`
       }
-      case 'eth_sendTransaction':
+      case 'eth_sendTransaction': {
         if (sc.evm.send === 'reject') throw providerError('User rejected the request.', { code: 4001 })
         if (sc.evm.polWei === 0n) throw providerError('insufficient funds for gas * price + value', { code: -32000 })
-        return `0x${randomHex(32)}`
+        const hash = `0x${randomHex(32)}`
+        sentTxs.add(hash)
+        return hash
+      }
       default:
         return evmRead(method, params)
     }

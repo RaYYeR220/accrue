@@ -59,5 +59,10 @@
   "error.SIMULATION_FAILED": "This transaction would fail on Polygon, so it was not sent.",
   "error.AAVE_LIQUIDITY": "Aave cannot pay out this amount right now. Try a smaller amount or try later.",
   "error.RPC_UNAVAILABLE": "Polygon is not answering right now. Try again.",
-  "error.INTERNAL": "Accrue hit a problem on its side. Try again."
+  "error.INTERNAL": "Accrue hit a problem on its side. Try again.",
+
+  "dollars.error.pending": "Your last transaction with this token is still on its way. Wait until it lands, then try again.",
+  "dollars.error.notDeployed": "Dollar deposits are not open yet: the Accrue contract is not live on Polygon.",
+  "dollars.error.connectFirst": "Connect your Polygon wallet first, then try again.",
+  "dollars.error.ownerHasCode": "USDC cannot be moved with a signature from this kind of wallet. Use USDT instead."
 }
