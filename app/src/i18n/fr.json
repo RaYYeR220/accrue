@@ -11,6 +11,7 @@
   "action.done": "Terminé",
   "action.connectNim": "Voir mes NIM",
   "action.connectDollars": "Voir mes dollars",
+  "action.switchToPolygon": "Passer sur Polygon",
 
   "onboarding.title": "Votre argent travaille, en toute transparence",
   "onboarding.body": "Accrue place vos dollars inutilisés sur Aave (Polygon) et vous aide à staker vos NIM auprès d'un pool qui paie vraiment.",
@@ -40,6 +41,7 @@
   "error.wallet": "Nimiq Pay n'a pas pu terminer l'opération. Réessayez.",
   "error.walletBusy": "Une demande est déjà ouverte dans votre portefeuille. Regardez dans Nimiq Pay.",
   "error.chainUnavailable": "Votre portefeuille ne peut pas passer sur Polygon pour le moment.",
+  "error.WRONG_CHAIN": "Votre portefeuille est sur un autre réseau. Passez d'abord sur Polygon, puis réessayez.",
   "error.insufficientGas": "Pas assez de POL pour payer les frais de réseau.",
   "error.serviceDown": "Le service Accrue ne répond pas. Réessayez dans une minute.",
   "error.availableNow": "Disponible maintenant : {amount}",

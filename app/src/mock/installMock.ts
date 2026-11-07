@@ -6,6 +6,7 @@ import { isScenarioName, MOCK_RATES, SCENARIO_NAMES, SCENARIOS, type RelayOutcom
 
 // Dev-only stand-in for Nimiq Pay: window.nimiqPay, window.nimiq, window.ethereum,
 // plus the /api/relay*, /api/rates, /api/health endpoints and Polygon RPC reads.
+// Query: ?mock=<scenario>[&lang=de][&fiat=EUR][&network=testnet][&chain=0x89][&delay=0]
 // Loaded only through the `import.meta.env.DEV` guard in main.tsx.
 
 export interface MockCall {
@@ -153,7 +154,8 @@ export function installMock(search: string, w: Window = window): MockHandle {
   w.nimiq = nimiqFake as unknown as Window['nimiq']
 
   // EVM state shared by window.ethereum and the public-RPC stand-in
-  let chainId = '0x1'
+  // Nimiq Pay starts on Ethereum (0x1); ?chain=0x89 starts on Polygon to skip the switch step
+  let chainId = q.get('chain') ?? '0x1'
   const balances = new Map<string, bigint>(Object.entries(sc.evm.tokens).map(([k, v]) => [k.toLowerCase(), v]))
   const nonces = new Map<string, bigint>()
 

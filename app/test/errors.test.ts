@@ -1,7 +1,7 @@
 import { NimiqProviderError } from '@nimiq/mini-app-sdk'
 import { RELAY_ERROR_CODES } from '@accrue/shared'
 import { describe, expect, it } from 'vitest'
-import { HttpError, ProviderMissingError, RpcUnavailableError, toUiError } from '../src/providers/errors'
+import { HttpError, ProviderMissingError, RpcUnavailableError, toUiError, WrongChainError } from '../src/providers/errors'
 
 describe('toUiError: Nimiq provider errors', () => {
   it('PERMISSION_DENIED 4001 is a user rejection with no retry', () => {
@@ -152,6 +152,10 @@ describe('toUiError: everything else', () => {
 
   it('public Polygon RPC failure', () => {
     expect(toUiError(new RpcUnavailableError(new Error('all down')))).toMatchObject({ code: 'RPC_UNAVAILABLE', retry: 'same' })
+  })
+
+  it('wallet on the wrong chain: switch first, then the same request again', () => {
+    expect(toUiError(new WrongChainError('0x1'))).toEqual({ code: 'WRONG_CHAIN', retry: 'same', messageKey: 'error.WRONG_CHAIN' })
   })
 
   it('missing provider', () => {

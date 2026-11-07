@@ -2,7 +2,7 @@ import { ASSETS, permitToJson, POLYGON, type AssetKey, type PermitTypedData } fr
 import { createClient, fallback, getAddress, http, numberToHex, type Address, type Client, type Hex } from 'viem'
 import { getBalance, readContract } from 'viem/actions'
 import { polygon } from 'viem/chains'
-import { ProviderMissingError, RpcUnavailableError } from './errors'
+import { ProviderMissingError, RpcUnavailableError, WrongChainError } from './errors'
 
 export interface Eip1193 {
   request(args: { method: string; params?: readonly unknown[] | object }): Promise<unknown>
@@ -103,17 +103,30 @@ export function createEvm(opts: { provider?: () => Eip1193 | undefined; rpcs?: r
     return address
   }
 
+  async function chainId(p: Eip1193): Promise<string> {
+    const chain = await p.request({ method: 'eth_chainId' })
+    return typeof chain === 'string' ? chain.toLowerCase() : String(chain)
+  }
+
+  // Read only: signing and sending never switch chains themselves, so one tap
+  // never stacks a network dialog in front of the signature dialog.
+  async function requirePolygon(p: Eip1193): Promise<void> {
+    const chain = await chainId(p)
+    if (chain !== POLYGON.hex) throw new WrongChainError(chain)
+  }
+
+  // The explicit, separately tapped step. At most one wallet dialog per call: when
+  // Polygon has to be added first and the wallet does not switch as part of that,
+  // it throws WrongChainError and the next tap does the switch.
   async function ensurePolygon(): Promise<void> {
     const p = eth()
-    const chain = await p.request({ method: 'eth_chainId' })
-    if (typeof chain === 'string' && chain.toLowerCase() === POLYGON.hex) return
-    const target = [{ chainId: POLYGON.hex }]
+    if ((await chainId(p)) === POLYGON.hex) return
     try {
-      await p.request({ method: 'wallet_switchEthereumChain', params: target })
+      await p.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: POLYGON.hex }] })
     } catch (e) {
       if (errorCode(e) !== 4902) throw e
       await p.request({ method: 'wallet_addEthereumChain', params: [ADD_POLYGON] })
-      await p.request({ method: 'wallet_switchEthereumChain', params: target })
+      await requirePolygon(p)
     }
   }
 
@@ -132,21 +145,27 @@ export function createEvm(opts: { provider?: () => Eip1193 | undefined; rpcs?: r
 
     ensurePolygon,
 
-    // USDC's domain carries chainId 137, which the host checks against the active chain,
-    // so the switch has to happen first. USDT0's domain has no chainId at all.
+    async isPolygon(): Promise<boolean> {
+      return (await chainId(eth())) === POLYGON.hex
+    },
+
+    // USDC's domain carries chainId 137, which the host checks against the active chain;
+    // USDT0's has none. Either way the wallet must already be on Polygon (ensurePolygon).
     async signPermit(td: PermitTypedData): Promise<Hex> {
-      await ensurePolygon()
-      const sig = await eth().request({ method: 'eth_signTypedData_v4', params: [td.message.owner, permitToJson(td)] })
+      const p = eth()
+      await requirePolygon(p)
+      const sig = await p.request({ method: 'eth_signTypedData_v4', params: [td.message.owner, permitToJson(td)] })
       if (typeof sig !== 'string' || !/^0x[0-9a-fA-F]{128,130}$/.test(sig)) throw new Error('wallet returned no signature')
       return sig as Hex
     },
 
     // Self-paid fallback when the relayer is unavailable.
     async sendTx(tx: EvmTx): Promise<Hex> {
-      await ensurePolygon()
+      const p = eth()
+      await requirePolygon(p)
       const params: Record<string, string> = { from: tx.from, to: tx.to, data: tx.data }
       if (tx.value !== undefined) params.value = numberToHex(tx.value)
-      const hash = await eth().request({ method: 'eth_sendTransaction', params: [params] })
+      const hash = await p.request({ method: 'eth_sendTransaction', params: [params] })
       if (typeof hash !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(hash)) throw new Error('wallet returned no transaction hash')
       return hash as Hex
     },

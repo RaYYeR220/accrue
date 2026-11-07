@@ -11,6 +11,7 @@
   "action.done": "Done",
   "action.connectNim": "Show my NIM",
   "action.connectDollars": "Show my dollars",
+  "action.switchToPolygon": "Switch to Polygon",
 
   "onboarding.title": "Your money at work, in plain sight",
   "onboarding.body": "Accrue puts idle dollars into Aave on Polygon and helps you stake NIM with a pool that actually pays.",
@@ -40,6 +41,7 @@
   "error.wallet": "Nimiq Pay could not finish this. Try again.",
   "error.walletBusy": "Your wallet already has a request open. Check Nimiq Pay.",
   "error.chainUnavailable": "Your wallet cannot switch to Polygon right now.",
+  "error.WRONG_CHAIN": "Your wallet is on another network. Switch to Polygon first, then try again.",
   "error.insufficientGas": "Not enough POL to pay the network fee.",
   "error.serviceDown": "The Accrue service is not answering. Try again in a minute.",
   "error.availableNow": "Available right now: {amount}",

@@ -11,6 +11,7 @@
   "action.done": "Listo",
   "action.connectNim": "Ver mis NIM",
   "action.connectDollars": "Ver mis dólares",
+  "action.switchToPolygon": "Cambiar a Polygon",
 
   "onboarding.title": "Tu dinero trabajando, a la vista",
   "onboarding.body": "Accrue deposita tus dólares inactivos en Aave sobre Polygon y te ayuda a hacer staking de NIM con un pool que realmente paga.",
@@ -40,6 +41,7 @@
   "error.wallet": "Nimiq Pay no pudo completar esto. Inténtalo de nuevo.",
   "error.walletBusy": "Tu billetera ya tiene una solicitud abierta. Revisa Nimiq Pay.",
   "error.chainUnavailable": "Tu billetera no puede cambiar a Polygon en este momento.",
+  "error.WRONG_CHAIN": "Tu billetera está en otra red. Cambia primero a Polygon y vuelve a intentarlo.",
   "error.insufficientGas": "No tienes suficiente POL para pagar la comisión de red.",
   "error.serviceDown": "El servicio de Accrue no responde. Inténtalo de nuevo en un minuto.",
   "error.availableNow": "Disponible ahora: {amount}",

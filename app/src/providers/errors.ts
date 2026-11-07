@@ -1,6 +1,13 @@
 import { RELAY_ERROR_CODES, type RelayErrorCode } from '@accrue/shared'
 
-export type UiErrorCode = RelayErrorCode | 'USER_REJECTED' | 'PROVIDER_MISSING' | 'NETWORK' | 'TIMEOUT' | 'UNKNOWN_OUTCOME'
+export type UiErrorCode =
+  | RelayErrorCode
+  | 'USER_REJECTED'
+  | 'PROVIDER_MISSING'
+  | 'NETWORK'
+  | 'TIMEOUT'
+  | 'UNKNOWN_OUTCOME'
+  | 'WRONG_CHAIN'
 
 // none: nothing to retry automatically (the user changes something or checks activity first)
 // same: send the identical request again
@@ -36,6 +43,15 @@ export class RpcUnavailableError extends Error {
   constructor(cause: unknown) {
     super('Polygon RPC unavailable', { cause })
     this.name = 'RpcUnavailableError'
+  }
+}
+
+// The wallet is not on Polygon. Switching is its own tapped step (evm.ensurePolygon),
+// never chained in front of a signature, so the retry is the same request after it.
+export class WrongChainError extends Error {
+  constructor(readonly chainId: string) {
+    super(`wallet is on chain ${chainId}, not Polygon`)
+    this.name = 'WrongChainError'
   }
 }
 
@@ -135,6 +151,7 @@ function fromEip1193(code: number, message: string): UiError {
 export function toUiError(e: unknown): UiError {
   if (e instanceof ProviderMissingError) return ui('PROVIDER_MISSING', 'none')
   if (e instanceof RpcUnavailableError) return ui('RPC_UNAVAILABLE', 'same')
+  if (e instanceof WrongChainError) return ui('WRONG_CHAIN', 'same')
   if (e instanceof HttpError) return fromHttp(e.status, e.body)
   if (!isRecord(e)) return generic()
   const o = e

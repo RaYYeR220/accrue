@@ -2,7 +2,7 @@
 import { RELAY_ERROR_CODES } from '@accrue/shared'
 import { afterEach, describe, expect, it } from 'vitest'
 import { currentLang, dicts, LANGS, t } from '../src/i18n'
-import { toUiError } from '../src/providers/errors'
+import { toUiError, WrongChainError } from '../src/providers/errors'
 
 const en = dicts.en
 const placeholders = (s: string) => [...s.matchAll(/\{(\w+)\}/g)].map(m => m[1]).sort()
@@ -37,6 +37,10 @@ describe('dictionaries', () => {
     }
   })
 
+  it('has the separate switch-to-Polygon step', () => {
+    expect(en['action.switchToPolygon']).toBeTypeOf('string')
+  })
+
   it('every message key the error mapper can produce exists', () => {
     const samples: unknown[] = [
       ...RELAY_ERROR_CODES.map(error => ({ error })),
@@ -59,6 +63,7 @@ describe('dictionaries', () => {
       new TypeError('Failed to fetch'),
       new DOMException('x', 'TimeoutError'),
       new Error('Nimiq provider was not injected'),
+      new WrongChainError('0x1'),
       'nothing',
     ]
     for (const s of samples) {

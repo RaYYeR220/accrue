@@ -41,6 +41,14 @@ describe('installMock', () => {
     expect(window.nimiqPay?.network).toBe('testnet')
   })
 
+  it('the wallet starts on Ethereum unless chain= says otherwise', async () => {
+    installMock('?mock=happy&delay=0', window)
+    expect(await window.ethereum!.request({ method: 'eth_chainId' })).toBe('0x1')
+    uninstallMock(window)
+    installMock('?mock=happy&delay=0&chain=0x89', window)
+    expect(await window.ethereum!.request({ method: 'eth_chainId' })).toBe('0x89')
+  })
+
   it('rejects unknown scenarios loudly', () => {
     expect(() => installMock('?mock=nope', window)).toThrow(/happy/)
   })

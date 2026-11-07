@@ -2,7 +2,7 @@
 import { ASSETS, buildPermit } from '@accrue/shared'
 import { afterEach, describe, expect, it } from 'vitest'
 import { installMock, uninstallMock } from '../src/mock/installMock'
-import { toUiError } from '../src/providers/errors'
+import { toUiError, WrongChainError } from '../src/providers/errors'
 import { createEvm, type Eip1193 } from '../src/providers/evm'
 import { createNimiq } from '../src/providers/nimiq'
 
@@ -145,7 +145,8 @@ describe('evm provider wrapper', () => {
     expect(m.calls[1]!.params).toEqual([{ chainId: '0x89' }])
   })
 
-  it('adds Polygon when the wallet does not know it (4902)', async () => {
+  // A wallet without Polygon configured; `switchOnAdd` mimics wallets that switch as part of adding.
+  function walletWithoutPolygon(switchOnAdd: boolean) {
     const calls: string[] = []
     let chain = '0x1'
     let known = false
@@ -164,43 +165,101 @@ describe('evm provider wrapper', () => {
           expect(p.nativeCurrency.symbol).toBe('POL')
           expect(p.rpcUrls.length).toBeGreaterThan(0)
           known = true
+          if (switchOnAdd) chain = p.chainId
           return null
         }
         throw new Error(method)
       },
     }
-    await createEvm({ provider: () => eth }).ensurePolygon()
-    expect(calls).toEqual(['eth_chainId', 'wallet_switchEthereumChain', 'wallet_addEthereumChain', 'wallet_switchEthereumChain'])
-    expect(chain).toBe('0x89')
+    return { calls, eth, chain: () => chain }
+  }
+
+  it('4902: adds Polygon, and a wallet that switches on add needs no second dialog', async () => {
+    const w = walletWithoutPolygon(true)
+    await createEvm({ provider: () => w.eth }).ensurePolygon()
+    expect(w.calls).toEqual(['eth_chainId', 'wallet_switchEthereumChain', 'wallet_addEthereumChain', 'eth_chainId'])
+    expect(w.chain()).toBe('0x89')
   })
 
-  it('signs the USDT0 permit as [owner, JSON] on Polygon, without a chainId in the domain', async () => {
+  it('4902: never chains add and switch dialogs in one tap; the next tap switches', async () => {
+    const w = walletWithoutPolygon(false)
+    const e = createEvm({ provider: () => w.eth })
+    await expect(e.ensurePolygon()).rejects.toBeInstanceOf(WrongChainError)
+    expect(w.calls).toEqual(['eth_chainId', 'wallet_switchEthereumChain', 'wallet_addEthereumChain', 'eth_chainId'])
+    w.calls.length = 0
+    await e.ensurePolygon()
+    expect(w.calls).toEqual(['eth_chainId', 'wallet_switchEthereumChain'])
+    expect(w.chain()).toBe('0x89')
+  })
+
+  const usdt0Permit = () =>
+    buildPermit({ token: 'asset', asset: 'USDT0', owner, spender: router, value: 5_000_000n, nonce: 0n, deadline: 1_900_000_000n })
+  const dialogs = (m: ReturnType<typeof mock>) => m.calls.map(c => c.method).filter(x => x !== 'eth_chainId')
+
+  it('signPermit off Polygon throws WrongChainError and opens no dialog', async () => {
     const m = mock('happy')
-    const td = buildPermit({ token: 'asset', asset: 'USDT0', owner, spender: router, value: 5_000_000n, nonce: 0n, deadline: 1_900_000_000n })
-    const sig = await createEvm().signPermit(td)
+    const err = await createEvm().signPermit(usdt0Permit()).catch(e => e)
+    expect(err).toBeInstanceOf(WrongChainError)
+    expect(toUiError(err)).toMatchObject({ code: 'WRONG_CHAIN', retry: 'same' })
+    expect(m.calls.map(c => c.method)).toEqual(['eth_chainId'])
+  })
+
+  it('after ensurePolygon, signPermit opens exactly one sign dialog: USDT0 as [owner, JSON] without a chainId', async () => {
+    const m = mock('happy')
+    const e = createEvm()
+    await e.ensurePolygon()
+    m.calls.length = 0
+    const sig = await e.signPermit(usdt0Permit())
     expect(sig).toMatch(/^0x[0-9a-f]{130}$/)
-    const sign = m.calls.find(c => c.method === 'eth_signTypedData_v4')!
-    const [addr, json] = sign.params as [string, string]
+    expect(dialogs(m)).toEqual(['eth_signTypedData_v4'])
+    const [addr, json] = m.calls.find(c => c.method === 'eth_signTypedData_v4')!.params as [string, string]
     expect(addr).toBe(owner)
     const parsed = JSON.parse(json)
     expect(parsed.domain.chainId).toBeUndefined()
     expect(parsed.domain.salt).toBe(ASSETS.USDT0.domain.salt)
     expect(parsed.message.value).toBe('5000000')
-    expect(m.calls.findIndex(c => c.method === 'wallet_switchEthereumChain')).toBeLessThan(m.calls.indexOf(sign))
+  })
+
+  it('a wallet already on Polygon signs in one tap', async () => {
+    const m = installMock('?mock=happy&delay=0&chain=0x89', window)
+    await createEvm().signPermit(usdt0Permit())
+    expect(m.calls.map(c => c.method)).toEqual(['eth_chainId', 'eth_signTypedData_v4'])
   })
 
   it('a rejected signature is USER_REJECTED', async () => {
     mock('reject-sign')
+    const e = createEvm()
+    await e.ensurePolygon()
     const td = buildPermit({ token: 'asset', asset: 'USDC', owner, spender: router, value: 1n, nonce: 0n, deadline: 1n })
-    await expect(createEvm().signPermit(td).catch(toUiError)).resolves.toMatchObject({ code: 'USER_REJECTED' })
+    await expect(e.signPermit(td).catch(toUiError)).resolves.toMatchObject({ code: 'USER_REJECTED' })
   })
 
-  it('sends a self-paid transaction with a hex value', async () => {
+  it('sendTx off Polygon throws WrongChainError and opens no dialog', async () => {
     const m = mock('relay-down')
-    const hash = await createEvm().sendTx({ from: owner, to: router, data: '0xabcdef', value: 10n })
+    await expect(createEvm().sendTx({ from: owner, to: router, data: '0xabcdef' })).rejects.toBeInstanceOf(WrongChainError)
+    expect(m.calls.map(c => c.method)).toEqual(['eth_chainId'])
+  })
+
+  it('after ensurePolygon, sendTx opens exactly one send dialog with a hex value', async () => {
+    const m = mock('relay-down')
+    const e = createEvm()
+    await e.ensurePolygon()
+    m.calls.length = 0
+    const hash = await e.sendTx({ from: owner, to: router, data: '0xabcdef', value: 10n })
     expect(hash).toMatch(/^0x[0-9a-f]{64}$/)
-    const send = m.calls.find(c => c.method === 'eth_sendTransaction')!
-    expect(send.params).toEqual([{ from: owner, to: router, data: '0xabcdef', value: '0xa' }])
+    expect(dialogs(m)).toEqual(['eth_sendTransaction'])
+    expect(m.calls.find(c => c.method === 'eth_sendTransaction')!.params).toEqual([
+      { from: owner, to: router, data: '0xabcdef', value: '0xa' },
+    ])
+  })
+
+  it('isPolygon reads the chain without a dialog', async () => {
+    const m = mock('happy')
+    const e = createEvm()
+    expect(await e.isPolygon()).toBe(false)
+    await e.ensurePolygon()
+    expect(await e.isPolygon()).toBe(true)
+    expect(dialogs(m)).toEqual(['wallet_switchEthereumChain'])
   })
 
   it('reads token, aToken, permit nonce and POL balances from a public Polygon RPC, not the wallet', async () => {
