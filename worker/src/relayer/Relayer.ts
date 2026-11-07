@@ -381,7 +381,11 @@ export class Relayer extends DurableObject<Env> {
     if (rc) return this.settle(j, rc)
 
     const fresh = now - j.lastSentAt < GAS_POLICY.replaceAfterMs
-    if (j.accepted && fresh) return
+    // The deadline does not wait out the freshness window: a pending router call is replaced before its permit
+    // expires, or a bump sent just before could still be mined after it and revert.
+    const expiring =
+      !j.cancelReason && Math.floor(now / 1000) >= Number(j.deadline) - GAS_POLICY.deadlineMarginSec
+    if (j.accepted && fresh && !expiring) return
 
     const used = await this.client.getTransactionCount({ address: this.signer().address, blockTag: 'latest' })
     if (used > j.nonce) return this.nonceUsedWithoutReceipt(j)
@@ -390,7 +394,7 @@ export class Relayer extends DurableObject<Env> {
     if (j.cancelReason) return fresh ? this.rebroadcast(j) : this.replace(j)
 
     // The router call is only sent again while it can still succeed.
-    if (Math.floor(now / 1000) >= Number(j.deadline) - GAS_POLICY.deadlineMarginSec) return this.replace(j, 'deadline')
+    if (expiring) return this.replace(j, 'deadline')
     const revert = await simulate(this.client, this.signer().address, routerAddress(this.env)!, j.data)
     if (revert) return this.replace(j, 'would_revert', revert.reason)
     if (fresh) return this.rebroadcast(j)

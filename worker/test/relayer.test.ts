@@ -215,6 +215,26 @@ describe('Relayer.submit', () => {
     expect(chain.distinctSent()).toHaveLength(1)
     expect(storage.map.has(`job:${JOB}`)).toBe(false)
   })
+
+  it('keeps the job when every node answers with an unrecognised error (-32603 "Request timeout")', async () => {
+    const { chain, submit, storage, row, r } = setup('https://a.test,https://b.test')
+    chain.onSend = () => new RpcError('Request timeout', -32603)
+    const a = await submit(req())
+    expect(a).toMatchObject({ status: 202, body: { status: 'queued' } })
+    expect(storage.map.has(`job:${JOB}`)).toBe(true)
+    chain.mine(a.body.txHash as Hex)
+    await r.alarm()
+    expect(row()).toMatchObject({ status: 'confirmed', tx_hash: a.body.txHash })
+  })
+
+  it('drops the job only on a known refusal from every node ("replacement transaction underpriced")', async () => {
+    const { chain, submit, storage } = setup('https://a.test,https://b.test')
+    chain.onSend = () => new RpcError('replacement transaction underpriced')
+    const a = await submit(req())
+    expect(a).toMatchObject({ status: 500, body: { error: 'INTERNAL', detail: { reason: 'send_rejected' } } })
+    expect(storage.map.has(`job:${JOB}`)).toBe(false)
+    expect(storage.map.get('nextNonce')).toBeUndefined()
+  })
 })
 
 describe('Relayer.alarm', () => {
@@ -246,6 +266,24 @@ describe('Relayer.alarm', () => {
     expect(row()).toMatchObject({ status: 'failed', error: 'DEADLINE_INVALID', tx_hash: keccak256(raws[1]!) })
     expect(JSON.parse(String(row()!.detail))).toEqual({ reason: 'expired_pending' })
     expect(a.body.status).toBe('submitted')
+  })
+
+  it('cancels by deadline - 15 s even inside the 45 s freshness window, and sends no router call after', async () => {
+    const { chain, submit, later } = setup()
+    const deadlineMs = T0 + 120_000
+    await submit(req({ deadline: String(deadlineMs / 1000) }))
+    const sends: { at: number; to: string | null | undefined }[] = []
+    chain.onSend = (_u, raw) => {
+      sends.push({ at: Date.now(), to: parseTransaction(raw).to })
+      return keccak256(raw)
+    }
+    for (let t = 5_000; t <= 150_000; t += 5_000) await later(5_000)
+    const cancels = sends.filter(s => s.to === RELAYER.toLowerCase())
+    expect(cancels.length).toBeGreaterThan(0)
+    expect(cancels[0]!.at).toBeLessThanOrEqual(deadlineMs - 15_000)
+    const routerAfter = sends.filter(s => s.to === ROUTER.toLowerCase() && s.at >= cancels[0]!.at)
+    expect(routerAfter).toEqual([])
+    expect(sends.filter(s => s.to === ROUTER.toLowerCase()).every(s => s.at < deadlineMs - 15_000)).toBe(true)
   })
 
   it('cancels when the re-simulation reverts and reports the job confirmed if a front-runner landed it', async () => {

@@ -62,6 +62,31 @@ describe('POST /api/relay input errors', () => {
     expect(submit).not.toHaveBeenCalled()
     expect(chain.calls).toHaveLength(0)
   })
+
+  it('answers a well-formed signature that cannot be recovered (r = n, r off the curve) with 400 BAD_SIGNATURE', async () => {
+    const P = 2n ** 256n - 2n ** 32n - 977n
+    const N = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n
+    const pow = (b: bigint, e: bigint) => {
+      let r = 1n
+      for (b %= P; e > 0n; e >>= 1n, b = (b * b) % P) if (e & 1n) r = (r * b) % P
+      return r
+    }
+    // Smallest x for which x^3 + 7 has no square root mod p: no curve point has that x.
+    let offCurve = 1n
+    while (pow(offCurve ** 3n + 7n, (P - 1n) / 2n) !== P - 1n) offCurve++
+    const sig = (r: bigint) => `0x${r.toString(16).padStart(64, '0')}${'0'.repeat(63)}1${'1b'}` as Hex
+
+    const chain = new FakeChain()
+    vi.stubGlobal('fetch', chain.fetch)
+    const { post, submit } = setup()
+    const good = await permitBody()
+    for (const r of [N, offCurve]) {
+      const res = await post({ ...good, signature: sig(r) })
+      expect(res, `r = ${r}`).toMatchObject({ status: 400, body: { error: 'BAD_SIGNATURE', detail: { reason: 'invalid_signature' } } })
+    }
+    expect(submit).not.toHaveBeenCalled()
+    expect(chain.calls).toHaveLength(0)
+  })
 })
 
 describe('POST /api/relay handoff', () => {

@@ -62,7 +62,13 @@ async function run(env: Env, body: unknown): Promise<RelayResponse> {
     nonce: p.nonce,
     deadline: p.deadline,
   })
-  const signer = await recoverTypedDataAddress({ ...permit, signature: p.signature })
+  let signer: Address
+  try {
+    signer = await recoverTypedDataAddress({ ...permit, signature: p.signature })
+  } catch {
+    // Well-formed bytes that are no secp256k1 signature at all (r >= n, or r not an x on the curve).
+    throw new RelayError('BAD_SIGNATURE', { reason: 'invalid_signature' })
+  }
   if (!isAddressEqual(signer, p.owner)) throw new RelayError('BAD_SIGNATURE', { reason: 'signer_mismatch' })
 
   const client = polygonClient(env)
