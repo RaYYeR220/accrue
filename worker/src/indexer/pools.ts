@@ -106,7 +106,7 @@ export function cursorResetStatement(pool: string): Stmt {
   return {
     sql:
       'UPDATE pool_cursor SET newest_hash = NULL, newest_block = NULL, resume_hash = NULL, floor_block = NULL, ' +
-      'last_payout_block = NULL, backfill_done = 1 WHERE pool = ?',
+      'last_payout_block = NULL, reach_ts = NULL, hole_from_ts = NULL, hole_to_ts = NULL, backfill_done = 1 WHERE pool = ?',
     params: [pool],
   }
 }

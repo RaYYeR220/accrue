@@ -21,7 +21,7 @@ const validators = [
 const isRestake = (t: NimTx) => t.toType === 3 && t.recipientData.startsWith('06')
 const outsider = garuda.txs.find((t) => t.from === POOL && t.toType === 0)!.to
 
-function routes(chain: FakeChain, state: { rpcDown: boolean; fetches: number; validator: 'ok' | 'none' | 'fault' }) {
+function routes(chain: FakeChain, state: { rpcDown: boolean; fetches: number; validator: 'ok' | 'none' | 'fault' | 'moved' }) {
   return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     state.fetches++
     const url = String(input)
@@ -32,6 +32,7 @@ function routes(chain: FakeChain, state: { rpcDown: boolean; fetches: number; va
     const err = (data?: string) => new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, error: { code: -32603, message: 'Internal error', ...(data ? { data } : {}) } }))
     if (method === 'getValidatorByAddress') {
       if (params[0] !== POOL || state.validator === 'none') return err(`No validator with address: ${params[0]}`)
+      if (state.validator === 'moved') return ok({ address: POOL, rewardAddress: SURF })
       return state.validator === 'fault' ? err() : ok({ address: POOL, rewardAddress: POOL })
     }
     if (method === 'getTransactionsByAddress') return ok(chain.page(params[0] as string, params[2] as string | null))
@@ -55,7 +56,7 @@ function expectedUpTo(block: number) {
 describe('runIndexerTick', () => {
   let db: FakeD1
   let chain: FakeChain
-  const state = { rpcDown: false, fetches: 0, validator: 'ok' as 'ok' | 'none' | 'fault' }
+  const state = { rpcDown: false, fetches: 0, validator: 'ok' as 'ok' | 'none' | 'fault' | 'moved' }
   const env = () => ({ DB: db as never, NIM_RPCS: 'https://rpc.test', POLYGON_RPCS: '', RELAYER_ADDRESS: '', RELAYER: null as never })
   let t = Date.UTC(2026, 10, 7, 12)
   const tick = async (advanceMs = 5 * MIN) => {
@@ -168,6 +169,16 @@ describe('runIndexerTick', () => {
     await tick(61 * MIN)
     expect(pool()).toEqual({ reward_address: null, reward_misses: 0 })
     expect(cursor()!.newest_block).toBe(cursorKept!.newest_block)
+  })
+
+  it('a new reward address resets the cursor to "from the head on", reach and hole included', async () => {
+    for (let i = 0; i < 12 && cursor()?.backfill_done !== 1; i++) await tick()
+    expect(cursor()!.reach_ts).not.toBeNull()
+    state.validator = 'moved'
+    await tick(25 * 60 * MIN)
+    const c = cursor()!
+    expect(db.query<{ reward_address: string }>('SELECT reward_address FROM pools WHERE address = ?', POOL)[0]!.reward_address).toBe(SURF)
+    expect([c.newest_block, c.resume_hash, c.reach_ts, c.hole_from_ts, c.hole_to_ts, c.backfill_done]).toEqual([null, null, null, null, null, 1])
   })
 
   it('a server fault on getValidatorByAddress changes nothing', async () => {
