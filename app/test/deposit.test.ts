@@ -19,6 +19,8 @@ const withdrawAll: Draft = { kind: 'withdraw', asset: 'USDT0', amount: 'all' }
 const J1 = jobIdOf(sig(1))
 const J2 = jobIdOf(sig(2))
 const GAS_PRICE = 100n * 10n ** 9n
+// wallets reserve gasLimit × maxFeePerGas, so the offer needs twice the current price
+const FEE_ESTIMATE = flowConfig.selfGasLimit * GAS_PRICE * 2n
 
 function harness(draft: Draft) {
   let state: ActionState = { s: 'signing', draft }
@@ -154,7 +156,7 @@ describe('deposit', () => {
     expect(h.state).toMatchObject({
       s: 'failed',
       error: { code: 'RPC_UNAVAILABLE', retry: 'same' },
-      offer: { kind: 'selfGas', estimateWei: flowConfig.selfGasLimit * GAS_PRICE },
+      offer: { kind: 'selfGas', estimateWei: FEE_ESTIMATE },
     })
     expect(ev.polBalance).toHaveBeenCalledWith(OWNER)
     // the relay refused it, so there is nothing to resume
@@ -169,19 +171,20 @@ describe('deposit', () => {
     expect(h.state.s).toBe('failed')
     expect(h.state).not.toHaveProperty('offer')
 
-    vi.restoreAllMocks()
-    stubEvm({ polWei: flowConfig.selfGasLimit * GAS_PRICE })
-    const h2 = harness(supply)
-    await deposit('USDT0', 5_000_000n, {}, h2.emit)
-    expect(h2.state.s).toBe('failed')
-    expect(h2.state).not.toHaveProperty('offer')
+    for (const polWei of [FEE_ESTIMATE, flowConfig.selfGasLimit * GAS_PRICE + 1n]) {
+      vi.restoreAllMocks()
+      stubEvm({ polWei })
+      const h2 = harness(supply)
+      await deposit('USDT0', 5_000_000n, {}, h2.emit)
+      expect(h2.state.s).toBe('failed')
+      expect(h2.state).not.toHaveProperty('offer')
+    }
   })
 
   it.each([
     ['RELAYER_LOW_GAS', () => relayError(503, 'RELAYER_LOW_GAS'), 1],
     ['BUDGET_EXHAUSTED', () => relayError(503, 'BUDGET_EXHAUSTED'), 1],
-    ['Cloudflare 1102 (not JSON)', () => new Response('error code: 1102', { status: 503 }), 3],
-    ['a bare 500', () => new Response('Internal Server Error', { status: 500 }), 3],
+    ['INTERNAL db_error (JSON 500)', () => relayError(500, 'INTERNAL', { reason: 'db_error' }), 3],
   ])('%s offers self-gas', async (_name, answer, tries) => {
     const ev = stubEvm()
     const calls = stubFetch(answer)
@@ -190,6 +193,106 @@ describe('deposit', () => {
     expect(h.state).toMatchObject({ s: 'failed', offer: { kind: 'selfGas' } })
     expect(posts(calls)).toHaveLength(tries)
     expect(ev.signPermit).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([
+    ['Cloudflare 1102 (not JSON)', () => new Response('error code: 1102', { status: 503 })],
+    ['a bare 500', () => new Response('Internal Server Error', { status: 500 })],
+  ])('%s may have reached the relay: unknown, record kept, no offer', async (_name, answer) => {
+    const ev = stubEvm()
+    const calls = stubFetch(answer)
+    const h = harness(supply)
+    const ctl = new AbortController()
+    void deposit('USDT0', 5_000_000n, { signal: ctl.signal }, h.emit)
+    await vi.waitFor(() => expect(h.state).toMatchObject({ s: 'unknown', jobId: J1 }))
+    expect(posts(calls).length).toBeGreaterThanOrEqual(3)
+    expect(new Set(posts(calls).map(c => JSON.stringify(c.body))).size).toBe(1)
+    expect(h.events.some(e => e.type === 'FAILED')).toBe(false)
+    expect(getLocal(J1)?.status).toBe('sent')
+    expect(ev.polBalance).not.toHaveBeenCalled()
+    ctl.abort()
+  })
+
+  it('a lost answer followed by 500s keeps the record and blocks a second signature (one intent, one deposit)', async () => {
+    const ev = stubEvm()
+    let n = 0
+    const calls = stubFetch(c => {
+      if (c.method !== 'POST') return json(404, { error: 'INTERNAL', detail: { reason: 'not_found' } })
+      n += 1
+      if (n === 1) throw new TypeError('Failed to fetch')
+      return relayError(500, 'INTERNAL', { reason: 'db_error' })
+    })
+    const h = harness(supply)
+    const ctl = new AbortController()
+    void deposit('USDT0', 5_000_000n, { signal: ctl.signal }, h.emit)
+    await vi.waitFor(() => expect(h.state).toMatchObject({ s: 'unknown', jobId: J1 }))
+    expect(h.events.some(e => e.type === 'FAILED')).toBe(false)
+    expect(getLocal(J1)?.status).toBe('sent')
+
+    const again = harness(supply)
+    await deposit('USDT0', 5_000_000n, {}, again.emit)
+    expect(again.state).toMatchObject({ s: 'failed', error: { code: 'PENDING' } })
+    expect(ev.signPermit).toHaveBeenCalledTimes(1)
+    expect(new Set(posts(calls).map(c => c.body?.signature))).toEqual(new Set([sig(1)]))
+    ctl.abort()
+  })
+
+  it('a re-send in the same tap answered "nonce used, landed check unavailable" is landed, not a reason to sign again', async () => {
+    const ev = stubEvm()
+    let n = 0
+    stubFetch(() => {
+      n += 1
+      return n === 1
+        ? relayError(503, 'RPC_UNAVAILABLE', { reason: 'relayer_unavailable' })
+        : relayError(409, 'PERMIT_NONCE_STALE', { expected: '1', landedCheck: 'unavailable' })
+    })
+    const h = harness(supply)
+    await deposit('USDT0', 5_000_000n, {}, h.emit)
+    expect(h.state).toMatchObject({ s: 'confirmed', elsewhere: true })
+    expect(getLocal(J1)).toMatchObject({ status: 'confirmed', detail: { landed: 'elsewhere' } })
+    expect(ev.signPermit).toHaveBeenCalledTimes(1)
+  })
+
+  it('RETRY of a signature that then turns out used (landed check unavailable) is landed; a fresh one is stale', async () => {
+    const ev = stubEvm()
+    let down = true
+    stubFetch(() =>
+      down
+        ? relayError(503, 'RPC_UNAVAILABLE', { reason: 'relayer_unavailable' })
+        : relayError(409, 'PERMIT_NONCE_STALE', { expected: '1', landedCheck: 'unavailable' }),
+    )
+    const a = createDollarAction()
+    a.dispatch({ type: 'DRAFT', draft: supply })
+    a.dispatch({ type: 'SUBMIT' })
+    await vi.waitFor(() => expect(a.getState().s).toBe('failed'))
+    down = false
+    a.dispatch({ type: 'RETRY' })
+    await vi.waitFor(() => expect(a.getState()).toMatchObject({ s: 'confirmed', elsewhere: true }))
+    expect(ev.signPermit).toHaveBeenCalledTimes(1)
+
+    // a brand-new signature answered the same way never went out before, so it is simply stale
+    a.dispatch({ type: 'RESET' })
+    a.dispatch({ type: 'DRAFT', draft: supply })
+    a.dispatch({ type: 'SUBMIT' })
+    await vi.waitFor(() => expect(a.getState()).toMatchObject({ s: 'failed', error: { code: 'PERMIT_NONCE_STALE', retry: 'resign' } }))
+  })
+
+  it('400 INTERNAL bad_request is not retried: the same body can only fail again', async () => {
+    stubEvm()
+    const calls = stubFetch(() => relayError(400, 'INTERNAL', { reason: 'bad_request', field: 'nonce' }))
+    const h = harness(supply)
+    await deposit('USDT0', 5_000_000n, {}, h.emit)
+    expect(h.state).toMatchObject({ s: 'failed', error: { code: 'INTERNAL', retry: 'none' } })
+    expect(posts(calls)).toHaveLength(1)
+  })
+
+  it('a job confirmed without a tx hash still ends confirmed', async () => {
+    stubEvm()
+    stubFetch(c => (c.method === 'POST' ? json(202, { jobId: J1, status: 'submitted' }) : json(200, { jobId: J1, status: 'confirmed' })))
+    const h = harness(supply)
+    await deposit('USDT0', 5_000_000n, {}, h.emit)
+    expect(h.state).toMatchObject({ s: 'confirmed', jobId: J1 })
+    expect(h.state).not.toHaveProperty('txHash')
   })
 
   it.each([
@@ -497,6 +600,49 @@ describe('withdraw', () => {
     ])
     expect(ev.signPermit).not.toHaveBeenCalled()
     expect(h.state).toMatchObject({ s: 'confirmed', txHash: TX })
+  })
+
+  it('a self-paid tx that reverts because the relay already used the permit is reported as landed', async () => {
+    const ev = stubEvm()
+    ev.txStatus.mockResolvedValue('reverted')
+    ev.permitNonce.mockResolvedValue(5n)
+    stubFetch(() => json(404, {}))
+    const body: RelayBody = {
+      kind: 'supply',
+      asset: 'USDT0',
+      owner: OWNER,
+      amount: '5000000',
+      deadline: String(Math.floor(Date.now() / 1000) + 600),
+      nonce: '4',
+      signature: sig(9),
+    }
+    const h = harness(supply)
+    await deposit('USDT0', 5_000_000n, { reuse: body, selfGas: true }, h.emit)
+    expect(ev.permitNonce).toHaveBeenCalledWith(ASSETS.USDT0.address, OWNER)
+    expect(h.state).toMatchObject({ s: 'confirmed', elsewhere: true })
+    expect(h.state).not.toHaveProperty('txHash')
+    expect(getLocal(TX)).toMatchObject({ status: 'confirmed', detail: { landed: 'elsewhere' } })
+  })
+
+  it('a self-paid tx that reverts with the permit still unused fails for good', async () => {
+    const ev = stubEvm()
+    ev.txStatus.mockResolvedValue('reverted')
+    ev.permitNonce.mockResolvedValue(4n)
+    stubFetch(() => json(404, {}))
+    const body: RelayBody = {
+      kind: 'withdraw',
+      asset: 'USDC',
+      owner: OWNER,
+      amount: '40000000',
+      permitValue: '40000000',
+      deadline: String(Math.floor(Date.now() / 1000) + 600),
+      nonce: '4',
+      signature: sig(10),
+    }
+    const h = harness({ kind: 'withdraw', asset: 'USDC', amount: 40_000_000n })
+    await withdraw('USDC', 40_000_000n, { reuse: body, selfGas: true }, h.emit)
+    expect(ev.permitNonce).toHaveBeenCalledWith(ASSETS.USDC.aToken, OWNER)
+    expect(h.state).toMatchObject({ s: 'failed', txHash: TX, error: { code: 'SIMULATION_FAILED', retry: 'none' } })
   })
 
   it('an expired signature is never sent, by relay or wallet', async () => {

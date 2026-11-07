@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   getLocal,
   jobIdOf,
+  track,
   jobsConfig,
   JOBS_STORAGE_KEY,
   listJobs,
@@ -18,7 +19,8 @@ import {
 import { reduce, type ActionState } from '../src/actions/machine'
 import { deposit } from '../src/features/dollars/deposit'
 import { flowConfig } from '../src/features/dollars/flow'
-import { json, OWNER, posts, ROUTER, sig, stubEvm, stubFetch, TX } from './fakes'
+import { ASSETS } from '@accrue/shared'
+import { json, OWNER, posts, relayError, ROUTER, sig, stubEvm, stubFetch, TX } from './fakes'
 
 const X = OWNER
 const S = sig(1)
@@ -153,14 +155,123 @@ describe('resumePending (Review Focus 2: app killed after signing)', () => {
     expect(posted).toEqual([record.body])
   })
 
-  it('an expired signature the relay never received is dropped without sending anything', async () => {
+  it('a signature past its deadline is never sent again, and is only settled once the grace period is over', async () => {
     const deadline = nowSec() - 5
     seed(stored(S, { status: 'sent', deadline, body: bodyFor(S, deadline) }))
     const calls = stubFetch(c => (c.path === `/api/relay/by-owner/${X}` ? json(200, { jobs: [] }) : notFound()))
+    const ev = stubEvm()
 
-    expect(await resumePending(X)).toEqual([])
-    expect(getLocal(J)).toBeUndefined()
+    await resumePending(X)
+    await new Promise(r => setTimeout(r, 30))
     expect(posts(calls)).toHaveLength(0)
+    // the relay may still be settling it: no verdict yet, and no nonce read
+    expect(getLocal(J)?.status).toBe('sent')
+    expect(ev.permitNonce).not.toHaveBeenCalled()
+  })
+
+  describe('after the permit deadline and the grace period, the permit nonce decides (Important 2)', () => {
+    const late = () => nowSec() - jobsConfig.graceSec - 60
+
+    it('a relay job the relay cannot find: nonce unused, so failed for good and the asset is free again', async () => {
+      const deadline = late()
+      seed(stored(S, { status: 'submitted', deadline, body: bodyFor(S, deadline), nonce: '0' }))
+      const calls = stubFetch(c => (c.path === `/api/relay/by-owner/${X}` ? json(200, { jobs: [] }) : notFound()))
+      const ev = stubEvm()
+      ev.permitNonce.mockResolvedValue(0n)
+      await resumePending(X)
+      await vi.waitFor(() =>
+        expect(getLocal(J)).toMatchObject({ status: 'failed', error: 'DEADLINE_INVALID', detail: { reason: 'expired_unconfirmed' } }),
+      )
+      expect(ev.permitNonce).toHaveBeenCalledWith(ASSETS.USDT0.address, X)
+      expect(unresolved(X, 'supply', 'USDT0')).toBeUndefined()
+      expect(posts(calls)).toHaveLength(0)
+    })
+
+    it('a relay job the relay cannot find: nonce used, so landed (the D1 write was lost)', async () => {
+      const deadline = late()
+      seed(stored(S, { status: 'sent', deadline, body: bodyFor(S, deadline), nonce: '0' }))
+      stubFetch(c => (c.path === `/api/relay/by-owner/${X}` ? json(200, { jobs: [] }) : notFound()))
+      stubEvm().permitNonce.mockResolvedValue(1n)
+      await resumePending(X)
+      await vi.waitFor(() => expect(getLocal(J)).toMatchObject({ status: 'confirmed', detail: { landed: 'elsewhere' } }))
+      expect(unresolved(X, 'supply', 'USDT0')).toBeUndefined()
+    })
+
+    it('a self-paid tx that never shows a receipt (dropped or replaced): nonce used, so landed', async () => {
+      seed(stored(S, { jobId: TX, via: 'wallet', txHash: TX, body: undefined, deadline: late(), nonce: '3', kind: 'withdraw' }))
+      stubFetch(() => json(200, { jobs: [] }))
+      const ev = stubEvm()
+      ev.txStatus.mockResolvedValue(null)
+      ev.permitNonce.mockResolvedValue(4n)
+      await resumePending(X)
+      await vi.waitFor(() => expect(getLocal(TX)).toMatchObject({ status: 'confirmed', detail: { landed: 'elsewhere' } }))
+      expect(ev.permitNonce).toHaveBeenCalledWith(ASSETS.USDT0.aToken, X)
+      expect(unresolved(X, 'withdraw', 'USDT0')).toBeUndefined()
+    })
+
+    it('a self-paid tx that never shows a receipt: nonce unused, so failed for good', async () => {
+      seed(stored(S, { jobId: TX, via: 'wallet', txHash: TX, body: undefined, deadline: late(), nonce: '3' }))
+      stubFetch(() => json(200, { jobs: [] }))
+      const ev = stubEvm()
+      ev.txStatus.mockResolvedValue(null)
+      ev.permitNonce.mockResolvedValue(3n)
+      await resumePending(X)
+      await vi.waitFor(() =>
+        expect(getLocal(TX)).toMatchObject({ status: 'failed', error: 'DEADLINE_INVALID', detail: { reason: 'expired_unconfirmed' } }),
+      )
+    })
+
+    it('a failed nonce read keeps the job open and tries again', async () => {
+      const deadline = late()
+      seed(stored(S, { status: 'submitted', deadline, body: bodyFor(S, deadline), nonce: '0' }))
+      stubFetch(c => (c.path === `/api/relay/by-owner/${X}` ? json(200, { jobs: [] }) : notFound()))
+      const ev = stubEvm()
+      ev.permitNonce.mockRejectedValueOnce(new Error('rpc down')).mockResolvedValue(1n)
+      await resumePending(X)
+      await vi.waitFor(() => expect(getLocal(J)?.status).toBe('confirmed'))
+      expect(ev.permitNonce.mock.calls.length).toBeGreaterThanOrEqual(2)
+    })
+  })
+
+  it('a missing receipt backs off instead of polling at full rate', async () => {
+    Object.assign(jobsConfig, { pollMs: 20, maxPollMs: 10_000 })
+    seed(stored(S, { jobId: TX, via: 'wallet', txHash: TX, body: undefined }))
+    stubFetch(() => json(200, { jobs: [] }))
+    const ev = stubEvm()
+    const at: number[] = []
+    ev.txStatus.mockImplementation(async () => {
+      at.push(performance.now())
+      return null
+    })
+    await resumePending(X)
+    await vi.waitFor(() => expect(at.length).toBeGreaterThanOrEqual(5), { timeout: 3_000 })
+    const gaps = at.slice(1).map((t, i) => t - at[i]!)
+    // 20, 40, 80, 160 ms: each wait about twice the last, never a steady few-second loop
+    expect(gaps[3]!).toBeGreaterThan(gaps[0]! * 3)
+  })
+
+  it('a re-send answered "nonce used, landed check unavailable" counts as landed, never as a reason to sign again', async () => {
+    seed(stored(S, { status: 'sent' }))
+    stubFetch(c => {
+      if (c.path === `/api/relay/by-owner/${X}`) return json(200, { jobs: [] })
+      if (c.method === 'POST') return relayError(409, 'PERMIT_NONCE_STALE', { expected: '1', landedCheck: 'unavailable' })
+      return notFound()
+    })
+    await resumePending(X)
+    await vi.waitFor(() => expect(getLocal(J)).toMatchObject({ status: 'confirmed', detail: { landed: 'elsewhere' } }))
+  })
+
+  it('a re-send answered "nonce used by another signature" fails and asks for a fresh one', async () => {
+    seed(stored(S, { status: 'sent' }))
+    const seen: unknown[] = []
+    stubFetch(c => {
+      if (c.path === `/api/relay/by-owner/${X}`) return json(200, { jobs: [] })
+      if (c.method === 'POST') return relayError(409, 'PERMIT_NONCE_STALE', { expected: '1' })
+      return notFound()
+    })
+    await resumePending(X)
+    await track(J, u => seen.push(u))
+    expect(seen.at(-1)).toMatchObject({ job: { status: 'failed', error: 'PERMIT_NONCE_STALE' } })
   })
 
   it('with the relay unreachable, resume keeps the local record and keeps polling until it answers', async () => {

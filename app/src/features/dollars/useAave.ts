@@ -1,6 +1,7 @@
 import { ASSETS, type AssetKey } from '@accrue/shared'
 import { useQuery } from '@tanstack/react-query'
-import { HttpError } from '../../providers/errors'
+import { fetchJson } from '../../lib/api'
+import { isRecord } from '../../lib/util'
 
 export interface Reserve {
   supplyApy: number
@@ -20,20 +21,12 @@ export interface AaveReserves {
 
 export const ASSET_KEYS = Object.keys(ASSETS) as AssetKey[]
 
-export const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
 
 export function bigintField(v: unknown, what: string, signed = false): bigint {
   const re = signed ? /^-?\d{1,78}$/ : /^\d{1,78}$/
   if (typeof v !== 'string' || !re.test(v)) throw new Error(`${what}: not an integer string`)
   return BigInt(v)
-}
-
-export async function fetchJson(path: string): Promise<unknown> {
-  const res = await fetch(path, { signal: AbortSignal.timeout(10_000) })
-  const body: unknown = await res.json().catch(() => null)
-  if (!res.ok) throw new HttpError(res.status, body)
-  return body
 }
 
 // Throws rather than let a malformed number reach the screen.

@@ -3,7 +3,9 @@ import { useQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import type { Address } from 'viem'
 import { accrue } from './accrual'
-import { ASSET_KEYS, bigintField, fetchJson, isRecord, type Reserve } from './useAave'
+import { fetchJson } from '../../lib/api'
+import { isRecord } from '../../lib/util'
+import { ASSET_KEYS, bigintField, type Reserve } from './useAave'
 
 export interface AssetPosition {
   aTokenBalance: bigint

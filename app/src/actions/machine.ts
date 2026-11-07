@@ -18,7 +18,9 @@ export type ActionState =
   | { s: 'confirm'; draft: Draft; chain?: 'switch' }
   | { s: 'signing'; draft: Draft; jobId?: string }
   | { s: 'submitted'; jobId: string; txHash?: Hex; draft?: Draft }
-  | { s: 'confirmed'; txHash: Hex; jobId?: string; draft?: Draft }
+  // elsewhere: the permit was used, but not by the tx we followed (the relay beat a self-paid tx,
+  // or the relay lost its record); the hash that landed it is not known
+  | { s: 'confirmed'; txHash?: Hex; jobId?: string; draft?: Draft; elsewhere?: true }
   | { s: 'failed'; error: UiError; txHash?: Hex; jobId?: string; draft?: Draft; offer?: Offer }
   | { s: 'cancelled'; draft?: Draft }
   // the job may still land: keeps polling, and nothing new is sent until it resolves
@@ -39,7 +41,7 @@ export type FlowEvent =
   | { type: 'WRONG_CHAIN' }
   | { type: 'SIGNED'; jobId: string; relay: RelayBody }
   | { type: 'ACCEPTED'; jobId: string; txHash?: Hex }
-  | { type: 'CONFIRMED'; txHash: Hex; jobId?: string }
+  | { type: 'CONFIRMED'; txHash?: Hex; jobId?: string; elsewhere?: true }
   // the wallet or the relay said no, or the job failed for good
   | { type: 'FAILED'; error: UiError; txHash?: Hex; jobId?: string; offer?: Offer }
   // no answer: whether the job exists or lands is not known yet
@@ -126,7 +128,11 @@ export function reduce(st: ActionState, ev: ActionEvent): ActionState {
       if (st.s !== 'signing' && !inFlight(st)) return st
       if (inFlight(st) && ev.jobId && !sameJob(st, ev.jobId)) return st
       const jobId = ev.jobId ?? st.jobId
-      return withDraft({ s: 'confirmed', txHash: ev.txHash, ...(jobId ? { jobId } : {}) }, st.draft)
+      const out: Of<'confirmed'> = { s: 'confirmed' }
+      if (ev.txHash) out.txHash = ev.txHash
+      if (jobId) out.jobId = jobId
+      if (ev.elsewhere) out.elsewhere = true
+      return withDraft(out, st.draft)
     }
 
     case 'FAILED': {

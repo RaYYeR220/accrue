@@ -1,6 +1,7 @@
 import type { AssetKey, Job } from '@accrue/shared'
 import { ASSETS } from '@accrue/shared'
 import { keccak256, numberToHex, padHex, type Address, type Hex } from 'viem'
+import { sleep } from '../lib/util'
 import { POLYGON_RPCS } from '../providers/evm'
 import { isScenarioName, MOCK_RATES, SCENARIO_NAMES, SCENARIOS, type RelayOutcome, type Scenario, type ScenarioName } from './scenarios'
 
@@ -37,7 +38,6 @@ interface Installed {
 
 const installed = new WeakMap<Window, Installed>()
 
-const sleep = (ms: number) => (ms > 0 ? new Promise<void>(r => setTimeout(r, ms)) : Promise.resolve())
 
 function randomHex(bytes: number): string {
   const b = crypto.getRandomValues(new Uint8Array(bytes))
@@ -256,7 +256,8 @@ export function installMock(search: string, w: Window = window): MockHandle {
       })
     }
     if (!path.startsWith('/api/relay')) return null
-    if (sc.relay.supply.kind === 'down') return new Response('Service Unavailable', { status: 503 })
+    // what the worker answers when its relayer Durable Object cannot be reached
+    if (sc.relay.supply.kind === 'down') return json(503, { error: 'RPC_UNAVAILABLE', detail: { reason: 'relayer_unavailable' } })
 
     if (path === '/api/relay' && method === 'POST') {
       const req = JSON.parse(body || '{}') as { kind: 'supply' | 'withdraw'; asset: AssetKey; owner: Address; amount: string; signature: Hex }

@@ -4,11 +4,14 @@ import {
   acknowledge,
   forget,
   getLocal,
-  isNoAnswer,
+  isStaleUnchecked,
   isTransient,
   jobIdOf,
+  mayHaveArrived,
+  normalizeSignature,
   postRelay,
   remember,
+  resolveLanded,
   resumePending,
   track,
   unresolved,
@@ -16,6 +19,7 @@ import {
   type RelayBody,
 } from '../../actions/jobs'
 import type { FlowEvent, Offer } from '../../actions/machine'
+import { nowSec, sleep } from '../../lib/util'
 import { HttpError, toUiError, type Retry, type UiError, type UiErrorCode } from '../../providers/errors'
 import { evm } from '../../providers/evm'
 
@@ -28,6 +32,8 @@ export const flowConfig = {
   retryDelaysMs: [1_500, 4_000] as number[],
   // above the ~312k gas a router call used on the Polygon fork, so the offer is not made when POL is short
   selfGasLimit: 400_000n,
+  // wallets reserve gasLimit × maxFeePerGas, which runs well above the current gas price
+  selfGasPriceMargin: 2n,
 }
 
 export const ROUTER_ABI = parseAbi([
@@ -59,8 +65,6 @@ export function uiError(code: UiErrorCode, retry: Retry, messageKey = `error.${c
   return detail ? { code, retry, messageKey, detail } : { code, retry, messageKey }
 }
 
-const nowSec = () => Math.floor(Date.now() / 1000)
-const sleep = (ms: number) => (ms > 0 ? new Promise<void>(r => setTimeout(r, ms)) : Promise.resolve())
 const isError = (v: unknown): v is UiError => typeof v === 'object' && v !== null && 'code' in v
 
 const SELF_GAS_CODES: readonly UiErrorCode[] = ['RELAYER_LOW_GAS', 'BUDGET_EXHAUSTED', 'RPC_UNAVAILABLE']
@@ -72,9 +76,8 @@ const pendingError = (jobId?: string) => uiError('PENDING', 'none', 'dollars.err
 const expiredError = () => toUiError({ error: 'DEADLINE_INVALID', detail: { reason: 'expired' } })
 
 function splitSignature(sig: Hex): { v: number; r: Hex; s: Hex } {
-  const h = sig.toLowerCase()
-  const v = parseInt(h.slice(130, 132), 16)
-  return { v: v < 27 ? v + 27 : v, r: `0x${h.slice(2, 66)}`, s: `0x${h.slice(66, 130)}` }
+  const h = normalizeSignature(sig)
+  return { v: parseInt(h.slice(130, 132), 16), r: `0x${h.slice(2, 66)}`, s: `0x${h.slice(66, 130)}` }
 }
 
 export function routerCalldata(body: RelayBody): Hex {
@@ -106,7 +109,7 @@ export function report(job: LocalJob, out: Emit): void {
     case 'submitted':
       return out({ type: 'ACCEPTED', jobId: job.jobId, ...tx })
     case 'confirmed':
-      return job.txHash ? out({ type: 'CONFIRMED', txHash: job.txHash, jobId: job.jobId }) : out({ type: 'ACCEPTED', jobId: job.jobId })
+      return out({ type: 'CONFIRMED', jobId: job.jobId, ...tx, ...(job.detail?.landed === 'elsewhere' ? { elsewhere: true } : {}) })
     case 'failed':
       return out({ type: 'FAILED', error: jobFailure(job), jobId: job.jobId, ...tx })
   }
@@ -145,7 +148,7 @@ async function offerFor(err: unknown, e: UiError, owner: Address): Promise<Offer
   if (!relayCannotPay || !flowConfig.router) return undefined
   try {
     const [pol, price] = await Promise.all([evm.polBalance(owner), evm.gasPrice()])
-    const estimateWei = flowConfig.selfGasLimit * price
+    const estimateWei = flowConfig.selfGasLimit * price * flowConfig.selfGasPriceMargin
     return pol > estimateWei ? { kind: 'selfGas', estimateWei } : undefined
   } catch {
     return undefined
@@ -153,7 +156,8 @@ async function offerFor(err: unknown, e: UiError, owner: Address): Promise<Offer
 }
 
 // POST with the same signature until the relay answers for real. Never re-signs.
-async function relay(body: RelayBody, out: Emit, signal?: AbortSignal): Promise<void> {
+// `sentBefore`: this exact signature was POSTed on an earlier tap.
+async function relay(body: RelayBody, out: Emit, signal?: AbortSignal, sentBefore = false): Promise<void> {
   const localId = jobIdOf(body.signature)
   const known = getLocal(localId)
   // the relay already has this exact signature: follow that job, never submit it twice
@@ -177,29 +181,40 @@ async function relay(body: RelayBody, out: Emit, signal?: AbortSignal): Promise<
     status: 'sent',
     via: 'relay',
     deadline: Number(body.deadline),
+    nonce: body.nonce,
     body,
   }
   remember(record)
 
   let err: unknown
-  for (let attempt = 0; ; attempt++) {
+  let attempts = 0
+  // any attempt that may have reached the relay unanswered makes the whole send uncertain,
+  // whatever the later attempts say: the first one may already have broadcast
+  let unsure = false
+  for (;;) {
+    attempts += 1
     try {
       const job = acknowledge(getLocal(localId) ?? record, await postRelay(body))
       report(job, out)
       return follow(job.jobId, out, signal)
     } catch (e) {
       err = e
-      if (!isTransient(e) || attempt >= flowConfig.retryDelaysMs.length) break
+      unsure ||= mayHaveArrived(e)
+      if (!isTransient(e) || attempts > flowConfig.retryDelaysMs.length) break
     }
-    await sleep(flowConfig.retryDelaysMs[attempt] ?? 0)
+    await sleep(flowConfig.retryDelaysMs[attempts - 1] ?? 0)
     if (signal?.aborted) return
   }
 
-  if (isNoAnswer(err)) {
-    // it may have arrived: the poller asks for it by id, and sends the same signature again if it did not
+  if (unsure) {
+    // the record stays: the poller asks for the job by id, and sends the same signature again if it is unknown
     out({ type: 'ERROR', error: toUiError(err), jobId: localId })
     return follow(localId, out, signal)
   }
+
+  // this signature went out before and its nonce is now used by a tx the relay could not identify:
+  // most likely that earlier send, so signing a new permit could deposit twice
+  if ((sentBefore || attempts > 1) && isStaleUnchecked(err)) return report(resolveLanded(getLocal(localId) ?? record), out)
 
   // a real answer saying no: this signature never became a job
   forget(localId)
@@ -226,6 +241,7 @@ async function selfSend(body: RelayBody, out: Emit, signal?: AbortSignal): Promi
     via: 'wallet',
     txHash: hash,
     deadline: Number(body.deadline),
+    nonce: body.nonce,
   })
   out({ type: 'ACCEPTED', jobId: hash, txHash: hash })
   await follow(hash, out, signal)
@@ -302,7 +318,7 @@ export async function runFlow(spec: FlowSpec, opts: FlowOpts, emit: Emit): Promi
   }
   try {
     if (opts.selfGas && !opts.reuse) throw new Error('self-gas needs an already signed permit')
-    if (opts.reuse) await (opts.selfGas ? selfSend(opts.reuse, out, opts.signal) : relay(opts.reuse, out, opts.signal))
+    if (opts.reuse) await (opts.selfGas ? selfSend(opts.reuse, out, opts.signal) : relay(opts.reuse, out, opts.signal, true))
     else await signAndRelay(spec, out, opts.signal)
   } catch (e) {
     out({ type: 'FAILED', error: toUiError(e) })

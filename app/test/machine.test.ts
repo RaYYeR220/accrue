@@ -56,6 +56,11 @@ describe('action state machine', () => {
     expect(reduce(unknown, { type: 'FAILED', error: reverted, txHash: TX })).toMatchObject({ s: 'failed', txHash: TX })
   })
 
+  it('a job confirmed without a known tx hash, or landed elsewhere, still ends confirmed', () => {
+    expect(reduce(submitted, { type: 'CONFIRMED' })).toStrictEqual({ s: 'confirmed', jobId: J, draft })
+    expect(reduce(unknown, { type: 'CONFIRMED', elsewhere: true })).toStrictEqual({ s: 'confirmed', jobId: J, draft, elsewhere: true })
+  })
+
   it('a job that fails for good keeps its tx hash', () => {
     const withTx: ActionState = { s: 'submitted', jobId: J, txHash: TX, draft }
     expect(reduce(withTx, { type: 'FAILED', error: reverted })).toMatchObject({ s: 'failed', error: reverted, txHash: TX })

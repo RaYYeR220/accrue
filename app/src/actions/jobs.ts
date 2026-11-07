@@ -1,5 +1,7 @@
 import { ASSETS, LIMITS, RELAY_ERROR_CODES, type AssetKey, type Job, type RelayErrorCode } from '@accrue/shared'
 import { keccak256, type Address, type Hex } from 'viem'
+import { fetchJson } from '../lib/api'
+import { isRecord, nowSec, sleep } from '../lib/util'
 import { HttpError, toUiError, type UiError } from '../providers/errors'
 import { evm } from '../providers/evm'
 
@@ -42,8 +44,9 @@ export interface LocalJob {
   txHash?: Hex
   error?: RelayErrorCode
   detail?: Record<string, unknown>
-  // permit deadline, unix seconds
+  // the signed permit's deadline (unix seconds) and nonce
   deadline?: number
+  nonce?: string
   // kept until the job is final, so the very same signature can be sent again if the relay lost it
   body?: RelayBody
 }
@@ -52,30 +55,36 @@ export type JobUpdate = { job: LocalJob } | { error: UiError }
 
 export const JOBS_STORAGE_KEY = 'accrue.dollars.jobs.v1'
 
-export const jobsConfig = { pollMs: 3_000, maxPollMs: 30_000, timeoutMs: 15_000 }
+// graceSec: after the permit deadline, how long the relay gets to settle a job before the
+// permit nonce on-chain decides it (the relay cancels or confirms within a minute of the deadline)
+export const jobsConfig = { pollMs: 3_000, maxPollMs: 30_000, timeoutMs: 15_000, graceSec: 600 }
 
 const MAX_RECORDS = 50
 const STATUSES: readonly string[] = ['queued', 'submitted', 'confirmed', 'failed']
 const LOCAL_STATUSES: readonly string[] = ['sent', ...STATUSES]
 
-const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 const isHash = (v: unknown): v is Hex => typeof v === 'string' && /^0x[0-9a-fA-F]{64}$/.test(v)
 const isRelayCode = (v: unknown): v is RelayErrorCode => typeof v === 'string' && (RELAY_ERROR_CODES as readonly string[]).includes(v)
 const isAsset = (v: unknown): v is AssetKey => typeof v === 'string' && Object.hasOwn(ASSETS, v)
-const nowSec = () => Math.floor(Date.now() / 1000)
-const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
 const key = (id: string) => id.toLowerCase()
 
 export const isFinal = (s: LocalStatus) => s === 'confirmed' || s === 'failed'
 
-// Same id the relay derives: keccak256 of the signature, lowercased, with v as 27/28.
-export function jobIdOf(signature: Hex): Hex {
-  const lower = signature.toLowerCase()
-  if (!/^0x[0-9a-f]{130}$/.test(lower)) return keccak256(lower as Hex)
-  const v = parseInt(lower.slice(130), 16)
-  const canon = v === 0 || v === 1 ? v + 27 : v
-  return keccak256(`${lower.slice(0, 130)}${canon.toString(16).padStart(2, '0')}` as Hex)
+const SIG_RE = /^0x[0-9a-fA-F]{130}$/
+
+// some wallets return v as 0/1
+const canonicalV = (v: number) => (v === 0 || v === 1 ? v + 27 : v)
+
+// The worker's normalizeSignature, byte for byte: lowercase, v as 27/28.
+export function normalizeSignature(sig: Hex): Hex {
+  if (typeof sig !== 'string' || !SIG_RE.test(sig)) return String(sig).toLowerCase() as Hex
+  const lower = sig.toLowerCase()
+  const v = canonicalV(parseInt(lower.slice(130), 16))
+  return `${lower.slice(0, 130)}${v.toString(16).padStart(2, '0')}` as Hex
 }
+
+// The relay's jobId for a signature.
+export const jobIdOf = (signature: Hex): Hex => keccak256(normalizeSignature(signature))
 
 // ---- relay API ----
 
@@ -87,13 +96,7 @@ export class UnreadableAnswer extends Error {
   }
 }
 
-async function api(path: string, init?: RequestInit): Promise<unknown> {
-  const signal = typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(jobsConfig.timeoutMs) : undefined
-  const res = await fetch(path, signal ? { ...init, signal } : init)
-  const body: unknown = await res.json().catch(() => null)
-  if (!res.ok) throw new HttpError(res.status, body)
-  return body
-}
+const api = (path: string, init?: RequestInit) => fetchJson(path, init, jobsConfig.timeoutMs)
 
 function parseView(b: unknown): JobView {
   if (!isRecord(b) || typeof b.jobId !== 'string' || typeof b.status !== 'string' || !STATUSES.includes(b.status)) {
@@ -139,6 +142,19 @@ export function isNoAnswer(e: unknown): boolean {
   if (e instanceof UnreadableAnswer) return true
   const code = toUiError(e).code
   return code === 'NETWORK' || code === 'TIMEOUT'
+}
+
+// The relay may have taken (and broadcast) the request without us getting its answer: no answer at all,
+// or a 5xx that is not one of its own JSON errors (a Cloudflare 1102 after the relayer already sent).
+export function mayHaveArrived(e: unknown): boolean {
+  if (isNoAnswer(e)) return true
+  return e instanceof HttpError && e.status >= 500 && !(isRecord(e.body) && typeof e.body.error === 'string')
+}
+
+// "Nonce already used" where the relay could not look up which tx used it.
+export function isStaleUnchecked(e: unknown): boolean {
+  if (!(e instanceof HttpError) || !isRecord(e.body) || e.body.error !== 'PERMIT_NONCE_STALE') return false
+  return isRecord(e.body.detail) && e.body.detail.landedCheck === 'unavailable'
 }
 
 // Worth sending again with the same signature (the relay is idempotent on it): no answer, or a 5xx
@@ -272,8 +288,33 @@ export function acknowledge(base: LocalJob, view: JobView): LocalJob {
 }
 
 const canResend = (r: LocalJob, now: number) => !!r.body && r.deadline !== undefined && r.deadline - now >= LIMITS.deadlineMinSec
-// past its deadline nobody can execute the permit any more
-const expired = (r: LocalJob, now: number) => r.deadline !== undefined && now >= r.deadline
+const pastGrace = (r: LocalJob) => r.deadline !== undefined && nowSec() >= r.deadline + jobsConfig.graceSec
+
+const permitToken = (r: LocalJob) => (r.kind === 'supply' ? ASSETS[r.asset].address : ASSETS[r.asset].aToken)
+
+// Whether the permit's nonce has been used on-chain; null when the record does not know its nonce.
+async function nonceUsed(r: LocalJob): Promise<boolean | null> {
+  const nonce = r.nonce ?? r.body?.nonce
+  if (nonce === undefined) return null
+  return (await evm.permitNonce(permitToken(r), r.owner)) > BigInt(nonce)
+}
+
+// The permit ran, but not through the tx this record followed, so its hash is not known.
+export function resolveLanded(r: LocalJob): LocalJob {
+  const next: LocalJob = { ...r, status: 'confirmed', detail: { landed: 'elsewhere' } }
+  delete next.txHash
+  delete next.error
+  return store(next, r.jobId)
+}
+
+// Past its deadline the permit can no longer execute; once the relay has had time to settle,
+// the token's nonce says whether it ran.
+async function settleExpired(r: LocalJob): Promise<LocalJob | null> {
+  const used = await nonceUsed(r)
+  if (used === null) return null
+  if (used) return resolveLanded(r)
+  return store({ ...r, status: 'failed', error: 'DEADLINE_INVALID', detail: { reason: 'expired_unconfirmed' } })
+}
 
 function toJob(r: LocalJob): Job {
   const j: Job = {
@@ -315,20 +356,15 @@ async function checkRelay(r: LocalJob): Promise<LocalJob> {
     return acknowledge(r, await getJob(r.jobId))
   } catch (e) {
     if (!(e instanceof HttpError && e.status === 404)) throw e
-    const now = nowSec()
-    if (!canResend(r, now)) {
-      // the relay has no such job and the permit cannot be sent any more: nothing will happen
-      if (r.status === 'sent' && expired(r, now)) {
-        forget(r.jobId)
-        return { ...r, status: 'failed', error: 'DEADLINE_INVALID', detail: { reason: 'not_sent' } }
-      }
-      throw e
-    }
+    // too close to the deadline to send again: keep asking until the grace period settles it
+    if (!canResend(r, nowSec())) throw e
     // the relay lost it or never got it: the same signature again, which the relay treats idempotently
     try {
       return acknowledge(r, await postRelay(r.body!))
     } catch (e2) {
       if (!(e2 instanceof HttpError) || isTransient(e2)) throw e2
+      // an earlier send of this very signature most likely used the nonce
+      if (isStaleUnchecked(e2)) return resolveLanded(r)
       forget(r.jobId)
       return refusal(r, e2)
     }
@@ -338,11 +374,10 @@ async function checkRelay(r: LocalJob): Promise<LocalJob> {
 async function checkWallet(r: LocalJob): Promise<LocalJob> {
   const status = await evm.txStatus(r.jobId as Hex)
   if (status === null) return r
-  const next: LocalJob =
-    status === 'success'
-      ? { ...r, status: 'confirmed' }
-      : { ...r, status: 'failed', error: 'SIMULATION_FAILED', detail: { reason: 'reverted_onchain' } }
-  return store(next)
+  if (status === 'success') return store({ ...r, status: 'confirmed' })
+  // the relay may have landed the same permit first, which makes this tx revert on the spent allowance
+  if (await nonceUsed(r)) return resolveLanded(r)
+  return store({ ...r, status: 'failed', error: 'SIMULATION_FAILED', detail: { reason: 'reverted_onchain' } })
 }
 
 function startPoller(jobId: string): Poller {
@@ -354,20 +389,36 @@ function startPoller(jobId: string): Poller {
   const done = (async (): Promise<LocalJob | undefined> => {
     let id = jobId
     let delay = jobsConfig.pollMs
+    const backoff = () => (delay = Math.min(delay * 2, jobsConfig.maxPollMs))
     for (;;) {
       const r = getLocal(id)
       if (gen !== generation || !r) return r
+      let next: LocalJob | undefined
+      let failure: unknown
       try {
-        const next = r.via === 'wallet' ? await checkWallet(r) : await checkRelay(r)
-        if (gen !== generation) return getLocal(id)
+        next = r.via === 'wallet' ? await checkWallet(r) : await checkRelay(r)
+      } catch (e) {
+        failure = e
+      }
+      if (!(next && isFinal(next.status)) && pastGrace(next ?? r)) {
+        try {
+          next = (await settleExpired(next ?? r)) ?? next
+        } catch (e) {
+          // the nonce could not be read: try again next round
+          failure ??= e
+        }
+      }
+      if (gen !== generation) return getLocal(id)
+      if (next) {
         id = next.jobId
         notify({ job: next })
         if (isFinal(next.status)) return next
-        delay = jobsConfig.pollMs
-      } catch (e) {
-        if (gen !== generation) return getLocal(id)
-        notify({ error: toUiError(e) })
-        delay = Math.min(delay * 2, jobsConfig.maxPollMs)
+        // no receipt yet: a dropped or replaced tx would otherwise be asked about every few seconds forever
+        if (next === r && r.via === 'wallet') backoff()
+        else delay = jobsConfig.pollMs
+      } else {
+        notify({ error: toUiError(failure) })
+        backoff()
       }
       await sleep(delay)
     }
@@ -438,16 +489,7 @@ export async function resumePending(owner: Address): Promise<Job[]> {
     store(withView(base, view))
   }
 
-  const now = nowSec()
-  const extra: LocalJob[] = []
-  for (const r of listJobs(owner)) {
-    if (listed.has(key(r.jobId)) || isFinal(r.status)) continue
-    if (server && r.via === 'relay' && r.status === 'sent' && expired(r, now)) {
-      forget(r.jobId)
-      continue
-    }
-    extra.push(r)
-  }
+  const extra = listJobs(owner).filter(r => !listed.has(key(r.jobId)) && !isFinal(r.status))
 
   for (const r of listJobs(owner)) if (!isFinal(r.status)) void track(r.jobId)
 

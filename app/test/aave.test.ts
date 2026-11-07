@@ -42,6 +42,19 @@ describe('GET /api/aave', () => {
     expect(() => parseAave(null)).toThrow()
   })
 
+  it('still works in a WebView without AbortSignal.timeout', async () => {
+    const timeout = AbortSignal.timeout
+    Object.defineProperty(AbortSignal, 'timeout', { value: undefined, configurable: true, writable: true })
+    try {
+      vi.stubGlobal('fetch', async () => new Response(JSON.stringify(aave), { status: 200 }))
+      expect((await fetchAave()).asOf).toBe(aave.asOf)
+      vi.stubGlobal('fetch', async () => new Response(JSON.stringify(position), { status: 200 }))
+      expect((await fetchPosition('0x1111111111111111111111111111111111111111')).assets.USDT0.principal).toBe(100_000_000n)
+    } finally {
+      Object.defineProperty(AbortSignal, 'timeout', { value: timeout, configurable: true, writable: true })
+    }
+  })
+
   it('fetches /api/aave and turns an error answer into HttpError', async () => {
     const f = vi.fn(async () => new Response(JSON.stringify(aave), { status: 200 }))
     vi.stubGlobal('fetch', f)
