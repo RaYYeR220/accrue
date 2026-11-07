@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import {Test, Vm} from "forge-std/Test.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {AccrueRouter} from "../src/AccrueRouter.sol";
 import {IAavePool} from "../src/interfaces/IAavePool.sol";
 import {PermitSigner, USDT0, USDC, A_USDT0, A_USDC} from "./utils/PermitSigner.sol";
@@ -20,6 +21,9 @@ contract AccrueRouterForkTest is Test {
     address internal constant AAVE_V2_POOL = 0x8dFf5E27EA6b7AC08EbFdf9eB090F32ee9a30fcf;
 
     uint256 internal constant FUNDED = 100e6;
+    uint256 internal constant RAY = 1e27;
+    // Aave v3.5 rejects a supply that would mint zero scaled aTokens (amount * RAY / index rounds down).
+    bytes4 internal constant AAVE_INVALID_AMOUNT = bytes4(keccak256("InvalidAmount()"));
 
     AccrueRouter internal router;
     address internal owner;
@@ -172,6 +176,77 @@ contract AccrueRouterForkTest is Test {
         router.supplyWithPermit(USDT0, owner, 0, deadline, v, r, s);
     }
 
+    function test_supply_belowOneScaledUnit_revertsInAave() public {
+        uint256 deadline = vm.getBlockTimestamp() + 1 hours;
+        (uint8 v, bytes32 r, bytes32 s) = _sign(ownerPk, USDT0, 1, deadline);
+        assertEq(RAY / IAavePool(POOL).getReserveNormalizedIncome(USDT0), 0, "1 unit no longer rounds to 0 scaled");
+
+        vm.prank(relayer);
+        vm.expectRevert(AAVE_INVALID_AMOUNT);
+        router.supplyWithPermit(USDT0, owner, 1, deadline, v, r, s);
+
+        assertEq(IERC20(USDT0).balanceOf(owner), FUNDED);
+    }
+
+    function testFuzz_supplyAmount(uint96 amt) public {
+        uint256 amount = bound(uint256(amt), 1, IERC20(USDT0).balanceOf(A_USDT0));
+        vm.prank(A_USDT0);
+        assertTrue(IERC20(USDT0).transfer(owner, amount));
+        uint256 underlyingBefore = IERC20(USDT0).balanceOf(owner);
+        uint256 index = IAavePool(POOL).getReserveNormalizedIncome(USDT0);
+        uint256 deadline = vm.getBlockTimestamp() + 1 hours;
+        (uint8 v, bytes32 r, bytes32 s) = _sign(ownerPk, USDT0, amount, deadline);
+
+        if (amount * RAY / index == 0) {
+            vm.prank(relayer);
+            vm.expectRevert(AAVE_INVALID_AMOUNT);
+            router.supplyWithPermit(USDT0, owner, amount, deadline, v, r, s);
+            return;
+        }
+        vm.expectEmit(true, true, false, true, address(router));
+        emit AccrueRouter.Supplied(owner, USDT0, amount, index);
+        vm.prank(relayer);
+        router.supplyWithPermit(USDT0, owner, amount, deadline, v, r, s);
+
+        uint256 minted = IERC20(A_USDT0).balanceOf(owner);
+        assertLe(minted, amount, "minted more than was supplied");
+        assertGe(minted + index / RAY + 1, amount, "lost more than Aave's rounding");
+        assertEq(IERC20(USDT0).balanceOf(owner), underlyingBefore - amount);
+        assertEq(IERC20(USDT0).allowance(owner, address(router)), 0);
+        assertEq(IERC20(USDT0).allowance(address(router), POOL), 0);
+        _assertNothingStrays();
+    }
+
+    function testFuzz_withdrawAmount(uint96 supplied, uint32 elapsed, uint256 amount, uint256 permitValue) public {
+        _supply(USDT0, bound(uint256(supplied), IAavePool(POOL).getReserveNormalizedIncome(USDT0) / RAY + 1, FUNDED));
+        vm.warp(vm.getBlockTimestamp() + bound(uint256(elapsed), 0, 365 days));
+
+        uint256 balance = IERC20(A_USDT0).balanceOf(owner);
+        permitValue = bound(permitValue, 0, 2 * balance);
+        uint256 deadline = vm.getBlockTimestamp() + 1 hours;
+        (uint8 v, bytes32 r, bytes32 s) = _sign(ownerPk, A_USDT0, permitValue, deadline);
+        uint256 pull = Math.min(amount, Math.min(balance, permitValue));
+        uint256 underlyingBefore = IERC20(USDT0).balanceOf(owner);
+
+        if (pull == 0) {
+            vm.prank(relayer);
+            vm.expectRevert(AccrueRouter.NothingToWithdraw.selector);
+            router.withdrawWithPermit(USDT0, owner, amount, permitValue, deadline, v, r, s);
+            return;
+        }
+        vm.prank(relayer);
+        uint256 withdrawn = router.withdrawWithPermit(USDT0, owner, amount, permitValue, deadline, v, r, s);
+
+        uint256 index = IAavePool(POOL).getReserveNormalizedIncome(USDT0);
+        assertGe(withdrawn, pull, "owner got less than was pulled");
+        assertLe(withdrawn, pull + index / RAY + 1, "owner got more than rounding explains");
+        assertEq(IERC20(USDT0).balanceOf(owner), underlyingBefore + withdrawn);
+        // Value only moves from the owner's Aave position to the owner's wallet, less at most a unit of rounding.
+        assertGe(IERC20(USDT0).balanceOf(owner) + IERC20(A_USDT0).balanceOf(owner) + 1, underlyingBefore + balance);
+        assertLe(IERC20(A_USDT0).allowance(owner, address(router)), permitValue - pull);
+        _assertNothingStrays();
+    }
+
     function test_withdrawPartial_sendsToOwnerOnly() public {
         _supply(USDT0, 5e6);
         uint256 amount = 2e6;
@@ -256,6 +331,33 @@ contract AccrueRouterForkTest is Test {
 
         assertEq(IERC20(A_USDT0).balanceOf(owner), balance);
         assertEq(IERC20(A_USDT0).allowance(owner, address(router)), 0);
+    }
+
+    function test_strayTokens_doNotBreakFlows() public {
+        _supply(USDT0, 5e6);
+        vm.prank(owner);
+        assertTrue(IERC20(A_USDT0).transfer(address(router), 1e6));
+        vm.prank(A_USDT0);
+        assertTrue(IERC20(USDT0).transfer(address(router), 1e6));
+
+        uint256 deadline = vm.getBlockTimestamp() + 1 hours;
+        (uint8 v, bytes32 r, bytes32 s) = _sign(ownerPk, A_USDT0, 1e6, deadline);
+        uint256 ownerBefore = IERC20(USDT0).balanceOf(owner);
+        vm.recordLogs();
+        vm.prank(relayer);
+        uint256 withdrawn = router.withdrawWithPermit(USDT0, owner, 1e6, 1e6, deadline, v, r, s);
+
+        // Stray aTokens leave with the next withdraw, to that withdraw's owner, and the event reports them.
+        assertApproxEqAbs(withdrawn, 2e6, 2);
+        assertEq(IERC20(USDT0).balanceOf(owner), ownerBefore + withdrawn);
+        assertEq(IERC20(A_USDT0).balanceOf(address(router)), 0);
+        (uint256 logged,) = _routerEvent(AccrueRouter.Withdrawn.selector, USDT0);
+        assertEq(logged, withdrawn);
+
+        // Stray underlying stays put and does not get in the way of the next supply.
+        _supply(USDT0, 5e6);
+        assertEq(IERC20(USDT0).balanceOf(address(router)), 1e6);
+        assertEq(IERC20(USDT0).allowance(address(router), POOL), 0);
     }
 
     function _assertSupplyMintsToOwner(address asset, address aToken) internal {
