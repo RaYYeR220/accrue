@@ -15,6 +15,8 @@ contract AccrueRouterForkTest is Test {
 
     address internal constant POOL = 0x794a61358D6845594F94dc1DB02A252b5b4814aD;
     address internal constant USDC_E = 0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174;
+    // A real lending pool that is not the one the aTokens belong to.
+    address internal constant AAVE_V2_POOL = 0x8dFf5E27EA6b7AC08EbFdf9eB090F32ee9a30fcf;
 
     uint256 internal constant FUNDED = 100e6;
 
@@ -45,6 +47,35 @@ contract AccrueRouterForkTest is Test {
         // An aToken contract custodies its reserve's underlying, so it is a deep holder at any block.
         _fund(USDT0, A_USDT0);
         _fund(USDC, A_USDC);
+    }
+
+    function test_constructor_swappedATokens_reverts() public {
+        vm.expectRevert(bytes("AccrueRouter: bad config"));
+        new AccrueRouter(POOL, _pair(USDT0, USDC), _pair(A_USDC, A_USDT0));
+    }
+
+    function test_constructor_foreignPool_reverts() public {
+        vm.expectRevert(bytes("AccrueRouter: bad config"));
+        new AccrueRouter(AAVE_V2_POOL, _pair(USDT0, USDC), _pair(A_USDT0, A_USDC));
+    }
+
+    function test_constructor_eoaAToken_reverts() public {
+        vm.expectRevert(bytes("AccrueRouter: bad config"));
+        new AccrueRouter(POOL, _pair(USDT0, USDC), _pair(A_USDT0, owner));
+    }
+
+    function test_constructor_malformedConfig_reverts() public {
+        address[] memory one = new address[](1);
+        one[0] = USDT0;
+
+        vm.expectRevert(bytes("AccrueRouter: bad config"));
+        new AccrueRouter(address(0), _pair(USDT0, USDC), _pair(A_USDT0, A_USDC));
+        vm.expectRevert(bytes("AccrueRouter: bad config"));
+        new AccrueRouter(POOL, one, _pair(A_USDT0, A_USDC));
+        vm.expectRevert(bytes("AccrueRouter: bad config"));
+        new AccrueRouter(POOL, _pair(USDT0, address(0)), _pair(A_USDT0, A_USDC));
+        vm.expectRevert(bytes("AccrueRouter: bad config"));
+        new AccrueRouter(POOL, _pair(USDT0, USDC), _pair(A_USDT0, address(0)));
     }
 
     function test_permitDomains_matchOnChain() public view {
@@ -264,6 +295,11 @@ contract AccrueRouterForkTest is Test {
     {
         uint256 nonce = IERC20Permit(token).nonces(owner);
         return PermitSigner.sign(signerPk, token, owner, address(router), value, nonce, deadline);
+    }
+
+    function _pair(address a, address b) internal pure returns (address[] memory pair) {
+        pair = new address[](2);
+        (pair[0], pair[1]) = (a, b);
     }
 
     function _fund(address token, address holder) internal {

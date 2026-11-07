@@ -7,6 +7,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IAavePool} from "./interfaces/IAavePool.sol";
+import {IAToken} from "./interfaces/IAToken.sol";
 
 /// @title AccrueRouter
 /// @notice Turns an owner's EIP-2612 permit into an Aave v3 supply or withdraw on the owner's behalf, so anyone
@@ -39,9 +40,16 @@ contract AccrueRouter is ReentrancyGuard {
         require(pool != address(0) && assets.length == aTokens.length, "AccrueRouter: bad config");
         POOL = IAavePool(pool);
         for (uint256 i; i < assets.length; i++) {
+            (address asset, address aToken) = (assets[i], aTokens[i]);
             // forge-lint: disable-next-line(require-revert-in-loop) deploy-time check; one bad pair must abort it all.
-            require(assets[i] != address(0) && aTokens[i] != address(0), "AccrueRouter: bad config");
-            _aTokenOf[assets[i]] = aTokens[i];
+            require(asset != address(0) && aToken.code.length != 0, "AccrueRouter: bad config");
+            // A swapped or foreign-market aToken would otherwise only surface after deploy, as a broken withdraw path
+            // on an immutable contract.
+            // forge-lint: disable-next-line(calls-loop) deploy-time reads of the aToken being registered.
+            bool wired = IAToken(aToken).UNDERLYING_ASSET_ADDRESS() == asset && IAToken(aToken).POOL() == pool;
+            // forge-lint: disable-next-line(require-revert-in-loop) deploy-time check; one bad pair must abort it all.
+            require(wired, "AccrueRouter: bad config");
+            _aTokenOf[asset] = aToken;
         }
     }
 
