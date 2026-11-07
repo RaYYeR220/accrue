@@ -9,4 +9,3 @@ contracts/broadcast/**/dry-run/
 .env*
 *.pem
 .dev.vars
-
