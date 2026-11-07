@@ -2,11 +2,12 @@
 pragma solidity 0.8.28;
 
 import {Vm} from "forge-std/Vm.sol";
-
-address constant USDT0 = 0xc2132D05D31c914a87C6611C10748AEb04B58e8F;
-address constant USDC = 0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359;
-address constant A_USDT0 = 0x6ab707Aca953eDAeFBc4fD23bA73294241490620;
-address constant A_USDC = 0xA4D94019934D8333Ef880ABFFbF2FDd611C762BD;
+import {
+    POLYGON_USDT0 as USDT0,
+    POLYGON_USDC as USDC,
+    POLYGON_A_USDT0 as A_USDT0,
+    POLYGON_A_USDC as A_USDC
+} from "../../script/Polygon.sol";
 
 /// @notice EIP-2612 signing for the Polygon tokens Accrue touches. Domains are rebuilt from their published
 /// parameters instead of read from DOMAIN_SEPARATOR(), so a wrong domain here is the same mistake a wallet

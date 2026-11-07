@@ -7,13 +7,14 @@ import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC2
 import {AccrueRouter} from "../src/AccrueRouter.sol";
 import {IAavePool} from "../src/interfaces/IAavePool.sol";
 import {PermitSigner, USDT0, USDC, A_USDT0, A_USDC} from "./utils/PermitSigner.sol";
+import {POLYGON_POOL} from "../script/Polygon.sol";
 
 contract AccrueRouterForkTest is Test {
     // Polygon PoS at 2026-11-07 12:44:16 UTC. Public full nodes prune state after ~128 blocks, so a cold cache
     // needs an archive-capable POLYGON_RPC (e.g. polygon.drpc.org); Foundry caches the fork state per endpoint.
     uint256 internal constant FORK_BLOCK = 96_900_000;
 
-    address internal constant POOL = 0x794a61358D6845594F94dc1DB02A252b5b4814aD;
+    address internal constant POOL = POLYGON_POOL;
     address internal constant USDC_E = 0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174;
     // A real lending pool that is not the one the aTokens belong to.
     address internal constant AAVE_V2_POOL = 0x8dFf5E27EA6b7AC08EbFdf9eB090F32ee9a30fcf;

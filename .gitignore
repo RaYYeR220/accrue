@@ -3,7 +3,8 @@ dist/
 .wrangler/
 out/
 cache/
-broadcast/*/31337/
+contracts/broadcast/*/31337/
+contracts/broadcast/**/dry-run/
 .env*
 *.pem
 .dev.vars
