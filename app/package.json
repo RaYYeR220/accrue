@@ -1,0 +1,33 @@
+{
+  "name": "@accrue/app",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build && node scripts/check-dist.mjs",
+    "preview": "vite preview",
+    "build:mock": "vite build --mode mock",
+    "preview:mock": "vite preview --mode mock",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@accrue/shared": "workspace:*",
+    "@nimiq/mini-app-sdk": "0.2.5",
+    "@tanstack/react-query": "5.104.5",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "viem": "2.57.16"
+  },
+  "devDependencies": {
+    "@types/node": "22.12.0",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "5.2.0",
+    "jsdom": "29.1.1",
+    "typescript": "5.9.3",
+    "vite": "7.3.7",
+    "vitest": "3.2.4"
+  }
+}

@@ -1,0 +1,8 @@
+name = "accrue"
+pages_build_output_dir = "dist"
+compatibility_date = "2026-09-01"
+
+# /api/* is answered by the accrue-core worker (see functions/api/[[path]].ts)
+[[services]]
+binding = "CORE"
+service = "accrue-core"
