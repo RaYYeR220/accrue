@@ -39,9 +39,15 @@ export interface ValidateCtx {
   floorWei: bigint
 }
 
-export type ValidateResult =
-  | { ok: true; parsed: ParsedRelay }
-  | { ok: false; error: RelayErrorCode; detail?: Record<string, unknown> }
+export type Failure = {
+  ok: false
+  error: RelayErrorCode
+  detail?: Record<string, unknown>
+  /** Set when the HTTP status is not the code's default (malformed input is 400 INTERNAL). */
+  status?: number
+}
+
+export type ValidateResult = { ok: true; parsed: ParsedRelay } | Failure
 
 const SECP256K1_HALF_N = 0x7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0n
 const SIG_RE = /^0x[0-9a-fA-F]{130}$/
@@ -73,9 +79,9 @@ export function jobIdOf(sig: Hex): Hex {
   return keccak256(normalizeSignature(sig))
 }
 
+/** v, r, s of a well-formed 65-byte signature, or null when it is not a usable secp256k1 signature. */
 function splitSignature(sig: Hex): { v: 27 | 28; r: Hex; s: Hex } | null {
   const norm = normalizeSignature(sig)
-  if (!SIG_RE.test(norm)) return null
   const r = `0x${norm.slice(2, 66)}` as Hex
   const s = `0x${norm.slice(66, 130)}` as Hex
   const v = parseInt(norm.slice(130), 16)
@@ -87,51 +93,47 @@ function splitSignature(sig: Hex): { v: 27 | 28; r: Hex; s: Hex } | null {
   return { v, r, s }
 }
 
-const fail = (error: RelayErrorCode, detail?: Record<string, unknown>): ValidateResult => ({ ok: false, error, detail })
+const fail = (error: RelayErrorCode, detail?: Record<string, unknown>): Failure => ({ ok: false, error, detail })
+const badRequest = (field: string): Failure => ({
+  ok: false,
+  error: 'INTERNAL',
+  status: 400,
+  detail: { reason: 'bad_request', field },
+})
 
 /**
- * Checks everything that needs no chain access: request shape, product limits, rate limit, gas budget and the
- * relayer's gas floor. `ctx.now` is unix ms; `deadline` is unix seconds.
+ * Request shape and product limits: everything that needs neither chain access nor relayer state.
+ * Malformed fields are 400 INTERNAL bad_request; well-formed but unacceptable values get their own code.
+ * `nowMs` is unix ms; `deadline` is unix seconds.
  */
-export function validateRelay(req: RelayRequest, ctx: ValidateCtx): ValidateResult {
-  if (!req || typeof req !== 'object' || (req.kind !== 'supply' && req.kind !== 'withdraw'))
-    return fail('INTERNAL', { reason: 'bad_request', field: 'kind' })
-  if (typeof req.asset !== 'string' || !Object.hasOwn(ASSETS, req.asset)) return fail('ASSET_NOT_ALLOWED')
-  if (typeof req.owner !== 'string' || !isAddress(req.owner, { strict: false }))
-    return fail('BAD_SIGNATURE', { reason: 'bad_owner' })
-  const sig = splitSignature(req.signature)
-  if (!sig) return fail('BAD_SIGNATURE', { reason: 'malformed_signature' })
-
+export function validateStatic(req: RelayRequest, nowMs: number): ValidateResult {
+  if (!req || typeof req !== 'object') return badRequest('body')
+  if (req.kind !== 'supply' && req.kind !== 'withdraw') return badRequest('kind')
+  if (typeof req.asset !== 'string') return badRequest('asset')
+  if (typeof req.owner !== 'string' || !isAddress(req.owner, { strict: false })) return badRequest('owner')
+  if (!isSignatureHex(req.signature)) return badRequest('signature')
   const amount = parseUint(req.amount)
-  if (amount === null) return fail('AMOUNT_TOO_SMALL', { reason: 'malformed', field: 'amount' })
-  let permitValue = amount
+  if (amount === null) return badRequest('amount')
+  const permitValue = req.kind === 'supply' ? amount : parseUint(req.permitValue)
+  if (permitValue === null) return badRequest('permitValue')
+  const deadline = parseUint(req.deadline)
+  if (deadline === null) return badRequest('deadline')
+  const nonce = parseUint(req.nonce)
+  if (nonce === null) return badRequest('nonce')
+
+  if (!Object.hasOwn(ASSETS, req.asset)) return fail('ASSET_NOT_ALLOWED')
+  const sig = splitSignature(req.signature)
+  if (!sig) return fail('BAD_SIGNATURE', { reason: 'invalid_signature' })
   if (req.kind === 'supply') {
     if (amount < LIMITS.minDepositUnits) return fail('AMOUNT_TOO_SMALL', { min: LIMITS.minDepositUnits.toString() })
     if (amount > LIMITS.maxTxUnits) return fail('AMOUNT_TOO_LARGE', { max: LIMITS.maxTxUnits.toString() })
-  } else {
+  } else if (amount === 0n || permitValue === 0n) {
     // Withdrawals only ever pay the owner back, so the deposit cap and minimum do not apply.
-    const pv = parseUint(req.permitValue)
-    if (pv === null) return fail('AMOUNT_TOO_SMALL', { reason: 'malformed', field: 'permitValue' })
-    if (amount === 0n || pv === 0n) return fail('AMOUNT_TOO_SMALL', { min: '1' })
-    permitValue = pv
+    return fail('AMOUNT_TOO_SMALL', { min: '1' })
   }
-
-  const deadline = parseUint(req.deadline)
-  const nowSec = BigInt(Math.floor(ctx.now / 1000))
-  if (
-    deadline === null ||
-    deadline < nowSec + BigInt(LIMITS.deadlineMinSec) ||
-    deadline > nowSec + BigInt(LIMITS.deadlineMaxSec)
-  )
+  const nowSec = BigInt(Math.floor(nowMs / 1000))
+  if (deadline < nowSec + BigInt(LIMITS.deadlineMinSec) || deadline > nowSec + BigInt(LIMITS.deadlineMaxSec))
     return fail('DEADLINE_INVALID', { min: LIMITS.deadlineMinSec, max: LIMITS.deadlineMaxSec })
-
-  const nonce = parseUint(req.nonce)
-  if (nonce === null) return fail('PERMIT_NONCE_STALE', { reason: 'malformed' })
-
-  if (ctx.ownerCount24h >= LIMITS.relaysPerOwnerPerDay)
-    return fail('RATE_LIMITED', { limit: LIMITS.relaysPerOwnerPerDay, windowHours: 24 })
-  if (ctx.budgetWeiToday >= ctx.budgetWeiMax) return fail('BUDGET_EXHAUSTED')
-  if (ctx.relayerBalanceWei < ctx.floorWei) return fail('RELAYER_LOW_GAS')
 
   return {
     ok: true,
@@ -147,4 +149,26 @@ export function validateRelay(req: RelayRequest, ctx: ValidateCtx): ValidateResu
       ...sig,
     },
   }
+}
+
+export function rateLimit(ownerCount24h: number): Failure | null {
+  return ownerCount24h >= LIMITS.relaysPerOwnerPerDay
+    ? fail('RATE_LIMITED', { limit: LIMITS.relaysPerOwnerPerDay, windowHours: 24 })
+    : null
+}
+
+/** Rate limit, gas budget (spent plus in-flight reservations) and the relayer's gas floor, in that order. */
+export function checkLimits(ctx: Omit<ValidateCtx, 'now'>): Failure | null {
+  const rate = rateLimit(ctx.ownerCount24h)
+  if (rate) return rate
+  if (ctx.budgetWeiToday >= ctx.budgetWeiMax) return fail('BUDGET_EXHAUSTED')
+  if (ctx.relayerBalanceWei < ctx.floorWei) return fail('RELAYER_LOW_GAS')
+  return null
+}
+
+/** validateStatic followed by checkLimits. */
+export function validateRelay(req: RelayRequest, ctx: ValidateCtx): ValidateResult {
+  const v = validateStatic(req, ctx.now)
+  if (!v.ok) return v
+  return checkLimits(ctx) ?? v
 }

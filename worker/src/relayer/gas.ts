@@ -14,6 +14,11 @@ export const GAS_POLICY = {
   landedLookbackBlocks: 1_800n,
   /** Fallback window every public RPC serves. */
   landedNarrowBlocks: 50n,
+  /** A replacement this close to the permit deadline would likely land after it, so cancel instead. */
+  deadlineMarginSec: 15,
+  /** Polls in a row that see our nonce used with no receipt for any of our hashes before giving up on the job. */
+  droppedPolls: 3,
+  cancelGas: 21_000n,
 } as const
 
 export interface Fees {

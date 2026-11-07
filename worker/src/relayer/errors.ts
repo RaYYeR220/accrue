@@ -7,6 +7,8 @@ export class RelayError extends Error {
   constructor(
     readonly code: RelayErrorCode,
     readonly detail?: Detail,
+    /** Overrides HTTP_STATUS[code]; malformed input is 400 INTERNAL. */
+    readonly status?: number,
   ) {
     super(code)
     this.name = 'RelayError'
@@ -32,6 +34,18 @@ export const HTTP_STATUS: Record<RelayErrorCode, number> = {
 
 export function errorBody(code: RelayErrorCode, detail?: Detail) {
   return detail ? { error: code, detail } : { error: code }
+}
+
+export interface RelayResponse {
+  status: number
+  body: Record<string, unknown>
+}
+
+/** A RelayError becomes its code; anything else is logged and becomes a bare INTERNAL. */
+export function toResponse(e: unknown, where: string): RelayResponse {
+  if (e instanceof RelayError) return { status: e.status ?? HTTP_STATUS[e.code], body: errorBody(e.code, e.detail) }
+  console.error(`${where} internal`, e instanceof Error ? e.message.slice(0, 200) : String(e))
+  return { status: 500, body: errorBody('INTERNAL') }
 }
 
 /** True when the failure is the transport (timeout, HTTP error, refused), not the chain saying no. */

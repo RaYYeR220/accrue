@@ -1,6 +1,8 @@
 import {
   decodeFunctionData,
   encodeFunctionData,
+  getAddress,
+  isAddress,
   parseAbi,
   type Address,
   type Hex,
@@ -10,6 +12,13 @@ import { ASSETS, POLYGON } from '@accrue/shared'
 import { RelayError, decodeRevert, isTransportError } from './errors'
 import { GAS_POLICY } from './gas'
 import type { ParsedRelay } from './validate'
+import type { Env } from '../env'
+
+/** ROUTER_ADDRESS when set, else the deployed address from @accrue/shared; null until there is one. */
+export function routerAddress(env: Pick<Env, 'ROUTER_ADDRESS'>): Address | null {
+  const raw = env.ROUTER_ADDRESS?.trim() || POLYGON.router
+  return raw && isAddress(raw, { strict: false }) ? getAddress(raw) : null
+}
 
 export const routerAbi = parseAbi([
   'function supplyWithPermit(address asset, address owner, uint256 amount, uint256 deadline, uint8 v, bytes32 r, bytes32 s)',

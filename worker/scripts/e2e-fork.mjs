@@ -326,6 +326,8 @@ async function main() {
   const s5 = await signSupply({ amount: usd(2), nonce: await nonceOf(USDT0), signer: privateKeyToAccount(generatePrivateKey()) })
   const r5 = await post(s5)
   check('extra: permit signed by someone else -> BAD_SIGNATURE', r5.error === 'BAD_SIGNATURE' && r5.detail?.reason === 'signer_mismatch', JSON.stringify(r5))
+  const r5b = await post({ ...s5, nonce: 'abc' })
+  check('extra: malformed nonce -> 400 INTERNAL bad_request', r5b.http === 400 && r5b.error === 'INTERNAL' && r5b.detail?.reason === 'bad_request' && r5b.detail?.field === 'nonce', JSON.stringify(r5b))
 
   // extra: USDC from an address with code (EIP-7702 delegation) -> BAD_SIGNATURE owner_has_code
   const delegated = privateKeyToAccount(generatePrivateKey())
@@ -413,7 +415,7 @@ async function main() {
   // CPU
   for (const [label, m] of Object.entries(cpu))
     console.log(`CPU  ${label}: ${m.cpuMsPerReq === null ? 'n/a' : `${m.cpuMsPerReq.toFixed(2)} ms`} workerd CPU/req, ${m.wallMsPerReq.toFixed(0)} ms wall/req (n=${m.n})`)
-  for (const line of devLog.filter(l => l.includes('"evt":"relay"')).slice(0, 4)) console.log(`LOG  ${line.trim()}`)
+  for (const line of devLog.filter(l => l.includes('"evt":"submit"')).slice(0, 4)) console.log(`LOG  ${line.trim()}`)
 
   const failed = results.filter(x => !x).length
   console.log(`\n${results.length - failed}/${results.length} PASS`)

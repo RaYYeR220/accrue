@@ -2,7 +2,14 @@ import { describe, expect, it } from 'vitest'
 import { maxUint256, type Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { buildPermit } from '@accrue/shared'
-import { jobIdOf, normalizeSignature, validateRelay, type RelayRequest } from '../src/relayer/validate'
+import {
+  checkLimits,
+  jobIdOf,
+  normalizeSignature,
+  validateRelay,
+  validateStatic,
+  type RelayRequest,
+} from '../src/relayer/validate'
 
 const NOW = 1_800_000_000_000
 const SEC = NOW / 1000
@@ -118,9 +125,24 @@ describe('validateRelay', () => {
     expect(r.parsed.r).toMatch(/^0x[0-9a-f]{64}$/)
   })
 
-  it('rejects malformed owners and signatures as BAD_SIGNATURE', () => {
-    expect(errorOf({ ...supply, owner: '0x1234' as never })).toBe('BAD_SIGNATURE')
-    expect(errorOf({ ...supply, signature: '0xdead' })).toBe('BAD_SIGNATURE')
+  it('answers every malformed field with 400 INTERNAL bad_request', () => {
+    const cases: [string, RelayRequest][] = [
+      ['kind', { ...supply, kind: 'borrow' as never }],
+      ['owner', { ...supply, owner: '0x1234' as never }],
+      ['signature', { ...supply, signature: '0xdead' }],
+      ['amount', { ...supply, amount: '5.5' }],
+      ['amount', { ...supply, amount: '-5000000' }],
+      ['amount', { ...supply, amount: 5000000 as never }],
+      ['permitValue', { ...withdraw, permitValue: undefined }],
+      ['permitValue', { ...withdraw, permitValue: '1e6' }],
+      ['deadline', { ...supply, deadline: 'soon' }],
+      ['nonce', { ...supply, nonce: '0x01' }],
+    ]
+    for (const [field, req] of cases) {
+      const r = validateRelay(req, ctx)
+      expect(r, field).toEqual({ ok: false, error: 'INTERNAL', status: 400, detail: { reason: 'bad_request', field } })
+    }
+    expect(validateRelay(null as never, ctx)).toMatchObject({ ok: false, error: 'INTERNAL', status: 400 })
   })
 
   it('rejects a high-s (malleated) signature', () => {
@@ -131,19 +153,28 @@ describe('validateRelay', () => {
     expect(errorOf({ ...supply, signature: flipped })).toBe('BAD_SIGNATURE')
   })
 
-  it('rejects non-integer amounts', () => {
-    expect(errorOf({ ...supply, amount: '5.5' })).toBe('AMOUNT_TOO_SMALL')
-    expect(errorOf({ ...supply, amount: '-5000000' })).toBe('AMOUNT_TOO_SMALL')
-  })
-
   it('accepts withdraw-all with a permit value and needs that value', () => {
     expect(errorOf(withdraw)).toBe('ok')
-    expect(errorOf({ ...withdraw, permitValue: undefined })).toBe('AMOUNT_TOO_SMALL')
     expect(errorOf({ ...withdraw, amount: '0' })).toBe('AMOUNT_TOO_SMALL')
+    expect(errorOf({ ...withdraw, permitValue: '0' })).toBe('AMOUNT_TOO_SMALL')
   })
 
   it('does not cap withdrawals at the deposit cap', () => {
     expect(errorOf({ ...withdraw, amount: '20000000000', permitValue: '20000000000' })).toBe('ok')
+  })
+})
+
+describe('static validation and limits are separable', () => {
+  it('validateStatic ignores rate, budget and gas floor', () => {
+    expect(validateStatic(supply, NOW).ok).toBe(true)
+    expect(validateStatic({ ...supply, amount: '1' }, NOW)).toMatchObject({ ok: false, error: 'AMOUNT_TOO_SMALL' })
+  })
+
+  it('checkLimits applies rate, then budget, then floor', () => {
+    expect(checkLimits(ctx)).toBeNull()
+    expect(checkLimits({ ...ctx, ownerCount24h: 10, budgetWeiToday: 3n * POL })).toMatchObject({ error: 'RATE_LIMITED' })
+    expect(checkLimits({ ...ctx, budgetWeiToday: 3n * POL, relayerBalanceWei: 0n })).toMatchObject({ error: 'BUDGET_EXHAUSTED' })
+    expect(checkLimits({ ...ctx, relayerBalanceWei: 0n })).toMatchObject({ error: 'RELAYER_LOW_GAS' })
   })
 })
 
