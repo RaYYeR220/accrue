@@ -317,6 +317,20 @@ describe('poolVerdict rules', () => {
     expect(poolVerdict({ ...base, cycles: 0 }, { ...cfg, scheduleMs: 12 * HOUR }, base.lastPayoutTs! + 30 * HOUR).verdict).toBe('BEHIND_SCHEDULE'))
   it('direct payouts count toward the ratio', () =>
     expect(poolVerdict({ ...base, paidRestake: 500_000n, paidDirect: 470_000n }, cfg, now).verdict).toBe('PAID_AS_PROMISED'))
+  it('paying more than 20 pp above the promise stays PAID_AS_PROMISED and says it paid more than it earned', () => {
+    // ObsidianStake: one 1.49M NIM transfer to a staker put its week at 237 %
+    const over = poolVerdict({ ...base, paidDirect: 1_405_000n, paidRestake: 0n, otherOut: 160_000n }, cfg, now)
+    expect(over.verdict).toBe('PAID_AS_PROMISED')
+    expect(over.ratio).toBeCloseTo(1.405)
+    expect(over.reasons).toContain('Paid more than earned in this window (includes a one-off transfer)')
+    // just above the promise and up to 20 pp above it is an ordinary week
+    for (const paid of [970_000n, 1_000_000n, 1_170_000n]) {
+      const v = poolVerdict({ ...base, paidRestake: paid }, cfg, now)
+      expect(v.verdict).toBe('PAID_AS_PROMISED')
+      expect(v.reasons.join(' ')).not.toMatch(/more than earned/)
+    }
+    expect(poolVerdict({ ...base, paidRestake: 1_170_001n }, cfg, now).reasons).toContain('Paid more than earned in this window (includes a one-off transfer)')
+  })
 })
 
 describe('user math', () => {

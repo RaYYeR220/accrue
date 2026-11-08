@@ -207,6 +207,8 @@ export function buildPoolWindows(
 export const TOLERANCE = 0.02
 export const SHORT_MARGIN = 0.05
 export const MIN_CYCLES = 3
+// a window paying more than this above the promise holds a transfer that is not a payout cycle
+export const OVERPAY_MARGIN = 0.2
 const HOUR_MS = 3_600_000
 
 // A confirmation window only has to show the shortfall at another end; the main window already
@@ -248,7 +250,14 @@ export function poolVerdict(
     return out('CANT_VERIFY_ROUTED', ratio, [`${pct(otherShare)}% of earnings leave the reward address to non-staker destinations.`, ...note])
   }
   if (ratio >= expectedRatio - TOLERANCE) {
-    return out('PAID_AS_PROMISED', ratio, [`Paid ${pct(ratio)}% of earnings against ${pct(expectedRatio)}% promised.`, ...note])
+    // far more than the window earned is not a payout cycle (ObsidianStake: one 1.49M NIM transfer
+    // to a staker); it still went to a staker, so the verdict stands and the reason says so
+    const over = Math.round(ratio * 1_000_000) > Math.round((expectedRatio + OVERPAY_MARGIN) * 1_000_000)
+    return out('PAID_AS_PROMISED', ratio, [
+      `Paid ${pct(ratio)}% of earnings against ${pct(expectedRatio)}% promised.`,
+      ...(over ? ['Paid more than earned in this window (includes a one-off transfer)'] : []),
+      ...note,
+    ])
   }
   if (ratio < expectedRatio - SHORT_MARGIN) {
     if (otherShare < 0.05) {
