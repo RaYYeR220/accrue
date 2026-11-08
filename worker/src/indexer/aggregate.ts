@@ -1,4 +1,15 @@
-import { RUN_GAP_BLOCKS, addressFromBytesHex, classifyTx, normalizeAddress, payoutCycleMs, runGapBlocks, type NimTx, type PayoutTxKind, type PoolWindow } from '@accrue/shared'
+import {
+  COINBASE_ADDRESS,
+  RUN_GAP_BLOCKS,
+  STAKING_CONTRACT,
+  addressFromBytesHex,
+  normalizeAddress,
+  payoutCycleMs,
+  runGapBlocks,
+  type NimTx,
+  type PayoutTxKind,
+  type PoolWindow,
+} from '@accrue/shared'
 
 export const HOUR_MS = 3_600_000
 export const DAY_MS = 86_400_000
@@ -52,35 +63,103 @@ export function payoutRecipients(txs: readonly NimTx[], rewardAddress: string): 
   }
   const out = new Set<string>()
   for (const a of direct) out.add(canonicalAddress(a))
-  for (const hex of restakeData) out.add(stakerFromHex(hex))
+  for (const hex of restakeData) out.add(stakerOf(hex))
   return out
 }
 
 const B32 = '0123456789ABCDEFGHJKLMNPQRSTUVXY'
+const HEX_VALUE = (() => {
+  const t = new Int8Array(128).fill(-1)
+  for (let i = 0; i < 10; i++) t[48 + i] = i
+  for (let i = 0; i < 6; i++) t[65 + i] = t[97 + i] = 10 + i
+  return t
+})()
 
 /**
  * Same result as shared `addressFromBytesHex`, with integer bit math instead of bit strings: the
  * cron decodes every restake recipient of a tick and the free plan allows 10 ms of CPU.
  */
 export function stakerFromHex(hex: string): string {
-  if (!/^[0-9a-fA-F]{40}$/.test(hex)) return addressFromBytesHex(hex)
+  if (hex.length !== 40) return addressFromBytesHex(hex)
   let body = ''
   let acc = 0
   let bits = 0
-  for (let i = 0; i < 40; i += 2) {
-    acc = ((acc << 8) | parseInt(hex.slice(i, i + 2), 16)) & 0xfff
-    bits += 8
-    while (bits >= 5) {
+  for (let i = 0; i < 40; i++) {
+    const c = hex.charCodeAt(i)
+    const v = c < 128 ? HEX_VALUE[c]! : -1
+    if (v < 0) return addressFromBytesHex(hex)
+    acc = ((acc << 4) | v) & 0xff
+    bits += 4
+    if (bits >= 5) {
       bits -= 5
       body += B32[(acc >> bits) & 31]
     }
   }
   let rem = 0
-  for (const ch of `${body}NQ00`) {
-    const code = ch.charCodeAt(0)
+  for (let i = 0; i < 36; i++) {
+    const code = i < 32 ? body.charCodeAt(i) : 'NQ00'.charCodeAt(i - 32)
     rem = code >= 65 ? (rem * 100 + code - 55) % 97 : (rem * 10 + code - 48) % 97
   }
-  return `NQ${String(98 - rem).padStart(2, '0')} ${body.match(/.{4}/g)!.join(' ')}`
+  let out = `NQ${String(98 - rem).padStart(2, '0')}`
+  for (let i = 0; i < 32; i += 4) out += ` ${body.slice(i, i + 4)}`
+  return out
+}
+
+// Stakers recur tick after tick; an isolate that stays warm decodes each one once.
+const STAKERS = new Map<string, string>()
+const MAX_STAKERS = 20_000
+
+function stakerOf(hex: string): string {
+  const key = hex.toLowerCase()
+  let a = STAKERS.get(key)
+  if (a === undefined) {
+    if (STAKERS.size >= MAX_STAKERS) STAKERS.clear()
+    a = stakerFromHex(key)
+    STAKERS.set(key, a)
+  }
+  return a
+}
+
+export interface Shape {
+  kind: PayoutTxKind
+  /** canonical address of the paid staker, for payouts */
+  staker: string | null
+  unverified: boolean
+}
+
+const COINBASE = normalizeAddress(COINBASE_ADDRESS)
+const STAKING = normalizeAddress(STAKING_CONTRACT)
+const RESTAKE_DATA = /^06[0-9a-fA-F]{40}$/
+const OTHER_IN: Shape = Object.freeze({ kind: 'OTHER_IN', staker: null, unverified: false })
+const OTHER_OUT: Shape = Object.freeze({ kind: 'OTHER_OUT', staker: null, unverified: false })
+const EARNED: Shape = Object.freeze({ kind: 'EARNED', staker: null, unverified: false })
+
+/**
+ * Shared `classifyTx`, reduced to what aggregation keeps (kind, the paid staker in canonical form,
+ * unverified) and computed with this call's address caches. A test holds it to classifyTx's answer
+ * for every recorded tx and for generated shapes. `value` is left to the caller.
+ */
+export function shapeClassifier(rewardAddress: string, oracle: Oracle): (tx: NimTx) => Shape {
+  const reward = normalizeAddress(rewardAddress)
+  const norm = memo(normalizeAddress)
+  return (tx) => {
+    const from = norm(tx.from)
+    const to = norm(tx.to)
+    if (to === reward && from !== reward) return from === COINBASE ? EARNED : OTHER_IN
+    if (from !== reward) return OTHER_IN
+    if (to === STAKING && tx.toType === 3 && RESTAKE_DATA.test(tx.recipientData)) {
+      const staker = stakerOf(tx.recipientData.slice(2))
+      const known = oracle(staker, 'restake')
+      if (known === false) return OTHER_OUT
+      return { kind: 'RESTAKE_PAYOUT', staker, unverified: known === undefined }
+    }
+    if (tx.toType === 0 && to !== reward) {
+      const known = oracle(tx.to, 'direct')
+      if (known === false) return OTHER_OUT
+      return { kind: 'DIRECT_PAYOUT', staker: canonicalAddress(tx.to), unverified: known === undefined }
+    }
+    return OTHER_OUT
+  }
 }
 
 function memo<T>(f: (k: string) => T): (k: string) => T {
@@ -147,22 +226,20 @@ export function aggregate(
   const stakerDays = new Map<string, StakerDayAgg>()
   let lastPayout = prevPayoutBlock
 
-  // Apart from `value`, classifyTx is a pure function of these four fields (and the oracle), and a
-  // tick sees the same few hundred stakers over and over; decoding the staker address from
-  // recipientData is the expensive part, so classify each distinct shape once.
-  const shapes = new Map<string, { kind: PayoutTxKind; staker: string | null; unverified: boolean }>()
+  // Apart from `value`, the classification is a pure function of these four fields (and the
+  // oracle), and a tick sees the same few hundred stakers over and over, so each distinct shape is
+  // classified once.
+  const classify = shapeClassifier(pool.rewardAddress, oracle)
+  const shapes = new Map<string, Shape>()
   for (const tx of list) {
     const shapeKey = `${tx.from}|${tx.to}|${tx.toType}|${tx.recipientData}`
-    let shape = shapes.get(shapeKey)
-    if (!shape) {
-      const leg: PayoutLeg = isRestakeTx(tx) ? 'restake' : 'direct'
-      const full = classifyTx(tx, pool, (addr) => oracle(addr, leg))
-      const paid = full.kind === 'RESTAKE_PAYOUT' || full.kind === 'DIRECT_PAYOUT'
-      shape = { kind: full.kind, staker: paid ? canonicalAddress(full.staker ?? tx.to) : null, unverified: !!full.unverified }
-      shapes.set(shapeKey, shape)
+    let c = shapes.get(shapeKey)
+    if (!c) {
+      c = classify(tx)
+      shapes.set(shapeKey, c)
     }
-    const c = { ...shape, value: BigInt(tx.value) }
     if (c.kind === 'OTHER_IN') continue
+    const value = BigInt(tx.value)
     const hour = hourOf(tx.timestamp)
     let h = hours.get(hour)
     if (!h) {
@@ -170,16 +247,16 @@ export function aggregate(
       hours.set(hour, h)
     }
     if (c.kind === 'EARNED') {
-      h.earned += c.value
+      h.earned += value
       continue
     }
     if (c.kind === 'OTHER_OUT') {
-      h.otherOut += c.value
+      h.otherOut += value
       continue
     }
-    if (c.kind === 'RESTAKE_PAYOUT') h.paidRestake += c.value
-    else h.paidDirect += c.value
-    if (c.unverified) h.paidUnverified += c.value
+    if (c.kind === 'RESTAKE_PAYOUT') h.paidRestake += value
+    else h.paidDirect += value
+    if (c.unverified) h.paidUnverified += value
     if (lastPayout === null || tx.blockNumber - lastPayout >= RUN_GAP_BLOCKS) h.payoutBatches++
     lastPayout = tx.blockNumber
     h.firstPayoutTs = Math.min(h.firstPayoutTs ?? tx.timestamp, tx.timestamp)
@@ -190,9 +267,9 @@ export function aggregate(
     const key = `${staker}|${day}`
     const s = stakerDays.get(key)
     if (s) {
-      s.received += c.value
+      s.received += value
       s.payouts++
-    } else stakerDays.set(key, { staker, day, received: c.value, payouts: 1 })
+    } else stakerDays.set(key, { staker, day, received: value, payouts: 1 })
   }
 
   return {

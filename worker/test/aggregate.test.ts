@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { COINBASE_ADDRESS, RUN_GAP_BLOCKS, addressFromBytesHex, buildPoolWindow, poolVerdict, runGapBlocks, type NimTx } from '@accrue/shared'
-import { aggregate, canonicalAddress, delegationOracle, payoutRecipients, poolWindowFromAggregates, stakerFromHex } from '../src/indexer/aggregate'
+import { COINBASE_ADDRESS, RUN_GAP_BLOCKS, addressFromBytesHex, buildPoolWindow, classifyTx, poolVerdict, runGapBlocks, type NimTx } from '@accrue/shared'
+import { aggregate, canonicalAddress, delegationOracle, payoutRecipients, poolWindowFromAggregates, shapeClassifier, stakerFromHex } from '../src/indexer/aggregate'
 
 const load = (f: string) =>
   JSON.parse(readFileSync(new URL(`../../packages/shared/test/fixtures/${f}`, import.meta.url), 'utf8')) as { address: string; txs: NimTx[] }
@@ -341,4 +341,47 @@ describe('poolWindowFromAggregates: complete runs only (review r1)', () => {
     expect(w.windowEndTs).toBeLessThanOrEqual(hole.fromTs)
     expect(w.lastPayoutTs).toBe(newestPayout)
   })
+})
+
+describe('classifyShape (the cron hot path)', () => {
+  const STAKING = 'NQ77 0000 0000 0000 0000 0000 0000 0000 0001'
+  const hex = (i: number) => (i * 2654435761 >>> 0).toString(16).padStart(8, '0').repeat(5)
+  // every recorded tx, plus shapes the fixtures lack: lowercase/unspaced addresses, foreign senders,
+  // restakes to a non-staking address, malformed staker data, transfers to the pool itself
+  function shapes(f: { address: string; txs: NimTx[] }): NimTx[] {
+    const base = f.txs[0]!
+    const out: NimTx[] = [...f.txs]
+    for (let i = 0; i < 60; i++) {
+      const h = hex(i)
+      out.push({ ...base, from: f.address, to: STAKING, toType: 3, recipientData: `06${h}` })
+      out.push({ ...base, from: f.address.toLowerCase().replace(/ /g, ''), to: STAKING.replace(/ /g, ''), toType: 3, recipientData: `06${h.toUpperCase()}` })
+      out.push({ ...base, from: f.address, to: OTHER_VALIDATOR, toType: 3, recipientData: `06${h}` })
+      out.push({ ...base, from: f.address, to: STAKING, toType: 3, recipientData: `05${h}` })
+      out.push({ ...base, from: f.address, to: STAKING, toType: 3, recipientData: `06${h}00` })
+      out.push({ ...base, from: f.address, to: addressFromBytesHex(h), toType: 0, recipientData: '' })
+      out.push({ ...base, from: f.address, to: f.address, toType: 0, recipientData: '' })
+      out.push({ ...base, from: OTHER_VALIDATOR, to: f.address, toType: 0, recipientData: '' })
+      out.push({ ...base, from: COINBASE_ADDRESS, to: f.address.toLowerCase(), toType: 0, recipientData: '' })
+      out.push({ ...base, from: OTHER_VALIDATOR, to: addressFromBytesHex(h), toType: 0, recipientData: '' })
+    }
+    return out
+  }
+  // an oracle that knows some stakers as the pool's, some as another pool's or none, and not the rest
+  const oracleFor = (pool: string) => (addr: string, leg: 'restake' | 'direct') => {
+    const n = canonicalAddress(addr).charCodeAt(6) % 4
+    return n === 0 ? undefined : n === 1 ? false : n === 2 ? leg === 'restake' : true
+  }
+
+  for (const f of [siam, garuda]) {
+    it(`gives shared classifyTx's answer for every tx shape (${f.address.slice(0, 9)})`, () => {
+      const oracle = oracleFor(f.address)
+      const fast = shapeClassifier(f.address, oracle)
+      for (const tx of shapes(f)) {
+        const leg = /^06[0-9a-fA-F]{40}$/.test(tx.recipientData) && tx.toType === 3 ? 'restake' : 'direct'
+        const want = classifyTx(tx, { rewardAddress: f.address }, (a) => oracle(a, leg))
+        const paid = want.kind === 'RESTAKE_PAYOUT' || want.kind === 'DIRECT_PAYOUT'
+        expect(fast(tx)).toEqual({ kind: want.kind, staker: paid ? canonicalAddress(want.staker ?? tx.to) : null, unverified: !!want.unverified })
+      }
+    })
+  }
 })
