@@ -5,7 +5,7 @@ import { payoutTypeOf, scheduleMsOf } from './pools'
 import { bind, metaSet, type Stmt } from './store'
 
 export const VERDICTS_KEY = 'pool_verdicts'
-const PRUNED_KEY = 'pruned_day'
+export const PRUNED_KEY = 'pruned_day'
 export const WINDOW_MS = 7 * DAY_MS
 // bump when the verdict logic changes, so a deploy recomputes every cached verdict
 const LOGIC_VERSION = 1
@@ -151,7 +151,10 @@ export interface RefreshResult {
  * Once a UTC day it also drops each pool's rows older than its window can read. Two D1 round trips,
  * three on a pruning run; never throws.
  */
-export async function refreshVerdicts(env: Pick<Env, 'DB'>, opts: { now?: number; maxPools?: number } = {}): Promise<RefreshResult> {
+export async function refreshVerdicts(
+  env: Pick<Env, 'DB'>,
+  opts: { now?: number; maxPools?: number; /** false: leave the daily prune to a run of its own */ prune?: boolean } = {},
+): Promise<RefreshResult> {
   const now = opts.now ?? Date.now()
   const maxPools = opts.maxPools ?? 2
   const out: RefreshResult = { computed: [], pruned: false, written: false }
@@ -216,7 +219,7 @@ export async function refreshVerdicts(env: Pick<Env, 'DB'>, opts: { now?: number
 
     const writes: Stmt[] = []
     if (changed) writes.push(metaSet(VERDICTS_KEY, JSON.stringify({ at: now, pools: next } satisfies VerdictCache), now))
-    if (meta.get(PRUNED_KEY) !== String(dayOf(now))) {
+    if (opts.prune !== false && meta.get(PRUNED_KEY) !== String(dayOf(now))) {
       // per pool, against its own reach: a pool the indexer has not reached for days keeps its rows
       for (const c of cursors.values()) {
         if (c.reach_ts === null) continue

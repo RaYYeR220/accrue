@@ -50,8 +50,8 @@ export const RATE_WINDOW_MS = 10_000
 export const PAGE_TOKENS = Math.ceil(PAGE_SIZE / 100)
 
 export interface NimSource {
-  /** Up to PAGE_SIZE txs, newest first, starting after `startAt` (exclusive). */
-  txPage(address: string, startAt: string | null): Promise<NimTx[]>
+  /** Up to `size` (default PAGE_SIZE) txs, newest first, starting after `startAt` (exclusive). */
+  txPage(address: string, startAt: string | null, size?: number): Promise<NimTx[]>
   /** Validator the address delegates to, or '' when it is not a staker. */
   delegation(address: string): Promise<string>
   /** Reward address of a validator, or null when the address is not a validator. */
@@ -107,8 +107,8 @@ export function rpcSource(
   }
 
   return {
-    async txPage(address, startAt) {
-      const r = await call<NimTx[]>('getTransactionsByAddress', [address, PAGE_SIZE, startAt], PAGE_TOKENS)
+    async txPage(address, startAt, size = PAGE_SIZE) {
+      const r = await call<NimTx[]>('getTransactionsByAddress', [address, size, startAt], Math.ceil(size / 100))
       if (!r.ok) throw new Error(r.error)
       return r.data
     },
@@ -180,7 +180,14 @@ export async function scanPool(
   src: NimSource,
   rewardAddress: string,
   cursor: Cursor | null,
-  opts: { maxPages: number; now: number; canFetch: () => boolean; backfillBlocks?: number },
+  opts: {
+    maxPages: number
+    now: number
+    canFetch: () => boolean
+    backfillBlocks?: number
+    /** txs to ask for in the next request (default PAGE_SIZE); `fromHead` and how many pages this step has had */
+    pageSize?: (fromHead: boolean, pages: number) => number
+  },
 ): Promise<ScanStep> {
   const c: Cursor = { ...freshCursor(), ...(cursor ?? {}) }
   const isNew = c.newestBlock === null && !c.backfillDone
@@ -204,8 +211,9 @@ export async function scanPool(
 
   while (pages < opts.maxPages && opts.canFetch()) {
     let page: NimTx[]
+    const size = opts.pageSize ? opts.pageSize(fromHead, pages) : PAGE_SIZE
     try {
-      page = await src.txPage(rewardAddress, startAt)
+      page = await src.txPage(rewardAddress, startAt, size)
     } catch (e) {
       // running out of budget mid-retry is a normal stop, not an RPC failure
       if (!(e instanceof BudgetExhausted)) {
@@ -261,7 +269,7 @@ export async function scanPool(
     startAt = page[page.length - 1]!.hash
     lastFetchedTs = page[page.length - 1]!.timestamp
     if (reached) break
-    if (page.length < PAGE_SIZE) {
+    if (page.length < size) {
       if (historyBelow) {
         error = 'short page from RPC above indexed history'
         errorKind = 'data'

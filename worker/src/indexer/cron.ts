@@ -2,18 +2,21 @@ import type { NimTx } from '@accrue/shared'
 import type { Env } from '../env'
 import { DAY_MS, HOUR_MS, aggregate, canonicalAddress, dayOf, delegationOracle, payoutRecipients } from './aggregate'
 import { cursorResetStatement, fetchValidators, poolStatements, rewardMissStatement, rewardStatement, scannable, type PoolRow } from './pools'
-import { Budget, BudgetExhausted, PAGE_TOKENS, rpcSource, scanPool, type Cursor, type NimSource } from './scan'
+import { Budget, BudgetExhausted, PAGE_SIZE, PAGE_TOKENS, rpcSource, scanPool, type Cursor, type NimSource } from './scan'
 import { bind, cursorWrite, delegationUpsert, hourUpsert, metaDelete, metaSet, stakerDayUpsert, type Guard, type Stmt } from './store'
 
 export const SUBREQUEST_BUDGET = 25
 // the public RPC grants 20 tokens per 10 s per IP and a tick runs inside one window; keep slack
 export const RPC_TOKENS = 18
-const POOLS_SYNC_MS = HOUR_MS
+export const POOLS_SYNC_MS = HOUR_MS
 const REWARD_RECHECK_MS = 24 * HOUR_MS
 const REWARD_CHECKS_PER_TICK = 2
 // a visit is worth a subrequest once roughly this many new txs are waiting (a page holds 500)
 const TARGET_TXS = 400
 const MAX_STALE_MS = 90 * 60_000
+// with a tx budget, a head page asks for the txs expected since the last visit, with this much slack
+const EXPECT_SLACK = 1.5
+const MIN_PAGE = 25
 export const DELEGATION_TTL_MS = 7 * DAY_MS
 // stakers leave pools; a "not a staker" answer is cheaper to re-check sooner
 const NOT_STAKER_TTL_MS = DAY_MS
@@ -94,6 +97,18 @@ export interface TickResult {
   lagMinutes: number
   /** this tick fetched and parsed the validators list (~1.3 MB of JSON) */
   synced: boolean
+  /** txs the RPC returned this tick, the bulk of its CPU */
+  txs: number
+}
+
+/**
+ * Txs a head visit should ask for: what the pool usually sends in the time since its last visit,
+ * with slack, in steps of MIN_PAGE. A full page when its pace is unknown.
+ */
+export function expectedTxs(c: Cursor | null, now: number): number {
+  if (!c || c.visitedAt === null || c.txsPerHour === null || c.resumeHash) return PAGE_SIZE
+  const want = (c.txsPerHour * Math.max(0, now - c.visitedAt) * EXPECT_SLACK) / HOUR_MS + MIN_PAGE
+  return Math.min(PAGE_SIZE, Math.ceil(want / MIN_PAGE) * MIN_PAGE)
 }
 
 /**
@@ -104,7 +119,14 @@ export interface TickResult {
  */
 export async function runIndexerTick(
   env: Env,
-  budget: { maxPages: number; maxMs: number; maxSubrequests?: number; rpcTokens?: number },
+  budget: {
+    maxPages: number
+    maxMs: number
+    maxSubrequests?: number
+    rpcTokens?: number
+    /** txs the tick may ask the RPC for in all; head pages are then sized to what is waiting */
+    maxTxs?: number
+  },
   deps: TickDeps = {},
 ): Promise<TickResult> {
   const clock = deps.now ?? Date.now
@@ -113,7 +135,15 @@ export async function runIndexerTick(
   // calls kept free for what must follow: the delegation-cache read and the final write batch, then
   // only the write
   let reserve = 2
-  const src = deps.source ? deps.source(b) : rpcSource(env, b, { sleep: deps.sleep, reserve: () => reserve })
+  const raw = deps.source ? deps.source(b) : rpcSource(env, b, { sleep: deps.sleep, reserve: () => reserve })
+  let txs = 0
+  const src: NimSource = { ...raw, txPage: async (a, at, size) => {
+    const page = await raw.txPage(a, at, size)
+    txs += page.length
+    return page
+  } }
+  const maxTxs = budget.maxTxs ?? Number.POSITIVE_INFINITY
+  let asked = 0
   const errors: string[] = []
   // pool metadata, reward addresses, delegations, meta: valid on their own
   const writes: Stmt[] = []
@@ -245,9 +275,17 @@ export async function runIndexerTick(
       .filter((x) => x.prio >= 1)
       .sort((x, y) => y.prio - x.prio || (x.c?.visitedAt ?? 0) - (y.c?.visitedAt ?? 0))
 
-    const canFetch = () => !rpcDown && pages < maxPages && b.can(1, reserve, PAGE_TOKENS)
+    const canFetch = () => !rpcDown && pages < maxPages && maxTxs - asked >= MIN_PAGE && b.can(1, reserve, PAGE_TOKENS)
     const step = async (v: Visit, n: number) => {
-      const s = await scanPool(src, v.pool.reward_address, v.cursor, { maxPages: n, now, canFetch })
+      // without a tx budget every request is a full page, as before
+      const pageSize = Number.isFinite(maxTxs)
+        ? (fromHead: boolean, done: number) => {
+            const size = Math.min(fromHead && done === 0 ? expectedTxs(v.before, now) : PAGE_SIZE, maxTxs - asked)
+            asked += size
+            return size
+          }
+        : undefined
+      const s = await scanPool(src, v.pool.reward_address, v.cursor, { maxPages: n, now, canFetch, pageSize })
       pages += s.pages
       v.pages += s.pages
       v.txs.push(...s.txs)
@@ -365,7 +403,7 @@ export async function runIndexerTick(
     } catch {
       // D1 itself is down; nothing left to record into
     }
-    return { poolsTouched: 0, pages, lagMinutes, synced }
+    return { poolsTouched: 0, pages, lagMinutes, synced, txs }
   }
-  return { poolsTouched, pages, lagMinutes, synced }
+  return { poolsTouched, pages, lagMinutes, synced, txs }
 }
