@@ -122,17 +122,27 @@ export async function runIndexerTick(
   const pools = new Map<string, PoolRow>()
   let pages = 0
   let rpcDown = false
+  // A failed RPC call may be about its subject alone (one pool's history, one recipient); only failures
+  // for two different subjects in one tick say the RPC itself is down and end its use for the tick.
+  const failedSubjects = new Set<string>()
+  // pools whose RPC call failed: backed off like a data error, unless the RPC turned out to be down
+  const rpcFailedPools = new Map<string, string>()
+  const rpcFailed = (subject: string) => {
+    failedSubjects.add(subject)
+    if (failedSubjects.size >= 2) rpcDown = true
+  }
 
-  const rpc = async <T>(what: string, f: () => Promise<T>): Promise<T | undefined> => {
-    if (rpcDown) return undefined
+  // { ok: false, failed: false } = out of budget (or the RPC is already down): a normal stop
+  const rpc = async <T>(what: string, subject: string, f: () => Promise<T>): Promise<{ ok: true; value: T } | { ok: false; failed: boolean; error: string }> => {
+    if (rpcDown) return { ok: false, failed: false, error: '' }
     try {
-      return await f()
+      return { ok: true, value: await f() }
     } catch (e) {
-      if (!(e instanceof BudgetExhausted)) {
-        rpcDown = true
-        errors.push(`${what}: ${msg(e)}`)
-      }
-      return undefined
+      if (e instanceof BudgetExhausted) return { ok: false, failed: false, error: '' }
+      const error = `${what}: ${msg(e)}`
+      errors.push(error)
+      rpcFailed(subject)
+      return { ok: false, failed: true, error }
     }
   }
 
@@ -153,6 +163,7 @@ export async function runIndexerTick(
     for (const r of rows<CursorRow>(cursorRes)) cursors.set(r.pool, cursorFromRow(r))
     const syncedAt = rows<{ updated_at: number }>(metaRes)[0]?.updated_at ?? 0
     const scanErrors = new Map(rows<{ key: string; updated_at: number }>(scanErrRes).map((r) => [r.key, r.updated_at]))
+    const backedOff = (pool: string) => now - (scanErrors.get(scanErrorKey(pool)) ?? -Infinity) < SCAN_ERROR_BACKOFF_MS
 
     // Pool metadata, hourly. The API inlines logos (up to ~360 kB each), so they are written once a
     // day or when missing, in their own batch; a sync tick also scans a single page to keep CPU low.
@@ -185,13 +196,19 @@ export async function runIndexerTick(
     // reward addresses: unknown ones first, then a slow re-check
     const rewardDue = [...pools.values()]
       .filter((p) => p.listed === 1 && (p.reward_checked_at === null || now - p.reward_checked_at >= REWARD_RECHECK_MS))
+      .filter((p) => !backedOff(p.address))
       .sort((x, y) => (x.reward_checked_at ?? 0) - (y.reward_checked_at ?? 0))
       .slice(0, REWARD_CHECKS_PER_TICK)
     const skip = new Set<string>()
     for (const p of rewardDue) {
       if (!b.can(1, reserve + 1, 1 + PAGE_TOKENS)) break
-      const reward = await rpc(`reward ${p.name}`, () => src.rewardAddress(p.address))
-      if (reward === undefined) break
+      const r = await rpc(`reward ${p.name}`, p.address, () => src.rewardAddress(p.address))
+      if (!r.ok) {
+        if (!r.failed || rpcDown) break
+        rpcFailedPools.set(p.address, r.error)
+        continue
+      }
+      const reward = r.value
       if (reward === null && p.reward_address) {
         // one "No validator" for a validator we know is not enough to stop indexing it
         const misses = (p.reward_misses ?? 0) + 1
@@ -233,9 +250,11 @@ export async function runIndexerTick(
       if (s.error) {
         v.error = s.error
         errors.push(`${v.pool.name}: ${s.error}`)
-        // an RPC that is down stops the tick; one pool's inconsistent answer only backs that pool off
-        if (s.errorKind === 'rpc') rpcDown = true
-        else writes.push(metaSet(key, s.error.slice(0, 200), now))
+        // one pool's failure or inconsistent answer backs that pool off; a second pool failing stops the tick
+        if (s.errorKind === 'rpc') {
+          rpcFailed(v.pool.address)
+          rpcFailedPools.set(v.pool.address, s.error)
+        } else writes.push(metaSet(key, s.error.slice(0, 200), now))
       } else if (s.pages > 0 && scanErrors.has(key)) {
         writes.push(metaDelete(key))
         scanErrors.delete(key)
@@ -285,10 +304,13 @@ export async function runIndexerTick(
       ]
       for (const a of todo) {
         if (!b.can(1, reserve, 1)) break
-        const d = await rpc(`staker ${a}`, () => src.delegation(a))
-        if (d === undefined) break
-        cache.set(a, { delegation: d, checkedAt: now })
-        writes.push(delegationUpsert(a, d, now))
+        const d = await rpc(`staker ${a}`, a, () => src.delegation(a))
+        if (!d.ok) {
+          if (!d.failed || rpcDown) break
+          continue
+        }
+        cache.set(a, { delegation: d.value, checkedAt: now })
+        writes.push(delegationUpsert(a, d.value, now))
       }
     }
     const delegations = new Map([...cache].map(([a, e]) => [a, e.delegation]))
@@ -312,6 +334,7 @@ export async function runIndexerTick(
     errors.push(msg(e))
     visits.length = 0
   }
+  if (!rpcDown) for (const [pool, error] of rpcFailedPools) writes.push(metaSet(scanErrorKey(pool), error.slice(0, 200), now))
 
   const ages = [...pools.values()]
     .filter(scannable)

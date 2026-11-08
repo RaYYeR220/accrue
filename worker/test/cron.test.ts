@@ -269,3 +269,124 @@ describe('a wedged pool cannot starve the others (review r3)', () => {
     expect(calls.wedge).toBe(2)
   })
 })
+
+describe('one pool the RPC fails on cannot starve the others (Task 8 minor)', () => {
+  const BAD = 'NQ51 7BS3 0HVH 9R5M TUDH C5PG 490G S7XT KD4D'
+  const BAD2 = 'NQ40 FC4D HAT6 9N1H P52H P4FX QL8P CE6Y 10VT'
+  afterEach(() => vi.unstubAllGlobals())
+
+  function world(failing: Record<string, () => Response>, extra: string[] = []) {
+    const db = new FakeD1()
+    const chain = new FakeChain(POOL, garuda.txs, top - 20_000)
+    const calls: Record<string, number> = {}
+    const vals = [validators[0], ...[...Object.keys(failing), ...extra].map((a, i) => ({ ...validators[0], address: a, name: `Pool ${i}` }))]
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input) === VALIDATORS_API) return new Response(JSON.stringify(vals))
+        const { method, params } = JSON.parse(String(init!.body)) as { method: string; params: unknown[] }
+        const ok = (data: unknown) => new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { data } }))
+        if (method === 'getValidatorByAddress') return ok({ address: params[0], rewardAddress: params[0] })
+        if (method === 'getStakerByAddress') return ok({ address: params[0], delegation: POOL, balance: 1 })
+        const who = params[0] as string
+        if (failing[who]) {
+          calls[who] = (calls[who] ?? 0) + 1
+          return failing[who]!()
+        }
+        return ok(chain.page(who, params[2] as string | null))
+      }),
+    )
+    const env = { DB: db as never, NIM_RPCS: 'https://rpc.test', POLYGON_RPCS: '', RELAYER_ADDRESS: '', RELAYER: null as never }
+    let t = Date.UTC(2026, 10, 7, 12)
+    // every pool known with its reward address, so the first ticks scan only
+    for (const v of vals) {
+      db.db.prepare('INSERT INTO pools (address, name, fee, payout_type, schedule, listed, reward_address, reward_checked_at) VALUES (?,?,?,?,?,?,?,?)')
+        .run(v.address, v.name, 0.05, 'restake', 'Every 12 hours', 1, v.address, t)
+    }
+    db.db.prepare("INSERT INTO meta (key, value, updated_at) VALUES ('pools_synced_at', ?, ?)").run(String(vals.length), t)
+    // the failing pools sit in open descents, the highest visit priority, so they come first every tick
+    for (const a of Object.keys(failing)) {
+      db.db.prepare(
+        'INSERT INTO pool_cursor (pool, newest_hash, newest_block, oldest_block, backfill_done, resume_hash, floor_block, visited_at, txs_per_hour) VALUES (?,?,?,?,?,?,?,?,?)',
+      ).run(a, `${a}-top`, 66_200_000, 65_000_000, 1, `${a}-resume`, 66_100_000, t - 2 * 3_600_000, 10)
+    }
+    const tick = async (ms = 5 * 60_000) => {
+      t += ms
+      return runIndexerTick(env, { maxPages: 3, maxMs: 25_000 }, { now: () => t, sleep: async () => {} })
+    }
+    const garudaCursor = () => db.query<Record<string, unknown>>('SELECT newest_block, resume_hash, backfill_done FROM pool_cursor WHERE pool = ?', POOL)[0]
+    const meta = (k: string) => db.query<{ value: string }>('SELECT value FROM meta WHERE key = ?', k)[0]?.value
+    return { db, calls, tick, garudaCursor, meta }
+  }
+  const rpcFault = () => new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, error: { code: -32603, message: 'Internal error' } }))
+
+  it('a pool whose pages always fail is backed off like a data error, and Garuda keeps moving', async () => {
+    const w = world({ [BAD]: rpcFault })
+    const progress: unknown[] = []
+    for (let i = 0; i < 4; i++) {
+      await w.tick()
+      progress.push(JSON.stringify(w.garudaCursor() ?? null))
+    }
+    // three attempts in the first tick, then the 30 min back-off; Garuda is scanned in every later tick
+    expect(w.calls[BAD]).toBe(3)
+    expect(new Set(progress.slice(1)).size).toBe(3)
+    expect(progress[3]).not.toBe('null')
+    expect(w.meta(`scan_error:${BAD}`)).toMatch(/Internal error/)
+    await w.tick(31 * 60_000)
+    expect(w.calls[BAD]).toBe(6)
+  })
+
+  it('failures on two different pools in one tick are an RPC outage: the tick stops and nobody is backed off', async () => {
+    // a 4xx is not retried, so both pools fail inside one tick's budget
+    const w = world({ [BAD]: () => new Response('', { status: 400 }), [BAD2]: () => new Response('', { status: 400 }) })
+    const r = await w.tick()
+    expect(r.pages).toBe(0)
+    expect([w.calls[BAD], w.calls[BAD2]]).toEqual([1, 1])
+    expect(w.meta(`scan_error:${BAD}`)).toBeUndefined()
+    expect(w.meta(`scan_error:${BAD2}`)).toBeUndefined()
+    expect(w.meta('indexer_last_error')).toMatch(/Pool 0.*Pool 1|Pool 1.*Pool 0/)
+    // Garuda was not visited after the outage was seen
+    expect(w.garudaCursor()).toBeUndefined()
+    await w.tick()
+    expect([w.calls[BAD], w.calls[BAD2]]).toEqual([2, 2])
+  })
+
+  it('a reward-address check that keeps failing for one pool does not stop the scans', async () => {
+    const db = new FakeD1()
+    const chain = new FakeChain(POOL, garuda.txs, top - 20_000)
+    let rewardFaults = 0
+    const vals = [validators[0], { ...validators[0], address: BAD, name: 'Bad Reward' }]
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input) === VALIDATORS_API) return new Response(JSON.stringify(vals))
+        const { method, params } = JSON.parse(String(init!.body)) as { method: string; params: unknown[] }
+        const ok = (data: unknown) => new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { data } }))
+        if (method === 'getValidatorByAddress') {
+          if (params[0] === BAD) {
+            rewardFaults++
+            return rpcFault()
+          }
+          return ok({ address: params[0], rewardAddress: params[0] })
+        }
+        if (method === 'getStakerByAddress') return ok({ address: params[0], delegation: POOL, balance: 1 })
+        return ok(chain.page(params[0] as string, params[2] as string | null))
+      }),
+    )
+    const env = { DB: db as never, NIM_RPCS: 'https://rpc.test', POLYGON_RPCS: '', RELAYER_ADDRESS: '', RELAYER: null as never }
+    // BAD has never been checked, so it sorts first among the reward checks of every tick
+    db.db.prepare('INSERT INTO pools (address, name, fee, payout_type, schedule, listed, reward_checked_at) VALUES (?,?,?,?,?,?,?)').run(BAD, 'Bad Reward', 0.05, 'restake', '', 1, null)
+    db.db.prepare('INSERT INTO pools (address, name, fee, payout_type, schedule, listed, reward_checked_at, reward_address) VALUES (?,?,?,?,?,?,?,?)').run(POOL, 'Garuda Pool', 0.05, 'restake', '', 1, 1, POOL)
+    let t = Date.UTC(2026, 10, 7, 12)
+    db.db.prepare("INSERT INTO meta (key, value, updated_at) VALUES ('pools_synced_at', '2', ?)").run(t)
+    const blocks: unknown[] = []
+    for (let i = 0; i < 3; i++) {
+      t += 5 * 60_000
+      await runIndexerTick(env, { maxPages: 3, maxMs: 25_000 }, { now: () => t, sleep: async () => {} })
+      blocks.push(db.query<{ n: number }>('SELECT COUNT(*) n FROM pool_hour WHERE pool = ?', POOL)[0]!.n)
+    }
+    expect(blocks[0]).toBeGreaterThan(0)
+    // tried once (three attempts), then left alone for the back-off
+    expect(rewardFaults).toBe(3)
+  })
+})
