@@ -311,6 +311,16 @@ describe('scanPool paging edge cases (review r1)', () => {
     expect(again.cursor.newestBlock).toBeNull()
   })
 
+  it('dates the reach from the head, not from an old tx, on an idle address', async () => {
+    // newest tx is ~1M blocks below the head: extrapolating from it would date the reach wrongly
+    const txs = [mk(1, 1_000_000), mk(2, 999_000)]
+    const head = { head: 2_000_000 }
+    const now = 5_000_000_000_000
+    const s = await scanPool(synth(txs, head), ADDR, existing(1_500_000), { maxPages: 1, now, canFetch: () => true })
+    expect(s.cursor.reachTs).toBeLessThanOrEqual(now)
+    expect(s.cursor.reachTs).toBe(now - (head.head - lastMacro(head.head)) * 1000)
+  })
+
   it('records where the data reaches and the hole an open descent leaves', async () => {
     const txs = [...Array.from({ length: 1500 }, (_, i) => mk(i, 60_000 + i * 2)), ...Array.from({ length: 30 }, (_, i) => mk(5000 + i, 58_000 + i))]
     const head = { head: 63_100 }

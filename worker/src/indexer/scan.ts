@@ -168,6 +168,8 @@ export interface ScanStep {
 
 // Albatross produces a block per second; used only to date a macro block with no tx of ours in it.
 const BLOCK_MS = 1000
+// beyond this distance a tx's timestamp says little about the head's time (block times drift)
+const DATE_FROM_TX_BLOCKS = 3_600
 
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e))
 const confirmations = (tx: NimTx) => (tx as { confirmations?: number }).confirmations ?? 1
@@ -226,7 +228,15 @@ export async function scanPool(
       // only blocks up to the last macro block are final; younger ones wait for the next visit
       const head = page.reduce((m, t) => Math.max(m, t.blockNumber + confirmations(t) - 1), 0)
       lastMacro = Math.floor(head / BATCH_BLOCKS) * BATCH_BLOCKS
-      reachTs = page[0]!.timestamp + (lastMacro - page[0]!.blockNumber) * BLOCK_MS
+      // date the last macro block from our newest tx when it is close, else from the head (the
+      // RPC answered just now); an idle address's newest tx can be months old
+      const ref = page[0]!
+      reachTs = Math.min(
+        opts.now,
+        lastMacro - ref.blockNumber <= DATE_FROM_TX_BLOCKS
+          ? ref.timestamp + (lastMacro - ref.blockNumber) * BLOCK_MS
+          : opts.now - (head - lastMacro) * BLOCK_MS,
+      )
       if (boundary === null) boundary = isNew ? lastMacro - (opts.backfillBlocks ?? BACKFILL_BLOCKS) : lastMacro
     }
     for (const tx of page) {

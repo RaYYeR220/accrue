@@ -267,17 +267,21 @@ export function poolWindowFromAggregates(
   stakerDays: readonly StakerDayRow[],
   range: WindowRange,
 ): PoolWindow {
+  // the newest payout we know, for schedule checks, whichever part of the data the window uses
+  let lastPayoutTs: number | null = null
+  for (const h of hours) {
+    if (h.lastPayoutTs !== null && h.hour * HOUR_MS < range.toTs) lastPayoutTs = Math.max(lastPayoutTs ?? 0, h.lastPayoutTs)
+  }
   if (range.hole) {
     const below = { fromTs: range.fromTs, toTs: Math.min(range.toTs, range.hole.fromTs) }
     const above = { fromTs: Math.max(range.fromTs, range.hole.toTs), toTs: range.toTs }
     const side = above.toTs - above.fromTs >= below.toTs - below.fromTs ? above : below
-    return poolWindowFromAggregates(hours, stakerDays, side)
+    return { ...poolWindowFromAggregates(hours, stakerDays, side), lastPayoutTs }
   }
   const rows = hours
     .filter((h) => h.hour * HOUR_MS >= range.fromTs && h.hour * HOUR_MS < range.toTs)
     .sort((a, b) => a.hour - b.hour)
   const payoutHours = rows.filter((h) => h.lastPayoutTs !== null)
-  const lastPayoutTs = payoutHours.length ? payoutHours[payoutHours.length - 1]!.lastPayoutTs : null
   const empty: PoolWindow = {
     earned: 0n, paidRestake: 0n, paidDirect: 0n, paidUnverified: 0n, otherOut: 0n, cycles: 0,
     lastPayoutTs, windowStartTs: range.fromTs, windowEndTs: range.toTs,

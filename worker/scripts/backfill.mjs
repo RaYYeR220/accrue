@@ -205,8 +205,9 @@ async function main() {
     // the time of newest_block: from the cursor, or (caches written before reach_ts existed) dated
     // from the newest tx at one block per second
     const newestTx = s.txs.reduce((m, t) => (t.blockNumber > (m?.blockNumber ?? -1) ? t : m), null)
+    const near = newestTx && s.cursor.newestBlock - newestTx.blockNumber <= 3_600
     const reachTs =
-      s.cursor.reachTs ?? (newestTx ? newestTx.timestamp + (s.cursor.newestBlock - newestTx.blockNumber) * 1000 : s.visitedAt)
+      s.cursor.reachTs ?? Math.min(s.visitedAt, near ? newestTx.timestamp + (s.cursor.newestBlock - newestTx.blockNumber) * 1000 : s.visitedAt)
     const cursor = { ...s.cursor, lastPayoutBlock: agg.lastPayoutBlock, reachTs, holeFromTs: null, holeToTs: null }
     const spanH = (s.visitedAt - s.txs.reduce((m, t) => Math.min(m, t.timestamp), s.visitedAt)) / HOUR_MS
     cursor.txsPerHour = spanH > 0 ? s.txs.length / spanH : null

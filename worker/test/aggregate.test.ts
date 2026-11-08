@@ -327,4 +327,17 @@ describe('poolWindowFromAggregates: complete runs only (review r1)', () => {
     const backfilling = poolWindowFromAggregates(rows, agg.stakerDays, { fromTs: lo, toTs: hi, hole: { fromTs: 0, toTs: hole.toTs } })
     expect(backfilling.windowStartTs).toBeGreaterThanOrEqual(hole.toTs)
   })
+
+  it('lastPayoutTs is the newest payout known, whichever side of a hole the window uses', () => {
+    const agg = aggregate(garuda.txs, { rewardAddress: garuda.address }, () => true)
+    const lo = sorted[0]!.timestamp
+    const hi = sorted[sorted.length - 1]!.timestamp + 1
+    const newestPayout = Math.max(...sorted.filter(isPay).map((t) => t.timestamp))
+    // a short catch-up hole near the end: the window uses the longer, older side
+    const hole = { fromTs: newestPayout - 8 * HOUR, toTs: Math.floor(newestPayout / HOUR) * HOUR }
+    const rows = agg.hours.filter((h) => (h.hour + 1) * HOUR <= hole.fromTs || h.hour * HOUR >= hole.toTs)
+    const w = poolWindowFromAggregates(rows, agg.stakerDays, { fromTs: lo, toTs: hi, hole })
+    expect(w.windowEndTs).toBeLessThanOrEqual(hole.fromTs)
+    expect(w.lastPayoutTs).toBe(newestPayout)
+  })
 })
