@@ -5,6 +5,7 @@
   "license": "MIT",
   "packageManager": "pnpm@9.15.0",
   "scripts": {
+    "dev": "pnpm --filter @accrue/app dev",
     "test": "pnpm -r --if-present test",
     "lint": "pnpm -r --if-present lint",
     "typecheck": "pnpm -r --if-present typecheck"

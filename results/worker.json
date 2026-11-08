@@ -1,0 +1,115 @@
+{
+  "source": "worker",
+  "tool": "vitest 3.2.4",
+  "command": "pnpm --filter @accrue/worker test",
+  "ranAt": "2026-11-08T05:02:38.269Z",
+  "commit": "104620e1e26069f23432cccca6428164d0fdd2de",
+  "testedCodeMatchesCommit": true,
+  "wallMs": 76273,
+  "ok": true,
+  "files": 14,
+  "tests": 218,
+  "passed": 218,
+  "failed": 0,
+  "skipped": 0,
+  "byFile": [
+    {
+      "file": "worker/test/aggregate.test.ts",
+      "tests": 25,
+      "passed": 25,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "worker/test/api.test.ts",
+      "tests": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "worker/test/broadcast.test.ts",
+      "tests": 17,
+      "passed": 17,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "worker/test/chain.test.ts",
+      "tests": 13,
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "worker/test/cron.test.ts",
+      "tests": 15,
+      "passed": 15,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "worker/test/cutsweep.test.ts",
+      "tests": 20,
+      "passed": 20,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "worker/test/gas.test.ts",
+      "tests": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "worker/test/health.test.ts",
+      "tests": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "worker/test/market-api.test.ts",
+      "tests": 15,
+      "passed": 15,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "worker/test/pools-api.test.ts",
+      "tests": 22,
+      "passed": 22,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "worker/test/relayer.test.ts",
+      "tests": 18,
+      "passed": 18,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "worker/test/rpc.test.ts",
+      "tests": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "worker/test/scan.test.ts",
+      "tests": 26,
+      "passed": 26,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "worker/test/validate.test.ts",
+      "tests": 18,
+      "passed": 18,
+      "failed": 0,
+      "skipped": 0
+    }
+  ]
+}
