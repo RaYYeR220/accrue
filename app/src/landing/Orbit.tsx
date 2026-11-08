@@ -39,9 +39,9 @@ export function Orbit({ pools, fiat, apiRef }: { pools: OrbitPool[]; fiat: FiatA
 
   const [selected, setSelected] = useState<string | null>(() => defaultPoolId(pools))
   const [slider, setSlider] = useState(SLIDER_START)
-  // the rates refetch every few minutes; the copy only changes when the price of a NIM does
+  // the rates refetch every few minutes; the copy only changes when the price of a NIM (or its age note) does
   const nimPrice = fiat.nimToFiat(100_000n)
-  const copy = useMemo(() => makeOrbitCopy(fiat), [fiat.fiat, nimPrice])
+  const copy = useMemo(() => makeOrbitCopy(fiat), [fiat.fiat, nimPrice, fiat.note])
   const chips = useMemo(() => chipPools(pools), [pools])
   const stake = stakeOf(slider)
   const stakeText = `${fmtNum(stake)} NIM`

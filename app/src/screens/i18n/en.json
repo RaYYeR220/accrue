@@ -50,6 +50,8 @@
   "home.partial.nim.unpriced": "Dollars only. Testnet NIM has no price, so it is not counted.",
   "home.src": "1 NIM = {price}, rates as of {time}. Dollar values from Aave on Polygon.",
   "home.srcPending": "Exchange rates are loading; values show in USD until they arrive.",
+  "home.srcStale": "1 NIM = {price}, {note}; the price sources are not answering right now. Dollar values from Aave on Polygon.",
+  "home.srcDown": "No exchange rate right now; values show in USD.",
   "home.earning": "Earning",
   "home.dollars": "Dollars in Aave",
   "home.dollarsWhere": "Aave v3 · Polygon",

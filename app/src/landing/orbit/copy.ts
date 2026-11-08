@@ -25,7 +25,10 @@ export function makeOrbitCopy(fiat: FiatApi): OrbitCopy {
     fiat: nim => {
       if (!Number.isFinite(nim) || nim < 0) return ''
       const v = fiat.nimToFiat(BigInt(Math.round(nim * 1e5)))
-      return Number.isFinite(v) ? t('landing.orbit.approx', { amount: fiat.format(v) }) : ''
+      if (!Number.isFinite(v)) return ''
+      const approx = t('landing.orbit.approx', { amount: fiat.format(v) })
+      // a stale price carries its age on a line of its own
+      return fiat.note ? `${approx}\n${fiat.note}` : approx
     },
     paidOutSample: amount => t('landing.orbit.paidOutSample', { amount }),
     chipLanded: t('landing.orbit.chipLanded'),

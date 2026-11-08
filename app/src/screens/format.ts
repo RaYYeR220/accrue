@@ -1,4 +1,5 @@
 import { type AssetKey } from '@accrue/shared'
+import type { FiatApi } from '../fiat/useFiat'
 import { currentLang, t } from '../i18n'
 
 const cache = new Map<string, Intl.NumberFormat>()
@@ -90,6 +91,9 @@ export function polUpTo(wei: bigint): string {
 export const signed = (s: string, negative: boolean) => (negative ? `−${s.replace(/^-/, '')}` : `+${s}`)
 
 export const time = (ts: number) => new Intl.DateTimeFormat(currentLang(), { hour: '2-digit', minute: '2-digit' }).format(ts)
+
+// "≈ $1.23", and while the rates are a stale copy "≈ $1.23 · price as of 05:12"
+export const approx = (fiat: Pick<FiatApi, 'format' | 'note'>, value: number) => `≈ ${fiat.format(value)}${fiat.note ? ` · ${fiat.note}` : ''}`
 
 export function when(ts: number, now = Date.now()): string {
   const sameDay = new Date(ts).toDateString() === new Date(now).toDateString()

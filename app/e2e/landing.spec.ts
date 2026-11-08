@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { CHECK_SIAM, EVM_OWNER, LIVE_POOLS, mockApi, SIAM, SIAM_STAKER } from './fixtures'
+import { CHECK_SIAM, EVM_OWNER, LIVE_POOLS, mockApi, RATES, SIAM, SIAM_STAKER } from './fixtures'
 
 const DEEP_LINK = 'https://nimpay.app/miniapps/open/localhost:4317'
 
@@ -70,6 +70,12 @@ test.describe('landing outside Nimiq Pay', () => {
     await expect(why).toHaveAttribute('aria-expanded', 'true')
     await expect(board.getByText('Paid 97.5% of earnings against 97.0% promised.')).toBeVisible()
     await expect(board.getByText('Paid 97.5% of earnings against 97% promised.')).toBeVisible()
+  })
+
+  test('a stale NIM price carries its age under the fiat value in the orbit', async ({ page }) => {
+    await mockApi(page, { pools: 'live', rates: { ...RATES, asOf: Date.now() - 40 * 60_000, stale: true } })
+    await page.goto('/')
+    await expect(page.getByText(/^≈ \$\S+\s*price as of \d\d:\d\d/)).toBeVisible()
   })
 
   test('tapping a pool on the scoreboard turns the orbit to it', async ({ page }) => {

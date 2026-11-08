@@ -48,6 +48,24 @@ test.describe('Home', () => {
     await expect(hero(page).getByText('$0.00')).toHaveCount(0)
   })
 
+  test('a stale price says how old it is, next to the NIM value and in the source line', async ({ page }) => {
+    await start(page, 'happy', '&rates=stale')
+    await expect(page.getByText(/^1 NIM = \$0\.000300, price as of \d\d:\d\d( [AP]M)?; the price sources are not answering right now\./)).toBeVisible()
+    await expect(page.getByText(/^≈ \$0\.30 · price as of \d\d:\d\d/).first()).toBeVisible()
+  })
+
+  test('with no rate at all the app stays quiet: values in USD, nothing on the console', async ({ page }) => {
+    const logged: string[] = []
+    page.on('console', m => {
+      if (m.type() === 'error' || m.type() === 'warning') logged.push(`${m.type()}: ${m.text()}`)
+    })
+    page.on('pageerror', e => logged.push(`pageerror: ${e.message}`))
+    await start(page, 'happy', '&rates=down')
+    await expect(page.getByText('No exchange rate right now; values show in USD.')).toBeVisible()
+    await expect(hero(page).getByText('—', { exact: true }).first()).toBeVisible()
+    expect(logged).toEqual([])
+  })
+
   test('idle balances below what can be deposited or staked say why, with no button', async ({ page }) => {
     await start(page, 'insufficient')
     await tab(page, 'Dollars')

@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { fetchRates, hostFiat, makeFiat, parseRates, type Rates } from '../src/fiat/useFiat'
+import { fetchRates, hostFiat, makeFiat, parseRates, retryRates, type Rates } from '../src/fiat/useFiat'
+import { extendDicts } from '../src/i18n'
+import en from '../src/landing/i18n/en.json'
+import { makeOrbitCopy } from '../src/landing/orbit/copy'
 import { HttpError } from '../src/providers/errors'
 
 const rates: Rates = { asOf: 1_762_500_000_000, nimUsd: 0.0003, fx: { USD: 1, EUR: 0.9, CRC: 500, GMD: 70 }, source: ['test'] }
@@ -42,6 +45,52 @@ describe('makeFiat', () => {
     const f = makeFiat('EUR', { ...rates, fx: { ...rates.fx, EUR: 0 } }, false, 'en')
     expect(f.fiat).toBe('USD')
     expect(f.toFiat(2)).toBe(2)
+  })
+})
+
+describe('stale rates', () => {
+  const hhmm = (ts: number, lang = 'en') => new Intl.DateTimeFormat(lang, { hour: '2-digit', minute: '2-digit' }).format(ts)
+  const asOf = Date.UTC(2026, 10, 8, 5, 12)
+
+  it('fresh rates carry no note', () => {
+    const f = makeFiat('USD', { ...rates, asOf }, false, 'en', asOf + 60_000)
+    expect(f.stale).toBe(false)
+    expect(f.note).toBe('')
+  })
+
+  it("a stale copy says how old its price is, the way it reads today: 'price as of 05:12'", () => {
+    const f = makeFiat('EUR', { ...rates, asOf, stale: true }, false, 'en', asOf + 3 * 3_600_000)
+    expect(f.stale).toBe(true)
+    expect(f.note).toBe(`price as of ${hhmm(asOf)}`)
+    // the values still convert: an old price is shown with its age, not dropped
+    expect(f.nimToFiat(100_000n)).toBeCloseTo(0.0003 * 0.9)
+  })
+
+  it('a price from an earlier day names the day too', () => {
+    const f = makeFiat('USD', { ...rates, asOf, stale: true }, false, 'en', asOf + 20 * 3_600_000)
+    expect(f.note).toMatch(/^price as of .*Nov.*\d\d:\d\d|^price as of .*\d\d:\d\d.*Nov/)
+  })
+
+  it("the landing's orbit puts the age under the fiat value", () => {
+    extendDicts({ en })
+    const copy = makeOrbitCopy(makeFiat('USD', { ...rates, asOf, stale: true }, false, 'en', asOf + 60_000))
+    expect(copy.fiat(1000)).toBe(`≈ $0.30\nprice as of ${hhmm(asOf)}`)
+    expect(makeOrbitCopy(makeFiat('USD', rates, false, 'en')).fiat(1000)).toBe('≈ $0.30')
+  })
+
+  it('parses the flag, and only `true` counts', () => {
+    expect(parseRates({ ...rates, stale: true }).stale).toBe(true)
+    expect(parseRates({ ...rates, stale: 'yes' }).stale).toBeUndefined()
+    expect(parseRates(rates).stale).toBeUndefined()
+  })
+})
+
+describe('retryRates', () => {
+  it('a 503 means no rate exists right now: no retry, so nothing more goes to the console', () => {
+    expect(retryRates(0, new HttpError(503, { error: 'RPC_UNAVAILABLE' }))).toBe(false)
+    expect(retryRates(0, new Error('network'))).toBe(true)
+    expect(retryRates(0, new HttpError(502, null))).toBe(true)
+    expect(retryRates(1, new Error('network'))).toBe(false)
   })
 })
 

@@ -202,7 +202,8 @@
   font-style: normal;
   font-size: 11px;
   color: var(--subtle);
-  white-space: nowrap;
+  /* a stale price adds its age on a second line */
+  white-space: pre-line;
 }
 .slot {
   display: inline-block;

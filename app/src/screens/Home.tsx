@@ -10,7 +10,7 @@ import { Button, Card } from '../ui/components'
 import { Ticker } from '../ui/components/Ticker'
 import { Spinner } from '../ui/components/Fields'
 import { useApp } from './context'
-import { about, daysText, every, exactTokens, nimAmount, num, pct, signed, SYMBOL, time, tokens, when } from './format'
+import { about, approx, daysText, every, exactTokens, nimAmount, num, pct, signed, SYMBOL, time, tokens, when } from './format'
 import { ASSET_KEYS, useLiveDollars, useNow } from './live'
 import { ConnectEvm, ConnectNim, PoolVerdict } from './parts'
 
@@ -50,7 +50,11 @@ function Hero() {
             : null}
       </p>
       <p className="src">
-        {app.fiat.asOf !== null ? t('home.src', { price: app.fiat.format(app.fiat.nimToFiat(100_000n), 6), time: time(app.fiat.asOf) }) : t('home.srcPending')}
+        {app.fiat.asOf === null
+          ? t(app.fiat.unavailable ? 'home.srcDown' : 'home.srcPending')
+          : app.fiat.stale
+            ? t('home.srcStale', { price: app.fiat.format(app.fiat.nimToFiat(100_000n), 6), note: app.fiat.note })
+            : t('home.src', { price: app.fiat.format(app.fiat.nimToFiat(100_000n), 6), time: time(app.fiat.asOf) })}
       </p>
     </section>
   )
@@ -107,7 +111,7 @@ function Earning() {
             <div className="rc-line">
               <span className="rc-v">{nimAmount(staked, false)}</span>
               <span className="rc-u">NIM</span>
-              {Number.isFinite(app.fiat.nimToFiat(staked)) && <span className="rc-meta">≈ {app.fiat.format(app.fiat.nimToFiat(staked))}</span>}
+              {Number.isFinite(app.fiat.nimToFiat(staked)) && <span className="rc-meta">{approx(app.fiat, app.fiat.nimToFiat(staked))}</span>}
             </div>
             {nim.myPool && (
               <button type="button" className="rc-verdict" onClick={() => app.go('payouts')}>

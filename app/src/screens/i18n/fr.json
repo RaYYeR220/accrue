@@ -50,6 +50,8 @@
   "home.partial.nim.unpriced": "Dollars seulement. Les NIM du testnet n’ont pas de cours et ne sont donc pas comptés.",
   "home.src": "1 NIM = {price}, cours de {time}. Valeurs en dollars d’Aave sur Polygon.",
   "home.srcPending": "Les taux de change se chargent ; en attendant, les valeurs sont en USD.",
+  "home.srcStale": "1 NIM = {price}, {note} ; les sources de prix ne répondent pas pour l’instant. Valeurs en dollars d’Aave sur Polygon.",
+  "home.srcDown": "Aucun taux de change pour l’instant ; les valeurs sont en USD.",
   "home.earning": "Ce qui rapporte",
   "home.dollars": "Dollars sur Aave",
   "home.dollarsWhere": "Aave v3 · Polygon",

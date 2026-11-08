@@ -81,6 +81,7 @@ export interface ApiOptions {
   check?: unknown
   checkStatus?: number
   position?: unknown
+  rates?: unknown
 }
 
 // Answers /api/* for one page and counts what was asked, so tests can prove nothing fires on load.
@@ -94,7 +95,7 @@ export async function mockApi(page: Page, o: ApiOptions = {}) {
       if (o.pools === undefined || o.pools === 'down') return json(route, { error: 'RPC_UNAVAILABLE' }, 503)
       return json(route, o.pools)
     }
-    if (url.pathname === '/api/rates') return json(route, RATES)
+    if (url.pathname === '/api/rates') return json(route, o.rates ?? RATES)
     if (url.pathname.startsWith('/api/check/')) return json(route, o.check ?? CHECK_SIAM, o.checkStatus ?? 200)
     if (url.pathname.startsWith('/api/position/')) return json(route, o.position ?? POSITION)
     return json(route, { error: 'INTERNAL' }, 404)

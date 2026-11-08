@@ -50,6 +50,8 @@
   "home.partial.nim.unpriced": "Só dólares. NIM de testnet não tem preço, então não entra na conta.",
   "home.src": "1 NIM = {price}, cotações das {time}. Valores em dólar do Aave na Polygon.",
   "home.srcPending": "As cotações estão carregando; até lá os valores aparecem em USD.",
+  "home.srcStale": "1 NIM = {price}, {note}; as fontes de preço não estão respondendo agora. Valores em dólar do Aave na Polygon.",
+  "home.srcDown": "Sem cotação no momento; os valores aparecem em USD.",
   "home.earning": "Rendendo",
   "home.dollars": "Dólares no Aave",
   "home.dollarsWhere": "Aave v3 · Polygon",

@@ -17,6 +17,7 @@
   "onboarding.nimHint": "Liest dein NIM-Guthaben und deinen Stake. Nimiq Pay fragt dich einmal.",
   "onboarding.dollarsHint": "Liest deine USDT und USDC auf Polygon. Nimiq Pay fragt dich einmal.",
   "status.loading": "Wird geladen …",
+  "fiat.asOf": "Kurs von {time}",
   "status.testnet": "Testnet",
   "status.nimBalance": "{amount} NIM",
   "status.tokenBalance": "{amount} {asset} auf Polygon",

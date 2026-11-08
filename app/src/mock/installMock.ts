@@ -10,7 +10,7 @@ import { isScenarioName, MOCK_RATES, SCENARIO_NAMES, SCENARIOS, type RelayOutcom
 // /api/relay*, /api/rates, /api/health, /api/aave, /api/position, /api/pools, /api/check endpoints,
 // the testnet validators API and Polygon RPC reads. What a server or a chain would remember (relay
 // jobs, balances, the staker) lives in sessionStorage, so a reload finds it again.
-// Query: ?mock=<scenario>[&lang=de][&fiat=EUR][&network=testnet][&chain=0x89][&delay=0][&rates=down]
+// Query: ?mock=<scenario>[&lang=de][&fiat=EUR][&network=testnet][&chain=0x89][&delay=0][&rates=down|stale]
 // Loaded only through the `import.meta.env.DEV` guard in main.tsx.
 
 export interface MockCall {
@@ -446,7 +446,12 @@ export function installMock(search: string, w: Window = window): MockHandle {
 
   async function api(url: URL, method: string, body: string): Promise<Response | null> {
     const path = url.pathname
-    if (path === '/api/rates') return q.get('rates') === 'down' ? json(503, { error: 'RPC_UNAVAILABLE' }) : json(200, { ...MOCK_RATES, asOf: Date.now() })
+    if (path === '/api/rates') {
+      const r = q.get('rates')
+      if (r === 'down') return json(503, { error: 'RPC_UNAVAILABLE', detail: { reason: 'price_unavailable' } })
+      // the sources stopped answering 40 minutes ago: the API serves its last good copy
+      return json(200, r === 'stale' ? { ...MOCK_RATES, asOf: Date.now() - 40 * 60_000, stale: true } : { ...MOCK_RATES, asOf: Date.now() })
+    }
     if (path === '/api/aave') {
       const illiquid = sc.relay.withdraw.kind === 'error' && sc.relay.withdraw.error === 'AAVE_LIQUIDITY'
       return json(200, mockAave(Date.now(), illiquid))
