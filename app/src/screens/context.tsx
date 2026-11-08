@@ -75,7 +75,9 @@ function parseHistory(raw: unknown): ChainTx[] {
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const network = hostNetwork()
-  const fiat = useFiat()
+  const hostFiat = useFiat()
+  // testnet NIM has no price, so it gets no fiat value at all
+  const fiat = useMemo<FiatApi>(() => (network === 'testnet' ? { ...hostFiat, nimToFiat: () => Number.NaN } : hostFiat), [hostFiat, network])
   const nim = useNim({ network })
   const [route, setRoute] = useState<Route>(readRoute)
   const [intent, setIntent] = useState<Intent>(null)

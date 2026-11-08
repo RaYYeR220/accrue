@@ -61,7 +61,7 @@ function Stake({ onOpen }: { onOpen: (s: NimSpec) => void }) {
         <span className="rc-v big">{nimAmount(s.activeLuna, false)}</span>
         <span className="rc-u">NIM</span>
       </div>
-      <p className="muted">≈ {app.fiat.format(app.fiat.nimToFiat(s.activeLuna))}</p>
+      {Number.isFinite(app.fiat.nimToFiat(s.activeLuna)) && <p className="muted">≈ {app.fiat.format(app.fiat.nimToFiat(s.activeLuna))}</p>}
       <div className="pool-box">
         <p className="pool-name">{pool ? pool.name : s.delegation ? t('stake.unlisted') : t('stake.noPool')}</p>
         {pool && <PoolFacts p={pool} />}

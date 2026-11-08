@@ -96,7 +96,7 @@ function Earning() {
             <div className="rc-line">
               <span className="rc-v">{nimAmount(staked, false)}</span>
               <span className="rc-u">NIM</span>
-              <span className="rc-meta">≈ {app.fiat.format(app.fiat.nimToFiat(staked))}</span>
+              {Number.isFinite(app.fiat.nimToFiat(staked)) && <span className="rc-meta">≈ {app.fiat.format(app.fiat.nimToFiat(staked))}</span>}
             </div>
             {nim.myPool && (
               <button type="button" className="rc-verdict" onClick={() => app.go('payouts')}>
