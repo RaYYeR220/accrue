@@ -108,8 +108,9 @@
   letter-spacing: 0.005em;
   text-wrap: balance;
 }
+/* starts at 0.01, not 0: browsers skip fully transparent text when timing the largest paint */
 .reveal {
-  opacity: 0;
+  opacity: 0.01;
   transform: translateY(12px);
   animation:
     rise var(--dur-enter) var(--ease-out) forwards,
