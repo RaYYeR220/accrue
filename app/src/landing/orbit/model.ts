@@ -70,3 +70,58 @@ export function defaultPoolId(pools: OrbitPool[]): string | null {
   const chips = chipPools(pools)
   return chips[0]?.pool.id ?? pools.find(p => p.mode === 'periodic')?.id ?? pools[0]?.id ?? null
 }
+
+// How many dots each pool's cloud gets. One per staker reads best, but the count comes from the
+// API, so it is capped per pool and across the orbit to keep every frame cheap on a phone.
+export const DOTS_PER_POOL = 300
+export const DOTS_TOTAL = 1500
+
+export function dotCounts(stakers: number[], perPool = DOTS_PER_POOL, total = DOTS_TOTAL): number[] {
+  const capped = stakers.map(s => (s > 0 ? Math.min(perPool, Math.floor(s)) : 0))
+  const sum = capped.reduce((a, b) => a + b, 0)
+  if (sum <= total) return capped
+  // shrink proportionally; the floor leaves room for every staked pool to keep one dot
+  const k = (total - capped.filter(n => n > 0).length) / sum
+  return capped.map(n => (n > 0 ? Math.max(1, Math.floor(n * k)) : 0))
+}
+
+export interface PayoutPlan {
+  // whether there is a payout rhythm to draw
+  ok: boolean
+  why: 'ok' | 'none' | 'unpub' | 'noYield'
+  cont: boolean
+  direct: boolean
+  // yearly yield after the fee
+  net: number
+  // hours between payouts
+  h: number
+  // payouts in the 7-day week, and how many have landed when the example starts
+  N: number
+  k: number
+  stakeNow: number
+  paid: number
+  per: number
+}
+
+// The example stake's week in one pool: its own fee and schedule, on the network's gross yield.
+export function payoutPlan(p: OrbitPool, stake: number, gross: number): PayoutPlan {
+  const direct = p.kind === 'D'
+  const cont = p.mode === 'stream'
+  const net = gross * (1 - (p.fee ?? 0))
+  const off = (why: PayoutPlan['why']): PayoutPlan => ({ ok: false, why, cont: false, direct, net: Math.max(0, net), h: 0, N: 0, k: 0, stakeNow: stake, paid: 0, per: 0 })
+  if (p.mode === 'none') return off('none')
+  if (p.mode === 'unpub') return off('unpub')
+  const h = p.mode === 'instant' ? ((p.thresholdNim ?? 10) / (stake * net)) * 8760 : (p.h ?? 0)
+  if (!(net > 0) || !(h > 0) || !Number.isFinite(h)) return off('noYield')
+  const perOf = (s: number) => (s * net * h) / 8760
+  const N = cont ? Math.round(168 / h) : Math.max(1, Math.min(168, Math.round(168 / h)))
+  const k = Math.floor(N * 0.58)
+  let stakeNow = stake
+  let paid = 0
+  for (let i = 0; i < k; i++) {
+    const r = perOf(direct ? stake : stakeNow)
+    if (direct) paid += r
+    else stakeNow += r
+  }
+  return { ok: true, why: 'ok', cont, direct, net, h, N, k, stakeNow, paid, per: perOf(direct ? stake : stakeNow) }
+}

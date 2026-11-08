@@ -2,9 +2,10 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type MutableR
 import type { FiatApi } from '../fiat/useFiat'
 import { t } from '../i18n'
 import { Chip } from '../ui/components'
-import { fmtCompact, fmtFee, fmtNum, fmtWeekday } from './format'
+import { fmtFee, fmtNum } from './format'
+import { makeOrbitCopy, schedText } from './orbit/copy'
 import { chipPools, defaultPoolId, type OrbitPool } from './orbit/model'
-import { createOrbit, type OrbitCopy, type OrbitHandle } from './orbit/scene'
+import { createOrbit, type OrbitHandle } from './orbit/scene'
 
 export interface OrbitApi {
   select(id: string): void
@@ -18,44 +19,6 @@ const nice = (x: number) => {
   return (m < 1.5 ? 1 : m < 2.25 ? 2 : m < 3.5 ? 2.5 : m < 7.5 ? 5 : 10) * q
 }
 const stakeOf = (v: number) => Math.min(1e6, nice(1000 * Math.pow(10, v / 100)))
-
-function schedText(p: OrbitPool): string {
-  if (p.mode === 'none' || p.mode === 'unpub') return t(p.schedKey)
-  if (p.mode === 'instant') return t(p.kind === 'D' ? 'landing.orbit.paysOutAt' : 'landing.orbit.restakesAt', { n: p.thresholdNim ?? 10 })
-  return t(p.kind === 'D' ? 'landing.orbit.paysOut' : 'landing.orbit.restakes', { sched: t(p.schedKey, p.schedVars) })
-}
-
-function makeCopy(fiat: FiatApi): OrbitCopy {
-  return {
-    fee: fmtFee,
-    sched: p => (p.mode === 'none' || p.mode === 'unpub' || p.mode === 'instant' ? schedText(p) : t(p.schedKey, p.schedVars)),
-    schedFull: schedText,
-    nim: fmtNum,
-    perPayout: v => t('landing.orbit.perPayout', { amount: fmtNum(v, v >= 100 ? 0 : v >= 0.1 ? 2 : v >= 0.01 ? 3 : 4) }),
-    weekday: fmtWeekday,
-    compact: fmtCompact,
-    stakers: (n, stake) => t('landing.orbit.stakers', { n: fmtNum(n), stake }),
-    verdictLine: v => (v ? t('landing.orbit.verdict', { verdict: t(`verdict.${v}`) }) : t('landing.orbit.verdictPending')),
-    fiat: nim => {
-      const v = fiat.nimToFiat(BigInt(Math.round(nim * 1e5)))
-      return Number.isFinite(v) ? t('landing.orbit.approx', { amount: fiat.format(v) }) : ''
-    },
-    paidOutSample: amount => t('landing.orbit.paidOutSample', { amount }),
-    chipLanded: t('landing.orbit.chipLanded'),
-    chipNext: t('landing.orbit.chipNext'),
-    chipStream: t('landing.orbit.chipStream'),
-    restaked: t('landing.orbit.restaked'),
-    paidOut: t('landing.orbit.paidOut'),
-    atThreshold: n => t('landing.orbit.atThreshold', { n }),
-    everyMinute: t('landing.sched.everyMinute'),
-    noneListed: t('landing.sched.none'),
-    nothingOwed: t('landing.orbit.nothingOwed'),
-    noneByDesign: t('landing.orbit.noneByDesign'),
-    unpublished: t('landing.sched.unpublished'),
-    nothingToHold: t('landing.orbit.nothingToHold'),
-    notEnoughData: t('landing.orbit.notEnoughData'),
-  }
-}
 
 const reducedMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 
@@ -76,7 +39,9 @@ export function Orbit({ pools, fiat, apiRef }: { pools: OrbitPool[]; fiat: FiatA
 
   const [selected, setSelected] = useState<string | null>(() => defaultPoolId(pools))
   const [slider, setSlider] = useState(SLIDER_START)
-  const copy = useMemo(() => makeCopy(fiat), [fiat])
+  // the rates refetch every few minutes; the copy only changes when the price of a NIM does
+  const nimPrice = fiat.nimToFiat(100_000n)
+  const copy = useMemo(() => makeOrbitCopy(fiat), [fiat.fiat, nimPrice])
   const chips = useMemo(() => chipPools(pools), [pools])
   const stake = stakeOf(slider)
   const stakeText = `${fmtNum(stake)} NIM`

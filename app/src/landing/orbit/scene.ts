@@ -1,6 +1,6 @@
 import type { Verdict } from '@accrue/shared'
 import { glyphElement } from '../../ui/components/glyphs'
-import type { OrbitPool } from './model'
+import { dotCounts, payoutPlan, type OrbitPool, type PayoutPlan } from './model'
 import { rgba, tint, type RGB } from './tint'
 
 // One example stake grows a ring per payout: dashed while expected (the pool's real fee and
@@ -43,9 +43,10 @@ export interface OrbitCopy {
   paidOut: string
   atThreshold(n: number): string
   everyMinute: string
+  payouts: string
   noneListed: string
-  nothingOwed: string
-  noneByDesign: string
+  nothingLeft: string
+  feeKeepsAll: string
   unpublished: string
   nothingToHold: string
   notEnoughData: string
@@ -94,6 +95,8 @@ interface Cloud {
   rc: number
   ang: number
   dots: { f: number; th: number }[]
+  // thinned clouds get slightly larger dots so they keep their weight
+  dotScale: number
 }
 
 // Digits that roll when they change.
@@ -161,6 +164,7 @@ export function createOrbit(dom: OrbitDom, initial: OrbitPool[], initialId: stri
   const D = {
     stake: 10_000,
     ok: false,
+    why: 'none' as PayoutPlan['why'],
     cont: false,
     direct: false,
     N: 0,
@@ -199,10 +203,16 @@ export function createOrbit(dom: OrbitDom, initial: OrbitPool[], initialId: stri
     if (!p) return
     chip.classList.toggle('landed', landed && D.ok)
     if (!D.ok) {
-      const none = p.kind === 'N'
-      dom.chipK.textContent = none ? copy.noneListed : copy.unpublished
-      dom.chipV.textContent = none ? copy.nothingOwed : copy.nothingToHold
-      dom.chipW.textContent = none ? copy.noneByDesign : copy.notEnoughData
+      // facts only: a verdict label never appears unless the API gave one
+      const [k, v, w] =
+        D.why === 'none'
+          ? [copy.payouts, copy.noneListed, copy.fee(p.fee)]
+          : D.why === 'noYield'
+            ? [copy.fee(p.fee), copy.nothingLeft, copy.feeKeepsAll]
+            : [copy.unpublished, copy.nothingToHold, copy.notEnoughData]
+      dom.chipK.textContent = k
+      dom.chipV.textContent = v
+      dom.chipW.textContent = w
       return
     }
     if (D.cont) {
@@ -219,26 +229,18 @@ export function createOrbit(dom: OrbitDom, initial: OrbitPool[], initialId: stri
   function build(now: number) {
     const p = pool
     if (!p) return
-    D.ok = p.mode === 'periodic' || p.mode === 'instant' || p.mode === 'stream'
-    D.cont = p.mode === 'stream'
-    D.direct = p.kind === 'D'
-    D.net = gross * (1 - (p.fee ?? 0))
-    D.h = p.mode === 'instant' ? ((p.thresholdNim ?? 10) / (D.stake * D.net)) * 8760 : (p.h ?? 0)
-    D.stakeNow = D.stake
-    D.paid = 0
-    D.N = 0
-    D.k = 0
-    D.per = 0
-    if (D.ok) {
-      D.N = D.cont ? Math.round(168 / D.h) : Math.max(1, Math.min(168, Math.round(168 / D.h)))
-      D.k = Math.floor(D.N * 0.58)
-      for (let i = 0; i < D.k; i++) {
-        const r = perOf(D.direct ? D.stake : D.stakeNow)
-        if (D.direct) D.paid += r
-        else D.stakeNow += r
-      }
-      D.per = perOf(D.direct ? D.stake : D.stakeNow)
-    }
+    const plan = payoutPlan(p, D.stake, gross)
+    D.ok = plan.ok
+    D.why = plan.why
+    D.cont = plan.cont
+    D.direct = plan.direct
+    D.net = plan.net
+    D.h = plan.h
+    D.N = plan.N
+    D.k = plan.k
+    D.stakeNow = plan.stakeNow
+    D.paid = plan.paid
+    D.per = plan.per
     D.phase = reduce || !D.ok ? 'idle' : 'count'
     D.t0 = now
     D.fade = reduce ? 1 : 0
@@ -257,8 +259,10 @@ export function createOrbit(dom: OrbitDom, initial: OrbitPool[], initialId: stri
       order.push(a)
       if (a !== b) order.push(b)
     }
+    const counts = dotCounts(list.map(p => p.stakers))
     clouds = order.map((pi, slot) => {
       const p = list[pi]!
+      const n = counts[pi] ?? 0
       return {
         p,
         slot,
@@ -272,7 +276,8 @@ export function createOrbit(dom: OrbitDom, initial: OrbitPool[], initialId: stri
         y: 0,
         rc: 4,
         ang: 0,
-        dots: Array.from({ length: p.stakers }, (_, j) => ({ f: Math.sqrt((j + 0.5) / p.stakers), th: j * GOLDEN })),
+        dots: Array.from({ length: n }, (_, j) => ({ f: Math.sqrt((j + 0.5) / n), th: j * GOLDEN })),
+        dotScale: n > 0 ? Math.min(1.6, Math.sqrt(p.stakers / n)) : 1,
       }
     })
     maxStake = Math.max(1, ...list.map(p => p.stake))
@@ -375,6 +380,17 @@ export function createOrbit(dom: OrbitDom, initial: OrbitPool[], initialId: stri
   function ring(x: number, y: number, r: number, a0 = 0, a1 = TAU) {
     ctx.beginPath()
     ctx.arc(x, y, r, a0, a1)
+    ctx.stroke()
+  }
+
+  // concentric rings of one style in a single stroke (an hourly pool has up to 168)
+  function rings(c: number, from: number, to: number, r: (i: number) => number) {
+    if (from >= to) return
+    ctx.beginPath()
+    for (let i = from; i < to; i++) {
+      ctx.moveTo(c + r(i), c)
+      ctx.arc(c, c, r(i), 0, TAU)
+    }
     ctx.stroke()
   }
 
@@ -510,7 +526,7 @@ export function createOrbit(dom: OrbitDom, initial: OrbitPool[], initialId: stri
       const a = none ? 0.32 : 0.62 + 0.33 * Math.max(cl.glow, cl.sel, cl.hov)
       ctx.fillStyle = base ? rgba(base, a) : `rgba(23,22,26,${a})`
       ctx.beginPath()
-      const rd = dotR * (cl.rc < 9 ? 1.25 : 1)
+      const rd = dotR * (cl.rc < 9 ? 1.25 : 1) * cl.dotScale
       for (const d of cl.dots) {
         const rr = d.f * cl.rc
         const x = cl.x + Math.cos(d.th + cl.ang) * rr
@@ -574,7 +590,7 @@ export function createOrbit(dom: OrbitDom, initial: OrbitPool[], initialId: stri
       const rr = (i: number) => r1 + ((r2 - r1) * (i + 1)) / N
       if (!D.cont) {
         ctx.strokeStyle = vio(0.07)
-        for (let i = k + 1; i < N; i++) ring(c, c, rr(i))
+        rings(c, k + 1, N, rr)
       }
       const lw = N <= 20 ? 1.5 : N <= 60 ? 0.8 : 0.6
       const la = N <= 20 ? 0.85 : N <= 60 ? 0.55 : 0.4
@@ -590,7 +606,7 @@ export function createOrbit(dom: OrbitDom, initial: OrbitPool[], initialId: stri
       } else {
         ctx.strokeStyle = vio(la)
         ctx.lineWidth = lw
-        for (let i = 0; i < Math.min(k, N); i++) ring(c, c, rr(i))
+        rings(c, 0, Math.min(k, N), rr)
       }
       if (!D.cont && k < N) {
         const r = rr(k)
@@ -704,10 +720,13 @@ export function createOrbit(dom: OrbitDom, initial: OrbitPool[], initialId: stri
       build(performance.now())
       invalidate()
     },
+    // new wording or prices: refresh the text, keep the payout week where it is
     setCopy(next: OrbitCopy) {
       copy = next
-      build(performance.now())
-      tipFor(cur)
+      ticker.render(fmtNim(D.stakeNow))
+      fiat()
+      chipState(chip.classList.contains('landed'))
+      tipFor(hovered ?? cur)
     },
     destroy() {
       alive = false
