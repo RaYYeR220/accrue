@@ -27,7 +27,10 @@ test.describe('Payout Check', () => {
     await board.getByRole('button', { name: /Kestrel Pool/ }).click()
     await expect(board.getByText('Paid 81.0% of earnings against 95.0% promised over 6 cycles.')).toBeVisible()
     await board.getByRole('button', { name: /Fjord Pool/ }).click()
-    await expect(board.getByText('No verdict yet: not enough payouts in the window to say either way.')).toBeVisible()
+    // the API's own "has not looked yet" and the app's line would contradict each other: one neutral line
+    await expect(board.getByText('Not checked yet — the first check runs within the hour')).toBeVisible()
+    await expect(board.getByText('Payout Check has not looked at this pool yet.')).toHaveCount(0)
+    await expect(board.getByText(/not enough payouts/)).toHaveCount(0)
     await expect(board.getByRole('link', { name: 'How Payout Check decides' })).toBeVisible()
   })
 

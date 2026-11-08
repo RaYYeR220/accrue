@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { t } from '../i18n'
 import type { PoolRow } from '../features/nim/api'
+import { shownReasons } from '../model/pools'
 import { Card } from '../ui/components'
 import { Facts } from '../ui/components/Fields'
 import { useApp } from './context'
@@ -56,9 +57,9 @@ function Mine() {
         ]}
       />
       {c.verdict && <p className="vc-desc">{t(`verdict.${c.verdict}.desc`)}</p>}
-      {pool.reasons.length > 0 && (
+      {shownReasons(pool).length > 0 && (
         <ul className="reasons" aria-label={t('check.reasons')}>
-          {pool.reasons.map((r, i) => (
+          {shownReasons(pool).map((r, i) => (
             <li key={i}>{r}</li>
           ))}
         </ul>
@@ -87,7 +88,7 @@ function Row({ p }: { p: PoolRow }) {
       </p>
       {open && (
         <ul className="reasons" id={id}>
-          {p.reasons.map((r, i) => (
+          {shownReasons(p).map((r, i) => (
             <li key={i}>{r}</li>
           ))}
           {p.ratio !== null && p.expectedRatio !== null && <li>{t('pool.ratio', { ratio: pct(p.ratio, 1), expected: pct(p.expectedRatio, 1) })}</li>}

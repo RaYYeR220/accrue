@@ -51,6 +51,7 @@
   "home.src": "1 NIM = {price} ({source}), cours de {time}. Valeurs en dollars d’Aave sur Polygon.",
   "home.srcPending": "Les taux de change se chargent ; en attendant, les valeurs sont en USD.",
   "home.srcStale": "1 NIM = {price} ({source}), {note} ; les sources de prix ne répondent pas pour l’instant. Valeurs en dollars d’Aave sur Polygon.",
+  "home.srcFxStale": "1 NIM = {price} ({source}), {note} ; le taux de change ne se met pas à jour pour l’instant. Valeurs en dollars d’Aave sur Polygon.",
   "home.srcDown": "Aucun taux de change pour l’instant ; les valeurs sont en USD.",
   "home.earning": "Ce qui rapporte",
   "home.dollars": "Dollars sur Aave",
@@ -286,7 +287,7 @@
   "check.boardSrc": "{days} derniers jours, à {time}. Touchez un pool pour savoir pourquoi.",
   "check.boardSrc.one": "Dernier jour, à {time}. Touchez un pool pour savoir pourquoi.",
   "check.boardTestnet": "Pools du testnet depuis l’API des validateurs du testnet Nimiq. Pas d’historique de paiements.",
-  "check.noVerdict": "Pas encore de résultat : trop peu de paiements sur la période pour trancher.",
+  "check.noVerdict": "Pas encore vérifié — la première vérification a lieu dans l’heure",
   "check.testnetBadge": "Non contrôlé sur le testnet",
   "check.noVerdictTestnet": "Les pools du testnet n’ont pas de contrôle des paiements, il n’y a donc pas de résultat.",
 

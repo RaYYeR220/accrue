@@ -10,7 +10,7 @@ import { isScenarioName, MOCK_RATES, SCENARIO_NAMES, SCENARIOS, type RelayOutcom
 // /api/relay*, /api/rates, /api/health, /api/aave, /api/position, /api/pools, /api/check endpoints,
 // the testnet validators API and Polygon RPC reads. What a server or a chain would remember (relay
 // jobs, balances, the staker) lives in sessionStorage, so a reload finds it again.
-// Query: ?mock=<scenario>[&lang=de][&fiat=EUR][&network=testnet][&chain=0x89][&delay=0][&rates=down|stale]
+// Query: ?mock=<scenario>[&lang=de][&fiat=EUR][&network=testnet][&chain=0x89][&delay=0][&rates=down|stale|fxstale]
 // Loaded only through the `import.meta.env.DEV` guard in main.tsx.
 
 export interface MockCall {
@@ -451,6 +451,8 @@ export function installMock(search: string, w: Window = window): MockHandle {
       if (r === 'down') return json(503, { error: 'RPC_UNAVAILABLE', detail: { reason: 'price_unavailable' } })
       // the sources stopped answering 40 minutes ago: the API serves its last good copy
       const at = Date.now() - (r === 'stale' ? 40 * 60_000 : 0)
+      // fxstale: the price is fresh, only the exchange rate is an old copy
+      if (r === 'fxstale') return json(200, { ...MOCK_RATES, asOf: at, priceAsOf: at, fxAsOf: at - 40 * 60_000, stale: true, fxStale: true })
       return json(200, { ...MOCK_RATES, asOf: at, priceAsOf: at, fxAsOf: at, ...(r === 'stale' ? { stale: true, priceStale: true, fxStale: true } : {}) })
     }
     if (path === '/api/aave') {

@@ -51,6 +51,7 @@
   "home.src": "1 NIM = {price} ({source}), Kurse von {time}. Dollarwerte von Aave auf Polygon.",
   "home.srcPending": "Wechselkurse werden geladen; bis dahin stehen Werte in USD.",
   "home.srcStale": "1 NIM = {price} ({source}), {note}; die Kursquellen antworten gerade nicht. Dollarwerte von Aave auf Polygon.",
+  "home.srcFxStale": "1 NIM = {price} ({source}), {note}; der Wechselkurs wird gerade nicht aktualisiert. Dollarwerte von Aave auf Polygon.",
   "home.srcDown": "Gerade kein Wechselkurs verfügbar; Werte stehen in USD.",
   "home.earning": "Verdient",
   "home.dollars": "Dollar bei Aave",
@@ -286,7 +287,7 @@
   "check.boardSrc": "Letzte {days} Tage, Stand {time}. Tippe auf einen Pool für das Warum.",
   "check.boardSrc.one": "Letzter Tag, Stand {time}. Tippe auf einen Pool für das Warum.",
   "check.boardTestnet": "Testnet-Pools aus der Validators-API des Nimiq-Testnets. Keine Auszahlungsbilanz.",
-  "check.noVerdict": "Noch kein Ergebnis: zu wenige Auszahlungen im Zeitraum, um es zu entscheiden.",
+  "check.noVerdict": "Noch nicht geprüft — die erste Prüfung läuft innerhalb der nächsten Stunde",
   "check.testnetBadge": "Im Testnet nicht geprüft",
   "check.noVerdictTestnet": "Testnet-Pools haben keinen Auszahlungscheck, daher gibt es kein Ergebnis.",
 

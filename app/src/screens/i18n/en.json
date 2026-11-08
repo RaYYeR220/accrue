@@ -51,6 +51,7 @@
   "home.src": "1 NIM = {price} ({source}), rates as of {time}. Dollar values from Aave on Polygon.",
   "home.srcPending": "Exchange rates are loading; values show in USD until they arrive.",
   "home.srcStale": "1 NIM = {price} ({source}), {note}; the price sources are not answering right now. Dollar values from Aave on Polygon.",
+  "home.srcFxStale": "1 NIM = {price} ({source}), {note}; the exchange rate is not updating right now. Dollar values from Aave on Polygon.",
   "home.srcDown": "No exchange rate right now; values show in USD.",
   "home.earning": "Earning",
   "home.dollars": "Dollars in Aave",
@@ -286,7 +287,7 @@
   "check.boardSrc": "Last {days} days, as of {time}. Tap a pool to see why.",
   "check.boardSrc.one": "Last day, as of {time}. Tap a pool to see why.",
   "check.boardTestnet": "Testnet pools from the Nimiq testnet validators API. No payout record.",
-  "check.noVerdict": "No verdict yet: not enough payouts in the window to say either way.",
+  "check.noVerdict": "Not checked yet — the first check runs within the hour",
   "check.testnetBadge": "Not checked on testnet",
   "check.noVerdictTestnet": "Testnet pools have no Payout Check, so there is no verdict.",
 

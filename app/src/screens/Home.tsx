@@ -53,7 +53,7 @@ function Hero() {
         {app.fiat.asOf === null
           ? t(app.fiat.unavailable ? 'home.srcDown' : 'home.srcPending')
           : app.fiat.stale
-            ? t('home.srcStale', { price: app.fiat.format(app.fiat.nimToFiat(100_000n), 6), source: app.fiat.priceSource, note: app.fiat.note })
+            ? t(app.fiat.priceStale ? 'home.srcStale' : 'home.srcFxStale', { price: app.fiat.format(app.fiat.nimToFiat(100_000n), 6), source: app.fiat.priceSource, note: app.fiat.note })
             : t('home.src', { price: app.fiat.format(app.fiat.nimToFiat(100_000n), 6), source: app.fiat.priceSource, time: time(app.fiat.asOf) })}
       </p>
     </section>

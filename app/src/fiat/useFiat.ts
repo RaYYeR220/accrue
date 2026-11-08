@@ -30,6 +30,10 @@ export interface FiatApi {
   source: string[]
   /** a part the shown values depend on is a stale copy (the FX only away from USD) */
   stale: boolean
+  /** the NIM price is a stale copy */
+  priceStale: boolean
+  /** the exchange rate is a stale copy and the shown fiat is not USD */
+  fxStale: boolean
   /** "price as of 05:12" / "exchange rate as of 05:12" while `stale`, else '' */
   note: string
   /** where the NIM price came from, for the source line ("CoinGecko"), '' before the rates arrive */
@@ -110,6 +114,8 @@ export function makeFiat(host: Fiat, rates: Rates | null, failed: boolean, local
     asOf: rates?.asOf ?? null,
     source: rates?.source ?? [],
     stale: priceStale || fxStale,
+    priceStale,
+    fxStale,
     unavailable: failed && !rates,
     note,
     priceSource: priceSourceName(rates?.source[0]),

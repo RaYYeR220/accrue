@@ -107,6 +107,14 @@ describe('each part of the rates on its own', () => {
     expect(eur.note).toBe(`exchange rate as of ${hhmm(fxAt)}`)
   })
 
+  it('says which part is stale, so the source line can word it', () => {
+    const fx = parseRates(body)
+    expect(makeFiat('EUR', fx, false, 'en', priceAt + 60_000)).toMatchObject({ priceStale: false, fxStale: true })
+    expect(makeFiat('USD', fx, false, 'en', priceAt + 60_000)).toMatchObject({ priceStale: false, fxStale: false })
+    const price = parseRates({ ...body, priceStale: true, fxStale: undefined })
+    expect(makeFiat('EUR', price, false, 'en', priceAt + 60_000)).toMatchObject({ priceStale: true, fxStale: false })
+  })
+
   it('a stale price says the price time, whatever the fiat', () => {
     const r = parseRates({ ...body, priceStale: true, fxStale: undefined })
     expect(makeFiat('USD', r, false, 'en', priceAt + 60_000).note).toBe(`price as of ${hhmm(priceAt)}`)

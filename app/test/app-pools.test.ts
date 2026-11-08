@@ -2,7 +2,7 @@ import type { Verdict } from '@accrue/shared'
 import { describe, expect, it } from 'vitest'
 import type { PoolRow } from '../src/features/nim/api'
 import { RAY } from '../src/features/dollars/accrual'
-import { dayEstimate, nextPayout, rankPools } from '../src/model/pools'
+import { dayEstimate, NOT_CHECKED_REASON, nextPayout, rankPools, shownReasons } from '../src/model/pools'
 
 const H = 3_600_000
 const NOW = 1_762_500_000_000
@@ -108,5 +108,17 @@ describe('dayEstimate: the "last 24 h" fallback from chain data', () => {
   it('unknown inputs stay unknown', () => {
     expect(dayEstimate({ balances: null, receivedLuna: null, windowDays: 7 })).toEqual({ dollarsUsd: null, nimLuna: null })
     expect(dayEstimate({ balances: [], receivedLuna: 5n, windowDays: 0 })).toEqual({ dollarsUsd: 0, nimLuna: null })
+  })
+})
+
+describe('shownReasons: the API says a pool has not been checked, the app says it once', () => {
+  it('drops the "has not looked yet" reason when there is no verdict', () => {
+    expect(shownReasons({ verdict: null, reasons: [NOT_CHECKED_REASON] })).toEqual([])
+    expect(shownReasons({ verdict: null, reasons: [NOT_CHECKED_REASON, 'Other.'] })).toEqual(['Other.'])
+  })
+
+  it('keeps every reason of a pool that has a verdict, including not enough data', () => {
+    expect(shownReasons({ verdict: 'NOT_ENOUGH_DATA', reasons: ['Only 2 complete payout cycle(s).'] })).toEqual(['Only 2 complete payout cycle(s).'])
+    expect(shownReasons({ verdict: 'SHORT', reasons: ['Paid 81.0%.'] })).toEqual(['Paid 81.0%.'])
   })
 })

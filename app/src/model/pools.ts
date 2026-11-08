@@ -13,6 +13,11 @@ const RANK: Record<Verdict | 'none', number> = {
   NO_PAYOUTS_BY_DESIGN: 6,
 }
 
+/** What the API says about a pool its Payout Check has not visited yet. The app shows its own line for that. */
+export const NOT_CHECKED_REASON = 'Payout Check has not looked at this pool yet.'
+
+export const shownReasons = (p: Pick<PoolRow, 'verdict' | 'reasons'>): string[] => (p.verdict ? p.reasons : p.reasons.filter(r => r !== NOT_CHECKED_REASON))
+
 // A pool that lists no payouts passes nothing on to its stakers, whatever the verdict says.
 const rankOf = (p: PoolRow) => (p.payoutType === 'none' ? RANK.NO_PAYOUTS_BY_DESIGN : RANK[p.verdict ?? 'none'])
 

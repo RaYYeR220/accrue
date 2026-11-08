@@ -55,6 +55,12 @@ test.describe('Home', () => {
     await expect(page.getByText(/^≈ \$0\.30 · price as of \d\d:\d\d/).first()).toBeVisible()
   })
 
+  test('a stale exchange rate beside a fresh price is worded as the rate, not as the price sources', async ({ page }) => {
+    await start(page, 'happy', '&rates=fxstale&fiat=EUR')
+    await expect(page.getByText(/^1 NIM = .*\(mock\), exchange rate as of \d\d:\d\d( [AP]M)?; the exchange rate is not updating right now\./)).toBeVisible()
+    await expect(page.getByText('the price sources are not answering right now')).toHaveCount(0)
+  })
+
   test('the source line names where the NIM price came from', async ({ page }) => {
     await start(page, 'happy')
     await expect(page.getByText(/^1 NIM = \$0\.000300 \(mock\), rates as of \d\d:\d\d/)).toBeVisible()
