@@ -246,7 +246,7 @@ test('inside Nimiq Pay the landing is never downloaded', async ({ page }) => {
   })
   await mockApi(page)
   await page.goto('/')
-  await expect(page.locator('.shell')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Start', exact: true })).toBeVisible()
   expect(files.some(f => /\/assets\/MiniApp-/.test(f))).toBe(true)
   expect(files.filter(f => /\/assets\/Landing-|\/fonts\/GeistMono/.test(f))).toEqual([])
 })

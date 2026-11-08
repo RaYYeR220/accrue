@@ -1,0 +1,78 @@
+import { expect, test } from '@playwright/test'
+import { nav, providerCalls, sheet, start, tab } from './app'
+
+const sends = async (page: Parameters<typeof providerCalls>[0]) => (await providerCalls(page)).filter(m => m.startsWith('send'))
+
+test.describe('NIM staking', () => {
+  test('HTLC-only balance: 200 NIM can be staked, and amounts the network would refuse are explained first', async ({ page }) => {
+    await start(page, 'htlc-only-balance')
+    await tab(page, 'NIM')
+    await expect(page.getByText('No NIM staked')).toBeVisible()
+    await expect(page.getByText('1,250 NIM can be staked now.', { exact: false })).toBeVisible()
+    await page.getByRole('button', { name: 'Stake NIM' }).click()
+    const d = sheet(page, 'Stake NIM')
+    await expect(d.getByText('Ordered by payout record, then fee.', { exact: false })).toBeVisible()
+    await d.getByRole('radio', { name: /Siam Pool/ }).check()
+    const field = d.getByLabel('Amount to stake')
+
+    await field.fill('50')
+    await expect(d.getByText('Staking needs at least 100 NIM in total.')).toBeVisible()
+    await expect(d.getByRole('button', { name: 'Stake 50 NIM' })).toBeDisabled()
+
+    await field.fill('200')
+    await expect(d.getByText('A staking transaction: 200 NIM from your Nimiq Pay wallet, delegated to Siam Pool.')).toBeVisible()
+    const stake = d.getByRole('button', { name: 'Stake 200 NIM' })
+    await expect(stake).toBeEnabled()
+    expect(await sends(page)).toEqual([])
+    await stake.click()
+    await expect(d.getByText('Staked 200 NIM')).toBeVisible()
+    await expect(d.getByRole('link', { name: 'View in the Nimiq explorer' })).toHaveAttribute('href', /^https:\/\/nimiq\.watch\/#[0-9a-f]{64}$/)
+    expect(await sends(page)).toEqual(['sendNewStakerTransaction'])
+  })
+
+  test('unstaking shows its four steps with the wait ahead, and refuses to leave dust', async ({ page }) => {
+    await start(page, 'happy')
+    await tab(page, 'NIM')
+    await page.getByRole('button', { name: 'Unstake', exact: true }).click()
+    const d = sheet(page, 'Unstake NIM')
+    await d.getByLabel('Amount to unstake').fill('950')
+    await expect(d.getByText('Leave at least 100 NIM staked, or unstake all of it.', { exact: false })).toBeVisible()
+    await d.getByRole('button', { name: 'All', exact: true }).click()
+    const steps = d.getByRole('list', { name: 'Four steps to unstake' }).getByRole('listitem')
+    await expect(steps).toHaveText([/Stop staking this amount/, /Wait for the network to release it/, /Unlock it/, /Send it to your wallet/])
+    await expect(steps.nth(1)).toContainText(/about \d+ h once stopped/)
+    await d.getByRole('button', { name: 'Stop staking 1,000 NIM' }).click()
+    await expect(d.getByText('1,000 NIM stopped earning; the wait has started')).toBeVisible()
+    await d.getByRole('button', { name: 'Done' }).click()
+    const waiting = page.getByRole('region', { name: 'Unstaking 1,000 NIM' })
+    await expect(waiting.getByRole('listitem').nth(1)).toContainText(/Ready in about \d+ h/)
+  })
+
+  test('switching pool shows the plan: stop, wait, move', async ({ page }) => {
+    await start(page, 'happy')
+    await tab(page, 'NIM')
+    await page.getByRole('button', { name: 'Switch pool' }).click()
+    const d = sheet(page, 'Switch pool')
+    const plan = d.getByRole('list', { name: 'The plan' }).getByRole('listitem')
+    await expect(plan).toHaveText([/Stop staking all 1,000 NIM/, /Wait for the network to release it.*Ready in about \d+ h/, /Move everything to the new pool/])
+    await d.getByRole('radio', { name: /Harbor Pool/ }).check()
+    await expect(plan.nth(2)).toHaveText(/Move everything to Harbor Pool/)
+    await expect(d.getByRole('radio', { name: /Siam Pool/ })).toHaveCount(0)
+    await expect(d.getByRole('button', { name: 'Stop staking 1,000 NIM' })).toBeEnabled()
+  })
+
+  test('testnet: a Testnet badge on NIM screens, pools from the testnet validators API, dollars said to stay on mainnet', async ({ page }) => {
+    await start(page, 'testnet')
+    await expect(page.getByRole('banner').getByText('Testnet')).toBeVisible()
+    await tab(page, 'NIM')
+    await expect(page.getByRole('main').getByText('Testnet', { exact: true })).toBeVisible()
+    await expect(page.getByText('Nimiq Pay is on testnet', { exact: false })).toBeVisible()
+    await expect(page.getByText('Puddle Testnet Pool')).toBeVisible()
+    await tab(page, 'Payouts')
+    await expect(page.getByText('Testnet pools from the Nimiq testnet validators API.', { exact: false })).toBeVisible()
+    await expect(page.getByText('Shallows Testnet Pool')).toBeVisible()
+    await tab(page, 'Dollars')
+    await expect(page.getByText('Dollars always run on Polygon mainnet, also while Nimiq Pay is on testnet.')).toBeVisible()
+    await expect(nav(page)).toBeVisible()
+  })
+})

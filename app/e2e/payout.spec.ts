@@ -1,0 +1,33 @@
+import { expect, test } from '@playwright/test'
+import { start, tab } from './app'
+
+// The six codes in their neutral wording, plus a pool the API has no verdict for yet.
+const LABELS = ['Paid as promised', 'Behind schedule', 'Short', 'Not enough data', 'No payouts by design', "Can't verify — routed elsewhere", 'Not enough data yet']
+
+test.describe('Payout Check', () => {
+  test("your pool's verdict: expected against received over 7 days, the API's reasons, the methodology", async ({ page }) => {
+    await start(page, 'happy')
+    await tab(page, 'Payouts')
+    const card = page.getByRole('region', { name: 'Siam Pool' })
+    await expect(card.getByText('Paid as promised')).toBeVisible()
+    await expect(card.getByText('Over the last 7 days')).toBeVisible()
+    await expect(card.getByRole('definition').nth(0)).toHaveText(/^\d+(\.\d+)? NIM$/)
+    await expect(card.getByRole('definition').nth(1)).toHaveText(/^\d+(\.\d+)? NIM$/)
+    await expect(card.getByText('99.2%')).toBeVisible()
+    await expect(card.getByText('Paid 97.5% of earnings against 97.0% promised over 56 cycles.')).toBeVisible()
+    await card.getByRole('link', { name: 'How Payout Check decides' }).click()
+    await expect(page.getByRole('heading', { name: 'How Payout Check decides' })).toBeInViewport()
+  })
+
+  test('the scoreboard shows every verdict code in neutral words, with its reasons on tap', async ({ page }) => {
+    await start(page, 'happy')
+    await tab(page, 'Payouts')
+    const board = page.getByRole('region', { name: 'All 7 pools' })
+    for (const label of LABELS) await expect(board.getByText(label, { exact: true }).first()).toBeVisible()
+    await board.getByRole('button', { name: /Kestrel Pool/ }).click()
+    await expect(board.getByText('Paid 81.0% of earnings against 95.0% promised over 6 cycles.')).toBeVisible()
+    await board.getByRole('button', { name: /Fjord Pool/ }).click()
+    await expect(board.getByText('No verdict yet: not enough payouts in the window to say either way.')).toBeVisible()
+    await expect(board.getByRole('link', { name: 'How Payout Check decides' })).toBeVisible()
+  })
+})
