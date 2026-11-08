@@ -171,7 +171,13 @@ describe('/api/pools and /api/check', () => {
       pools: [poolRow({ address: 42 }), poolRow({ payoutType: 'sometimes' }), poolRow({ verdict: 'GREAT' })],
     })
     expect(r.pools).toHaveLength(1)
-    expect(r.pools[0]!.verdict).toBe('NOT_ENOUGH_DATA')
+    expect(r.pools[0]!.verdict).toBeNull()
+  })
+
+  it('a row without a verdict keeps it empty instead of filling one in', () => {
+    const { verdict: _, ...noVerdict } = poolRow()
+    const r = parsePools({ asOf: 1, windowDays: 7, pools: [noVerdict, poolRow({ payoutType: 'none', verdict: undefined })] })
+    expect(r.pools.map(p => p.verdict)).toEqual([null, null])
   })
 
   it('rejects a body that is not the pools contract', () => {
@@ -227,8 +233,9 @@ describe('/api/pools and /api/check', () => {
     expect(main.pools[0]!.name).toBe('Siam Pool')
     const test = await fetchPools('testnet', f as unknown as typeof fetch)
     expect(test.pools.map(p => p.name)).toEqual(['Puddle', 'Mint Pool'])
-    expect(test.pools[0]).toMatchObject({ payoutType: 'direct', fee: 0.095, schedule: null, balanceLuna: 15_664_461_627_656n, verdict: 'NOT_ENOUGH_DATA', ratio: null })
-    expect(test.pools[1]!.verdict).toBe('NO_PAYOUTS_BY_DESIGN')
+    // testnet has no Payout Check behind it: no verdicts at all, a pool without payouts included
+    expect(test.pools[0]).toMatchObject({ payoutType: 'direct', fee: 0.095, schedule: null, balanceLuna: 15_664_461_627_656n, verdict: null, ratio: null })
+    expect(test.pools[1]).toMatchObject({ payoutType: 'none', verdict: null })
   })
 
   it('a failing API is an HttpError the UI can map', async () => {

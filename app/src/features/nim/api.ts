@@ -15,7 +15,8 @@ export interface PoolRow {
   stakers: number
   accent: string | null
   logo: string | null
-  verdict: Verdict
+  // null: the API gave no verdict (yet); never filled in here
+  verdict: Verdict | null
   ratio: number | null
   expectedRatio: number
   lastPayoutTs: number | null
@@ -52,8 +53,8 @@ function luna(v: unknown): bigint | null {
   return null
 }
 
-// A malformed row is dropped rather than shown with made-up numbers; an unknown verdict
-// becomes NOT_ENOUGH_DATA, never a judgement the API did not make.
+// A malformed row is dropped rather than shown with made-up numbers; a missing or unknown
+// verdict stays null, never a judgement the API did not make.
 function parsePoolRow(r: unknown): PoolRow | null {
   if (!isRecord(r) || typeof r.address !== 'string' || typeof r.name !== 'string') return null
   if (!finite(r.fee) || !isPayoutType(r.payoutType)) return null
@@ -69,7 +70,7 @@ function parsePoolRow(r: unknown): PoolRow | null {
     stakers: finite(r.stakers) ? r.stakers : 0,
     accent: str(r.accent),
     logo: str(r.logo),
-    verdict: isVerdict(r.verdict) ? r.verdict : 'NOT_ENOUGH_DATA',
+    verdict: isVerdict(r.verdict) ? r.verdict : null,
     ratio: finite(r.ratio) ? r.ratio : null,
     expectedRatio: finite(r.expectedRatio) ? r.expectedRatio : 1 - r.fee,
     lastPayoutTs: finite(r.lastPayoutTs) ? r.lastPayoutTs : null,
@@ -120,7 +121,7 @@ export function parseCheck(body: unknown, address: string): CheckResponse {
 }
 
 // Testnet has no indexer behind it: rows come straight from the testnet validators API and
-// carry no payout verdict beyond what the pool itself declares.
+// carry no payout verdict at all.
 function testnetRow(r: unknown): PoolRow | null {
   if (!isRecord(r) || r.isListed === false) return null
   return parsePoolRow({
@@ -133,7 +134,6 @@ function testnetRow(r: unknown): PoolRow | null {
     stakers: r.stakers,
     accent: r.accentColor,
     logo: r.logo,
-    verdict: r.payoutType === 'none' ? 'NO_PAYOUTS_BY_DESIGN' : 'NOT_ENOUGH_DATA',
     ratio: null,
     lastPayoutTs: null,
     reasons: [],
