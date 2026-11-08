@@ -5,6 +5,7 @@ import { AppProvider, useApp, type Route } from './screens/context'
 import { Dollars } from './screens/Dollars'
 import { Home } from './screens/Home'
 import { Brand, InfoIcon, TabIcon } from './screens/icons'
+import { Nim } from './screens/Nim'
 import { Onboarding } from './screens/Onboarding'
 import { loadAppStrings } from './screens/strings'
 import './screens/app.css'
@@ -20,7 +21,6 @@ const TABS: Exclude<Route, 'about'>[] = ['home', 'dollars', 'nim', 'payouts', 'a
 
 function Screen({ route }: { route: Route }) {
   switch (route) {
-    case 'nim':
     case 'payouts':
     case 'activity':
     case 'about':
@@ -28,6 +28,8 @@ function Screen({ route }: { route: Route }) {
       return <Home />
     case 'dollars':
       return <Dollars />
+    case 'nim':
+      return <Nim />
   }
 }
 
