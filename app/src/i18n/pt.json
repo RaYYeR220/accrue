@@ -90,5 +90,6 @@
   "verdict.NO_PAYOUTS_BY_DESIGN": "Sem pagamentos por definição",
   "verdict.NO_PAYOUTS_BY_DESIGN.desc": "O pool não oferece pagamentos: nada é devido e nada é sinalizado.",
   "verdict.CANT_VERIFY_ROUTED": "Não verificável: desviado para outro lugar",
-  "verdict.CANT_VERIFY_ROUTED.desc": "30% ou mais das recompensas vão para endereços que não conseguimos ligar a stakers, por isso não damos veredito."
+  "verdict.CANT_VERIFY_ROUTED.desc": "30% ou mais das recompensas vão para endereços que não conseguimos ligar a stakers, por isso não damos veredito.",
+  "verdict.pending": "Ainda sem dados suficientes"
 }

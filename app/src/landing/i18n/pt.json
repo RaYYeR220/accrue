@@ -141,7 +141,6 @@
   "landing.board.feeNA": "n/d",
   "landing.board.feeOf": "taxa de {pct}",
   "landing.board.stakersSuffix": "stakers",
-  "landing.board.notYet": "Ainda sem dados suficientes",
   "landing.board.showPool": "Mostrar {pool} na órbita acima",
   "landing.board.why": "Por que {pool} indica “{verdict}”",
   "landing.board.ratio": "Pagou {ratio} dos ganhos contra {expected} prometidos.",

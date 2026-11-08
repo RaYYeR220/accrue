@@ -141,7 +141,6 @@
   "landing.board.feeNA": "k. A.",
   "landing.board.feeOf": "{pct} Gebühr",
   "landing.board.stakersSuffix": "Staker",
-  "landing.board.notYet": "Noch zu wenig Daten",
   "landing.board.showPool": "{pool} im Orbit oben zeigen",
   "landing.board.why": "Warum {pool} „{verdict}“ zeigt",
   "landing.board.ratio": "{ratio} der Einnahmen ausgezahlt, versprochen waren {expected}.",

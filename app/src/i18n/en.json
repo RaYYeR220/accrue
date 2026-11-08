@@ -90,5 +90,6 @@
   "verdict.NO_PAYOUTS_BY_DESIGN": "No payouts by design",
   "verdict.NO_PAYOUTS_BY_DESIGN.desc": "The pool lists no payouts, so nothing is owed and nothing is flagged.",
   "verdict.CANT_VERIFY_ROUTED": "Can't verify — routed elsewhere",
-  "verdict.CANT_VERIFY_ROUTED.desc": "30% or more of the rewards leave to addresses we can't tie to stakers, so we don't call it either way."
+  "verdict.CANT_VERIFY_ROUTED.desc": "30% or more of the rewards leave to addresses we can't tie to stakers, so we don't call it either way.",
+  "verdict.pending": "Not enough data yet"
 }

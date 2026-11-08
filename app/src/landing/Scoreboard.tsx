@@ -103,7 +103,7 @@ export function Scoreboard({ data, onShowPool }: { data: PoolsData; onShowPool: 
                           <VerdictBadge verdict={p.verdict} />
                         </button>
                       ) : (
-                        <VerdictBadge verdict="NOT_ENOUGH_DATA" label={t('landing.board.notYet')} />
+                        <VerdictBadge verdict={null} />
                       )}
                     </td>
                   </tr>

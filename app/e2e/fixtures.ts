@@ -55,8 +55,24 @@ export const RATES = { asOf: now, nimUsd: 0.00027882, fx: { USD: 1, EUR: 0.897, 
 
 const json = (route: Route, body: unknown, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })
 
+// Strings from the API with no break opportunities: a tx hash, a URL, a compact address.
+export const LONG_TOKEN = `0x${'f'.repeat(128)}`
+export const LONG_URL = `https://nimiq.watch/#${'a1b2c3d4'.repeat(16)}`
+export const LONG_NAME = `Pool${'X'.repeat(70)}`
+
+export const LONG_POOLS = {
+  ...LIVE_POOLS,
+  pools: LIVE_POOLS.pools.map((p, i) => (i === 2 ? { ...p, name: LONG_NAME, reasons: [...p.reasons, LONG_TOKEN, LONG_URL] } : p)),
+}
+
+export const CHECK_LONG = { ...CHECK_SIAM, pool: LONG_POOLS.pools[2] }
+export const CHECK_UNLISTED_LONG = {
+  staker: { activeLuna: '120000000000', inactiveLuna: '0', inactiveFrom: null, retiredLuna: '0', delegation: `NQ${'7'.repeat(80)}` },
+  windowDays: 7,
+}
+
 export interface ApiOptions {
-  pools?: 'live' | 'down'
+  pools?: 'live' | 'down' | unknown
   check?: unknown
   checkStatus?: number
   position?: unknown
@@ -68,7 +84,11 @@ export async function mockApi(page: Page, o: ApiOptions = {}) {
   await page.route('**/api/**', route => {
     const url = new URL(route.request().url())
     calls.push(url.pathname)
-    if (url.pathname === '/api/pools') return o.pools === 'live' ? json(route, LIVE_POOLS) : json(route, { error: 'RPC_UNAVAILABLE' }, 503)
+    if (url.pathname === '/api/pools') {
+      if (o.pools === 'live') return json(route, LIVE_POOLS)
+      if (o.pools === undefined || o.pools === 'down') return json(route, { error: 'RPC_UNAVAILABLE' }, 503)
+      return json(route, o.pools)
+    }
     if (url.pathname === '/api/rates') return json(route, RATES)
     if (url.pathname.startsWith('/api/check/')) return json(route, o.check ?? CHECK_SIAM, o.checkStatus ?? 200)
     if (url.pathname.startsWith('/api/position/')) return json(route, o.position ?? POSITION)

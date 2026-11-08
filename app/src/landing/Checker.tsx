@@ -66,7 +66,7 @@ function NimResult({ view, poolCount }: { view: CheckView; poolCount: number }) 
       {staker.inactiveLuna > 0n && <p className="result-note">{t('landing.checker.unstaking', { amount: fmtNimLuna(staker.inactiveLuna) })}</p>}
       <div className="result-pool-verdict">
         <span className="result-k">{t('landing.checker.poolOverall', { pool: pool.name })}</span>
-        {pool.verdict ? <VerdictBadge verdict={pool.verdict} /> : <VerdictBadge verdict="NOT_ENOUGH_DATA" label={t('landing.board.notYet')} />}
+        <VerdictBadge verdict={pool.verdict} />
         {pool.reasons.length > 0 && (
           <ul>
             {pool.reasons.map((r, i) => (

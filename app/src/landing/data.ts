@@ -110,7 +110,16 @@ export const byStake = (a: PoolRow, b: PoolRow) => (a.balanceLuna > b.balanceLun
 // dropped so one bad pool can't take the whole scoreboard down.
 export function parsePools(body: unknown): PoolsData {
   if (!isRecord(body) || !finite(body.asOf) || !Array.isArray(body.pools)) throw new Error('pools: bad envelope')
-  const pools = body.pools.map(tryRow).filter((p): p is PoolRow => p !== null)
+  const seen = new Set<string>()
+  const pools = body.pools
+    .map(tryRow)
+    .filter((p): p is PoolRow => p !== null)
+    .filter(p => {
+      const key = p.address.replace(/\s+/g, '').toUpperCase()
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
   if (!pools.length) throw new Error('pools: no usable rows')
   return { source: 'live', asOf: body.asOf, windowDays: finite(body.windowDays) ? body.windowDays : 7, pools: pools.sort(byStake) }
 }
@@ -164,15 +173,14 @@ export type CheckView =
       kind: 'verdict'
       pool: PoolRow
       staker: StakerInfo
-      verdict: Verdict
+      // null when the API has no verdict for this address yet; never filled in here
+      verdict: Verdict | null
       expectedLuna: bigint | null
       receivedLuna: bigint | null
       pct: number | null
       windowDays: number
     }
 
-// A staker in a listed pool always gets a verdict; when the API has none yet that is
-// "Not enough data", which is what the API itself answers below three cycles.
 export function describeCheck(r: CheckResult): CheckView {
   if (!r.staker) return { kind: 'notStaking' }
   if (!r.pool) return { kind: 'unlisted', delegation: r.staker.delegation, activeLuna: r.staker.activeLuna }
@@ -180,7 +188,7 @@ export function describeCheck(r: CheckResult): CheckView {
     kind: 'verdict',
     pool: r.pool,
     staker: r.staker,
-    verdict: r.verdict ?? 'NOT_ENOUGH_DATA',
+    verdict: r.verdict,
     expectedLuna: r.expectedLuna,
     receivedLuna: r.receivedLuna,
     pct: r.pct,

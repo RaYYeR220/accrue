@@ -47,7 +47,7 @@ describe('parsePools', () => {
   })
 
   it('accepts every verdict code and a null fee', () => {
-    const pools = VERDICTS.map((verdict, i) => ({ ...siamRow, name: `P${i}`, verdict, fee: i === 0 ? null : 0.05 }))
+    const pools = VERDICTS.map((verdict, i) => ({ ...siamRow, address: SNAPSHOT.pools[i]!.address, name: `P${i}`, verdict, fee: i === 0 ? null : 0.05 }))
     const out = parsePools({ asOf: 1, windowDays: 7, pools })
     expect(out.pools.map(p => p.verdict)).toEqual([...VERDICTS])
     expect(out.pools[0]!.fee).toBeNull()
@@ -71,6 +71,11 @@ describe('parsePools', () => {
         'row',
       ],
     })
+    expect(out.pools.map(p => p.name)).toEqual(['Siam Pool'])
+  })
+
+  it('keeps the first row when an address appears twice', () => {
+    const out = parsePools({ asOf: 1, windowDays: 7, pools: [siamRow, { ...siamRow, name: 'Siam again', address: SIAM.replace(/ /g, '').toLowerCase() }] })
     expect(out.pools.map(p => p.name)).toEqual(['Siam Pool'])
   })
 
@@ -163,9 +168,9 @@ describe('describeCheck', () => {
     expect(out).toMatchObject({ kind: 'verdict', verdict: 'PAID_AS_PROMISED', expectedLuna: 1_000_000n, receivedLuna: 990_000n, pct: 0.99 })
   })
 
-  it('a staker in a listed pool without a user verdict yet reads as not enough data', () => {
+  it('a staker in a listed pool without a verdict from the API keeps no verdict', () => {
     const out = describeCheck(parseCheck({ ...check, verdict: undefined, pct: undefined, expectedLuna: undefined, receivedLuna: undefined }))
-    expect(out).toMatchObject({ kind: 'verdict', verdict: 'NOT_ENOUGH_DATA', pct: null })
+    expect(out).toMatchObject({ kind: 'verdict', verdict: null, pct: null })
   })
 })
 

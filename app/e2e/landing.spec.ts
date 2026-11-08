@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { EVM_OWNER, mockApi, SIAM, SIAM_STAKER } from './fixtures'
+import { CHECK_SIAM, EVM_OWNER, LIVE_POOLS, mockApi, SIAM, SIAM_STAKER } from './fixtures'
 
 const DEEP_LINK = 'https://nimpay.app/miniapps/open/localhost:4317'
 
@@ -101,6 +101,16 @@ test.describe('landing outside Nimiq Pay', () => {
     await expect(out).toContainText('Paid 97.5% of earnings against 97.0% promised.')
   })
 
+  test('without a verdict from the API the checker shows none, only "Not enough data yet"', async ({ page }) => {
+    await mockApi(page, { pools: 'live', check: { ...CHECK_SIAM, verdict: undefined, pct: null, expectedLuna: undefined, receivedLuna: undefined } })
+    await page.goto('/')
+    await page.getByLabel('Nimiq or Polygon address').fill(SIAM_STAKER)
+    await page.getByRole('button', { name: 'Check', exact: true }).click()
+    const badge = page.locator('.checker-out .vd-lg')
+    await expect(badge).toHaveText('Not enough data yet')
+    await expect(badge).toHaveAttribute('data-verdict', 'pending')
+  })
+
   test('the checker shows the Aave position for a 0x address', async ({ page }) => {
     await mockApi(page)
     await page.goto('/')
@@ -156,6 +166,28 @@ test.describe('landing outside Nimiq Pay', () => {
     const b = await canvasHash(page)
     expect(a.ink).toBeGreaterThan(1000)
     expect(b.h).not.toBe(a.h)
+  })
+
+  test('a pool claiming millions of stakers does not stall the hero', async ({ page }) => {
+    const pools = { ...LIVE_POOLS, pools: LIVE_POOLS.pools.map((p, i) => (i === 0 ? { ...p, stakers: 5_000_000 } : p)) }
+    await mockApi(page, { pools })
+    await page.goto('/')
+    await expect(page.locator('.board')).toHaveAttribute('data-source', 'live')
+    await expect(page.locator('.board')).toContainText('5,000,000')
+    const fps = await page.evaluate(
+      () =>
+        new Promise<number>(resolve => {
+          let n = 0
+          const t0 = performance.now()
+          const tick = () => (performance.now() - t0 < 1000 ? (n++, requestAnimationFrame(tick)) : resolve(n))
+          requestAnimationFrame(tick)
+        }),
+    )
+    // one dot per claimed staker would take seconds per frame; capped, the loop keeps running
+    expect(fps).toBeGreaterThan(5)
+    const a = await canvasHash(page)
+    await page.waitForTimeout(500)
+    expect((await canvasHash(page)).h).not.toBe(a.h)
   })
 
   test('with reduced motion the hero holds still', async ({ page }) => {

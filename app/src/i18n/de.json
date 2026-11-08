@@ -90,5 +90,6 @@
   "verdict.NO_PAYOUTS_BY_DESIGN": "Keine Auszahlungen vorgesehen",
   "verdict.NO_PAYOUTS_BY_DESIGN.desc": "Der Pool sieht keine Auszahlungen vor: Es ist nichts geschuldet, und nichts wird markiert.",
   "verdict.CANT_VERIFY_ROUTED": "Nicht prüfbar – anderswohin geleitet",
-  "verdict.CANT_VERIFY_ROUTED.desc": "30 % oder mehr der Belohnungen gehen an Adressen, die wir keinem Staker zuordnen können. Deshalb urteilen wir in keine Richtung."
+  "verdict.CANT_VERIFY_ROUTED.desc": "30 % oder mehr der Belohnungen gehen an Adressen, die wir keinem Staker zuordnen können. Deshalb urteilen wir in keine Richtung.",
+  "verdict.pending": "Noch zu wenig Daten"
 }

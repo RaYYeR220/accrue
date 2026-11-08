@@ -90,5 +90,6 @@
   "verdict.NO_PAYOUTS_BY_DESIGN": "Aucun paiement, par choix",
   "verdict.NO_PAYOUTS_BY_DESIGN.desc": "Le pool n’annonce aucun paiement : rien n’est dû, rien n’est signalé.",
   "verdict.CANT_VERIFY_ROUTED": "Invérifiable : redirigé ailleurs",
-  "verdict.CANT_VERIFY_ROUTED.desc": "30 % ou plus des récompenses partent vers des adresses que nous ne pouvons relier à aucun staker, donc nous ne tranchons pas."
+  "verdict.CANT_VERIFY_ROUTED.desc": "30 % ou plus des récompenses partent vers des adresses que nous ne pouvons relier à aucun staker, donc nous ne tranchons pas.",
+  "verdict.pending": "Pas encore assez de données"
 }

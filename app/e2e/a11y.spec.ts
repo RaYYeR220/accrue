@@ -1,6 +1,6 @@
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type Page } from '@playwright/test'
-import { mockApi, SIAM_STAKER } from './fixtures'
+import { CHECK_LONG, CHECK_UNLISTED_LONG, LONG_NAME, LONG_POOLS, LONG_TOKEN, mockApi, SIAM_STAKER } from './fixtures'
 
 const CONTROLS = 'button, a.btn, select, input, textarea, [role="button"], summary'
 
@@ -47,6 +47,28 @@ test.describe('landing accessibility', () => {
     await expect(page.locator('.board')).toHaveAttribute('data-source', 'live')
     await page.getByRole('button', { name: /Why Mint Pool reads/ }).click()
     await showCheckerResult(page)
+    await scrollThrough(page)
+    expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0)
+  })
+
+  test('no horizontal scroll when the API sends long unbroken strings', async ({ page }) => {
+    await mockApi(page, { pools: LONG_POOLS, check: CHECK_UNLISTED_LONG })
+    await page.goto('/')
+    await expect(page.locator('.board')).toHaveAttribute('data-source', 'live')
+    await page.getByRole('button', { name: new RegExp(`Why ${LONG_NAME} reads`) }).click()
+    await expect(page.getByText(LONG_TOKEN)).toBeVisible()
+    await page.getByLabel('Nimiq or Polygon address').fill(SIAM_STAKER)
+    await page.getByRole('button', { name: 'Check', exact: true }).click()
+    await expect(page.locator('.checker-out')).toContainText('Staked outside the listed pools')
+    await scrollThrough(page)
+    expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0)
+
+    await page.unroute('**/api/**')
+    await mockApi(page, { pools: LONG_POOLS, check: CHECK_LONG })
+    await page.getByRole('button', { name: 'Check', exact: true }).click()
+    await expect(page.locator('.checker-out').getByText(LONG_TOKEN)).toBeVisible()
+    await page.getByRole('button', { name: new RegExp(`Show ${LONG_NAME} in the orbit`) }).click()
+    await page.waitForTimeout(800)
     await scrollThrough(page)
     expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0)
   })

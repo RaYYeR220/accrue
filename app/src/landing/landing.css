@@ -278,6 +278,7 @@
   left: 0;
   top: 0;
   z-index: 4;
+  max-width: 300px;
   padding: 7px 11px 8px;
   border: 1px solid var(--hair-strong);
   border-radius: var(--r-sm);
@@ -286,6 +287,12 @@
   line-height: 1.35;
   white-space: nowrap;
   pointer-events: none;
+}
+/* pool names come from the API: wrap anything that would not fit */
+.tip b,
+.tip span {
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .tip b {
   display: flex;
@@ -672,6 +679,11 @@
   gap: var(--s-3) var(--s-4);
   font-size: 15px;
 }
+/* reasons, addresses and names in results come from the API and may not break on their own */
+.result {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .result h4 {
   font-size: 17px;
   font-weight: 500;
@@ -848,6 +860,9 @@
   font-size: 13px;
   color: var(--muted);
 }
+.board-scroll {
+  overflow-x: auto;
+}
 .board-scroll:focus-visible {
   outline-offset: 4px;
   border-radius: var(--r-sm);
@@ -899,6 +914,12 @@
   font-weight: 500;
   text-align: left;
 }
+.pool-btn span {
+  max-width: 26ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .pool-btn i {
   flex: none;
   width: 8px;
@@ -940,6 +961,7 @@
 }
 .reasons-row ul {
   list-style: none;
+  overflow-wrap: anywhere;
   display: grid;
   gap: 2px;
   max-width: 60em;
@@ -1016,6 +1038,7 @@
 }
 .trust-note {
   margin-top: 22px;
+  overflow-wrap: anywhere;
   font-size: 13px;
   color: var(--violet-700);
 }
@@ -1222,9 +1245,6 @@
   .trust-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .board-scroll {
-    overflow-x: auto;
-  }
 }
 @media (max-width: 980px) {
   .hero {
@@ -1294,6 +1314,7 @@
   }
   .pline {
     display: block;
+    overflow-wrap: anywhere;
     margin-top: 10px;
     font-size: var(--fs-xs);
     line-height: 1.45;
