@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { dayOf } from '../src/indexer/aggregate'
 import { runIndexerTick } from '../src/indexer/cron'
 import { VALIDATORS_API } from '../src/indexer/pools'
-import { runScheduled } from '../src/scheduled'
+import { TXS_PER_RUN, runScheduled } from '../src/scheduled'
 import { FakeChain, load } from './chain'
 import { FakeD1 } from './d1'
 
@@ -17,7 +17,8 @@ import { FakeD1 } from './d1'
 // an isolate that has rarely run the indexer's code before. Measured with `wrangler tail` on Nov 8,
 // 2026, a scan run that takes 2-3 ms here took 9-23 ms there, a verdict run (1-5 ms here) 8-17 ms, the
 // pool sync (~3 ms here) ~16 ms: a factor of 3 to 7. So this test only guards against regressions
-// (a run doing several jobs or pages again); the cron's real budget is read from the tail.
+// (a run doing several jobs or pages again), and only with BUDGET=1; the cron's real budget is read
+// from the tail.
 
 const garuda = load('garuda-2026-11-07.json')
 const POOL = garuda.address
@@ -110,49 +111,49 @@ async function scenario() {
 }
 
 const BOUND_MS = 6
+// the wall-clock bound only with BUDGET=1 (`BUDGET=1 pnpm test budget`): timing is machine-dependent,
+// the default run checks what each job does and leaves out
+const TIMED = !!process.env.BUDGET
 
-describe('CPU of one cron run (Node)', () => {
+async function runs(job: 'scan' | 'sync' | 'verdict', check: (r: Awaited<ReturnType<typeof runScheduled>>) => void) {
+  const ms: number[] = []
+  for (let i = 0; i < (TIMED ? 5 : 1); i++) {
+    const s = await scenario()
+    const out = await s.run(job)
+    check(out.r)
+    ms.push(out.ms)
+  }
+  if (TIMED) expect(Math.min(...ms)).toBeLessThan(BOUND_MS)
+}
+
+describe('one cron run', () => {
   afterEach(() => vi.unstubAllGlobals())
 
-  it(`a scan run with a 250-staker payout run waiting stays under ${BOUND_MS} ms`, async () => {
-    const runs: number[] = []
-    for (let i = 0; i < 5; i++) {
-      const s = await scenario()
-      const { r, ms } = await s.run('scan')
-      expect(r.job).toBe('scan')
+  it('a scan run with a 250-staker payout run waiting folds at most TXS_PER_RUN txs and nothing else', async () => {
+    await runs('scan', (r) => {
+      expect(r.jobs).toEqual(['scan'])
+      expect(r.tick!.synced).toBe(false)
       expect(r.tick!.txs).toBeGreaterThan(200)
+      expect(r.tick!.txs).toBeLessThanOrEqual(TXS_PER_RUN)
       expect(r.verdicts).toBeNull()
-      runs.push(ms)
-    }
-    console.log('scan run CPU ms (first, then repeats):', runs.map((m) => m.toFixed(2)).join(' '))
-    expect(Math.min(...runs)).toBeLessThan(BOUND_MS)
+      expect(r.rates).toBeNull()
+    })
   })
 
-  it(`a verdict run over ~2,000 staker-day rows stays under ${BOUND_MS} ms`, async () => {
-    const runs: number[] = []
-    for (let i = 0; i < 5; i++) {
-      const s = await scenario()
-      const { r, ms } = await s.run('verdict')
-      expect(r.job).toBe('verdict')
+  it('a verdict run computes one pool over ~2,000 staker-day rows and scans nothing', async () => {
+    await runs('verdict', (r) => {
+      expect(r.jobs).toEqual(['verdict'])
       expect(r.verdicts!.computed).toBe(1)
       expect(r.tick).toBeNull()
-      runs.push(ms)
-    }
-    console.log('verdict run CPU ms (first, then repeats):', runs.map((m) => m.toFixed(2)).join(' '))
-    expect(Math.min(...runs)).toBeLessThan(BOUND_MS)
+    })
   })
 
-  it(`the hourly sync run, with the day's 1.3 MB of logos, stays under ${BOUND_MS} ms`, async () => {
-    const runs: number[] = []
-    for (let i = 0; i < 5; i++) {
-      const s = await scenario()
-      const { r, ms } = await s.run('sync')
-      expect(r.job).toBe('sync')
+  it("the hourly sync run, with the day's 1.3 MB of logos, folds no tx", async () => {
+    await runs('sync', (r) => {
+      expect(r.jobs).toEqual(['sync'])
       expect(r.tick!.synced).toBe(true)
       expect(r.tick!.txs).toBe(0)
-      runs.push(ms)
-    }
-    console.log('sync run CPU ms (first, then repeats):', runs.map((m) => m.toFixed(2)).join(' '))
-    expect(Math.min(...runs)).toBeLessThan(BOUND_MS)
+      expect(r.verdicts).toBeNull()
+    })
   })
 })
