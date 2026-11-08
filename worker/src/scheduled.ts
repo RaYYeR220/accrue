@@ -1,4 +1,5 @@
 import type { Env } from './env'
+import { warmRates } from './api/rates'
 import { runIndexerTick, type TickResult } from './indexer/cron'
 import { scanRouterLogs } from './indexer/router'
 import { refreshVerdicts } from './indexer/verdicts'
@@ -24,5 +25,6 @@ export async function runScheduled(env: Env) {
   // with a budget of 0 it still answers the pools that need no rows and prunes once a day
   const verdicts = await refreshVerdicts(env, { maxPools: verdictBudget(tick) })
   const router = await scanRouterLogs(env, { maxChunks: 3 })
-  return { tick, verdicts: { computed: verdicts.computed.length, pruned: verdicts.pruned }, router }
+  const rates = await warmRates(env)
+  return { tick, verdicts: { computed: verdicts.computed.length, pruned: verdicts.pruned }, router, rates }
 }
