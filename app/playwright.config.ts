@@ -40,11 +40,16 @@ export default defineConfig({
       testMatch: /(landing|a11y)\.spec\.ts/,
       use: { viewport: { width: 1920, height: 1080 } },
     },
-    {
-      name: 'perf-375',
-      testMatch: /perf\.spec\.ts/,
-      dependencies: ['mobile-375', 'desktop-1440', 'wide-1920'],
-      use: { viewport: { width: 375, height: 812 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true },
-    },
+    // a timing budget under 4x CPU throttling is machine-dependent, so it only runs on request:
+    // PERF=1 pnpm e2e --project perf-375
+    ...(process.env.PERF
+      ? [
+          {
+            name: 'perf-375',
+            testMatch: /perf\.spec\.ts/,
+            use: { viewport: { width: 375, height: 812 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true },
+          },
+        ]
+      : []),
   ],
 })

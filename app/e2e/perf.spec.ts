@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { mockApi } from './fixtures'
 
-// Runs alone, after the other projects, so parallel tests don't skew the throttled timing.
+// Only with PERF=1 (see playwright.config.ts); run it on its own so parallel tests don't skew it.
 // Lighthouse's mobile profile: 150 ms RTT, 1.6 Mbps down, 750 kbps up, 4x CPU slowdown.
 test('first contentful hero on a throttled phone profile', async ({ browser }, info) => {
   test.setTimeout(90_000)
@@ -33,7 +33,6 @@ test('first contentful hero on a throttled phone profile', async ({ browser }, i
   const median = [...runs].sort((a, b) => a.lcp - b.lcp)[1]!
   const line = `LCP ${runs.map(r => r.lcp).join(' / ')} ms (median ${median.lcp}), FCP ${runs.map(r => r.fcp).join(' / ')} ms, element ${median.el}`
   info.annotations.push({ type: 'lcp', description: line })
-  console.log(`[perf] ${line}`)
-  expect(median.el).toBe('h1#hero-title')
-  expect(median.lcp).toBeLessThan(2500)
+  expect(median.el, line).toBe('h1#hero-title')
+  expect(median.lcp, line).toBeLessThan(2500)
 })
