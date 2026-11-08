@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { flowConfig } from './features/dollars/flow'
 import { currentLang, t } from './i18n'
+import { Activity } from './screens/Activity'
 import { AppProvider, useApp, type Route } from './screens/context'
 import { Dollars } from './screens/Dollars'
 import { Home } from './screens/Home'
@@ -22,7 +23,6 @@ const TABS: Exclude<Route, 'about'>[] = ['home', 'dollars', 'nim', 'payouts', 'a
 
 function Screen({ route }: { route: Route }) {
   switch (route) {
-    case 'activity':
     case 'about':
     case 'home':
       return <Home />
@@ -32,6 +32,8 @@ function Screen({ route }: { route: Route }) {
       return <Nim />
     case 'payouts':
       return <PayoutCheck />
+    case 'activity':
+      return <Activity />
   }
 }
 
