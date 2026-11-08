@@ -1,0 +1,26 @@
+name = "accrue-core"
+main = "src/index.ts"
+compatibility_date = "2026-09-01"
+compatibility_flags = ["nodejs_compat"]
+
+[triggers]
+crons = ["*/5 * * * *"]
+
+[vars]
+NIM_RPCS = "https://rpc.nimiqwatch.com"
+POLYGON_RPCS = "https://polygon-bor-rpc.publicnode.com,https://1rpc.io/matic,https://polygon.drpc.org"
+RELAYER_ADDRESS = ""
+ROUTER_ADDRESS = ""
+
+[[d1_databases]]
+binding = "DB"
+database_name = "accrue"
+database_id = "cb05ab3f-5036-4349-b5bb-d9f734597008"
+
+[[durable_objects.bindings]]
+name = "RELAYER"
+class_name = "Relayer"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Relayer"]
