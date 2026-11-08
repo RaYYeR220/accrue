@@ -3,7 +3,7 @@ import { t } from '../i18n'
 import { HttpError } from '../providers/errors'
 import { Amount, Button, Card, Stat, VerdictBadge } from '../ui/components'
 import { describeCheck, describePosition, fetchCheck, fetchPosition, type CheckView, type PositionView } from './data'
-import { fmtNimLuna, fmtPct, fmtUsd6 } from './format'
+import { fmtDays, fmtNimLuna, fmtPct, fmtUsd6 } from './format'
 import { accentDot } from './orbit/tint'
 import { classifyQuery, type QueryInvalidReason } from './query'
 
@@ -54,7 +54,7 @@ function NimResult({ view, poolCount }: { view: CheckView; poolCount: number }) 
           <i style={{ '--c': accentDot(pool.accent ?? '#8a8790') } as CSSProperties} />
           {pool.name}
         </span>
-        <span className="result-k">{t('landing.checker.you', { days: view.windowDays })}</span>
+        <span className="result-k">{t('landing.checker.you', { days: fmtDays(view.windowDays) })}</span>
       </div>
       <VerdictBadge verdict={view.verdict} size="lg" />
       <div className="result-stats">

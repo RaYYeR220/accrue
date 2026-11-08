@@ -4,8 +4,8 @@ import type { PoolRow } from '../features/nim/api'
 import { Card } from '../ui/components'
 import { Facts } from '../ui/components/Fields'
 import { useApp } from './context'
-import { nimAmount, pct, when } from './format'
-import { feePct, payoutLine } from './nimParts'
+import { days, feeLine, nimAmount, pct, when } from './format'
+import { payoutLine } from './nimParts'
 import { ConnectNim, PoolVerdict, ScreenHead, TestnetBadge } from './parts'
 
 function Methodology() {
@@ -47,7 +47,7 @@ function Mine() {
         {pool.name}
       </p>
       <PoolVerdict verdict={c.verdict} size="lg" />
-      <p className="vc-window">{t('check.window', { days: c.windowDays })}</p>
+      <p className="vc-window">{t('check.window', { days: days(c.windowDays) })}</p>
       <Facts
         rows={[
           { key: 'e', k: t('check.expected'), v: c.expectedLuna !== null ? nimAmount(c.expectedLuna) : '—' },
@@ -83,14 +83,14 @@ function Row({ p }: { p: PoolRow }) {
         <PoolVerdict verdict={p.verdict} />
       </button>
       <p className="sb-line">
-        {t('pool.fee', { pct: feePct(p.fee) })} · {payoutLine(p)}
+        {feeLine(p.fee)} · {payoutLine(p)}
       </p>
       {open && (
         <ul className="reasons" id={id}>
           {p.reasons.map((r, i) => (
             <li key={i}>{r}</li>
           ))}
-          {p.ratio !== null && <li>{t('pool.ratio', { ratio: pct(p.ratio, 1), expected: pct(p.expectedRatio, 1) })}</li>}
+          {p.ratio !== null && p.expectedRatio !== null && <li>{t('pool.ratio', { ratio: pct(p.ratio, 1), expected: pct(p.expectedRatio, 1) })}</li>}
           {p.lastPayoutTs !== null && <li>{t('pool.lastAt', { when: when(p.lastPayoutTs) })}</li>}
           {p.verdict ? <li>{t(`verdict.${p.verdict}.desc`)}</li> : <li>{t(app.network === 'testnet' ? 'check.noVerdictTestnet' : 'check.noVerdict')}</li>}
         </ul>
@@ -109,7 +109,7 @@ function Scoreboard() {
       </h2>
       {data && (
         <>
-          <p className="src">{app.network === 'testnet' ? t('check.boardTestnet') : t('check.boardSrc', { days: data.windowDays, time: when(data.asOf) })}</p>
+          <p className="src">{app.network === 'testnet' ? t('check.boardTestnet') : t('check.boardSrc', { days: days(data.windowDays), time: when(data.asOf) })}</p>
           <ul className="sb">
             {[...data.pools].sort((a, b) => (a.balanceLuna > b.balanceLuna ? -1 : a.balanceLuna < b.balanceLuna ? 1 : 0)).map(p => (
               <Row key={p.address} p={p} />

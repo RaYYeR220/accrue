@@ -174,6 +174,40 @@ describe('/api/pools and /api/check', () => {
     expect(r.pools[0]!.verdict).toBeNull()
   })
 
+  it('a pool that lists no fee is kept, with no fee and no promised share made up', () => {
+    // Private Whalidator on mainnet: fee null, no payouts, no expected ratio
+    const whale = poolRow({ address: GARUDA, name: 'Private Whalidator', fee: null, payoutType: 'none', schedule: '', verdict: 'NO_PAYOUTS_BY_DESIGN', ratio: null, expectedRatio: null })
+    const r = parsePools({ asOf: 1, windowDays: 7, pools: [poolRow(), whale] })
+    expect(r.pools.map(p => p.name)).toEqual(['Siam Pool', 'Private Whalidator'])
+    expect(r.pools[1]).toMatchObject({ fee: null, expectedRatio: null, verdict: 'NO_PAYOUTS_BY_DESIGN' })
+    // a fee that is there but not a number is still a broken row
+    expect(parsePools({ asOf: 1, windowDays: 7, pools: [poolRow({ fee: '5%' }), poolRow({ fee: undefined })] }).pools).toEqual([])
+  })
+
+  it("a staker of a pool without a listed fee gets that pool back, not 'unlisted'", () => {
+    const whale = poolRow({ address: GARUDA, name: 'Private Whalidator', fee: null, payoutType: 'none', verdict: 'NO_PAYOUTS_BY_DESIGN', expectedRatio: null })
+    const r = parseCheck(
+      { staker: { activeLuna: '20000000', inactiveLuna: 0, inactiveFrom: null, retiredLuna: '0', delegation: GARUDA }, pool: whale, verdict: 'NO_PAYOUTS_BY_DESIGN', pct: null, windowDays: 7 },
+      'NQ09 NMEX 1FAS 6BKD JDG1 GC0F XGM3 Q49B VL90',
+    )
+    expect(r.pool).toMatchObject({ name: 'Private Whalidator', fee: null })
+  })
+
+  it('a check keeps the window length the API measured, fractional or not', () => {
+    const body = {
+      staker: { activeLuna: '20000000', inactiveLuna: 0, inactiveFrom: null, retiredLuna: '0', delegation: SIAM },
+      pool: poolRow(),
+      expectedLuna: '38356',
+      receivedLuna: '38000',
+      verdict: 'PAID_AS_PROMISED',
+      pct: 0.99,
+      windowDays: 5.8,
+      fromTs: 1_794_009_600_000,
+      toTs: 1_794_510_720_000,
+    }
+    expect(parseCheck(body, 'NQ09 NMEX 1FAS 6BKD JDG1 GC0F XGM3 Q49B VL90').windowDays).toBe(5.8)
+  })
+
   it('a row without a verdict keeps it empty instead of filling one in', () => {
     const { verdict: _, ...noVerdict } = poolRow()
     const r = parsePools({ asOf: 1, windowDays: 7, pools: [noVerdict, poolRow({ payoutType: 'none', verdict: undefined })] })
@@ -217,6 +251,17 @@ describe('/api/pools and /api/check', () => {
     expect(poolApr({ ...r, staker: staker() })).toBeNull()
   })
 
+  it('pool APR divides by the window the amounts cover: 6 days of expected earnings is not a week', () => {
+    // 8 % a year on 1,000 NIM over 6 days: 131,507 luna
+    const six = parseCheck(
+      { staker: { activeLuna: '100000000', inactiveLuna: 0, inactiveFrom: null, retiredLuna: 0, delegation: SIAM }, expectedLuna: '131507', windowDays: 6, fromTs: 0, toTs: 6 * 86_400_000 },
+      'NQ09 NMEX 1FAS 6BKD JDG1 GC0F XGM3 Q49B VL90',
+    )
+    expect(poolApr(six)).toBeCloseTo(0.08, 3)
+    // 5.8 days: 127,123 luna
+    expect(poolApr({ ...six, expectedLuna: 127_123n, windowDays: 5.8 })).toBeCloseTo(0.08, 3)
+  })
+
   it('mainnet pools come from /api/pools; testnet pools from the testnet validators API', async () => {
     const f = vi.fn(async (url: string) => {
       if (url === '/api/pools') return Response.json({ asOf: 5, windowDays: 7, pools: [poolRow()] })
@@ -232,10 +277,12 @@ describe('/api/pools and /api/check', () => {
     const main = await fetchPools('mainnet', f as unknown as typeof fetch)
     expect(main.pools[0]!.name).toBe('Siam Pool')
     const test = await fetchPools('testnet', f as unknown as typeof fetch)
-    expect(test.pools.map(p => p.name)).toEqual(['Puddle', 'Mint Pool'])
+    // only isListed false hides a validator; one that lists no fee stays, as on mainnet
+    expect(test.pools.map(p => p.name)).toEqual(['Puddle', 'Unknown validator', 'Mint Pool'])
     // testnet has no Payout Check behind it: no verdicts at all, a pool without payouts included
     expect(test.pools[0]).toMatchObject({ payoutType: 'direct', fee: 0.095, schedule: null, balanceLuna: 15_664_461_627_656n, verdict: null, ratio: null })
-    expect(test.pools[1]).toMatchObject({ payoutType: 'none', verdict: null })
+    expect(test.pools[1]).toMatchObject({ fee: null, expectedRatio: null, payoutType: 'none', verdict: null })
+    expect(test.pools[2]).toMatchObject({ payoutType: 'none', verdict: null })
   })
 
   it('a failing API is an HttpError the UI can map', async () => {

@@ -19,6 +19,9 @@ export const fmtCompact = (v: number) => nf(`c${v >= 1e8 ? 0 : 1}`, { notation: 
 
 export const fmtPct = (fraction: number, decimals = 2) => nf(`p${decimals}`, { style: 'percent', maximumFractionDigits: decimals }).format(fraction)
 
+// A window length from the API, in days: "7", "6", "5.8"
+export const fmtDays = (days: number) => nf('d', { maximumFractionDigits: 1 }).format(days)
+
 export const fmtFee = (fee: number | null) => (fee === null ? t('landing.orbit.feeNotListed') : t('landing.orbit.fee', { pct: fmtPct(fee) }))
 
 export function fmtNimLuna(luna: bigint): string {

@@ -47,6 +47,16 @@ describe('rankPools: payout record first, then fee, then size', () => {
     expect(ranked.map(p => p.name)).toEqual(['b', 'c', 'a'])
   })
 
+  it('a pool that lists no fee comes after the ones that do, within the same record', () => {
+    const ranked = rankPools([
+      pool({ name: 'no fee', fee: null, balanceLuna: 9n }),
+      pool({ name: 'b', fee: 0.05, balanceLuna: 1n }),
+      pool({ name: 'no fee, smaller', fee: null, balanceLuna: 2n }),
+      pool({ name: 'a', fee: 0.1, balanceLuna: 5n }),
+    ])
+    expect(ranked.map(p => p.name)).toEqual(['b', 'a', 'no fee', 'no fee, smaller'])
+  })
+
   it('does not reorder the input array', () => {
     const input = [pool({ verdict: 'SHORT' }), pool()]
     const copy = [...input]
@@ -82,6 +92,12 @@ describe('dayEstimate: the "last 24 h" fallback from chain data', () => {
     const est = dayEstimate({ balances: [{ units: 1_000_000_000n, rateRay: rate }], receivedLuna: 700_000n, windowDays: 7 })
     expect(est.dollarsUsd).toBeCloseTo(0.1, 6)
     expect(est.nimLuna).toBe(100_000n)
+  })
+
+  it('NIM divides by the window the check measured, not a week: 6 days, or a fraction of a day more or less', () => {
+    expect(dayEstimate({ balances: [], receivedLuna: 600_000n, windowDays: 6 }).nimLuna).toBe(100_000n)
+    expect(dayEstimate({ balances: [], receivedLuna: 580_000n, windowDays: 5.8 }).nimLuna).toBe(100_000n)
+    expect(dayEstimate({ balances: [], receivedLuna: 1_000_000n, windowDays: 6.25 }).nimLuna).toBe(160_000n)
   })
 
   it('a window shorter than a day gives no daily figure instead of dividing by zero', () => {

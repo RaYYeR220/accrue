@@ -93,12 +93,20 @@ test.describe('landing outside Nimiq Pay', () => {
     expect(new URL((await req).url()).pathname).toBe('/api/check/NQ94UUV1JPTMXN2K5AH9SH6YMGUAMDHKF3ST')
     const out = page.locator('.checker-out')
     await expect(out.locator('.vd-lg')).toHaveText('Paid as promised')
-    await expect(out).toContainText('Your payouts, last 7 days')
+    await expect(out).toContainText('Your payouts, last 6 days')
     await expect(out).toContainText('12.50')
     await expect(out).toContainText('12.40')
     await expect(out).toContainText('99.2%')
     await expect(out).toContainText('Siam Pool overall')
     await expect(out).toContainText('Paid 97.5% of earnings against 97.0% promised.')
+  })
+
+  test('the checker names the window the API measured, a fraction of a day included', async ({ page }) => {
+    await mockApi(page, { pools: 'live', check: { ...CHECK_SIAM, windowDays: 5.8 } })
+    await page.goto('/')
+    await page.getByLabel('Nimiq or Polygon address').fill(SIAM_STAKER)
+    await page.getByRole('button', { name: 'Check', exact: true }).click()
+    await expect(page.locator('.checker-out')).toContainText('Your payouts, last 5.8 days')
   })
 
   test('without a verdict from the API the checker shows none, only "Not enough data yet"', async ({ page }) => {

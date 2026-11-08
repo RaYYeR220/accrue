@@ -168,6 +168,19 @@ describe('describeCheck', () => {
     expect(out).toMatchObject({ kind: 'verdict', verdict: 'PAID_AS_PROMISED', expectedLuna: 1_000_000n, receivedLuna: 990_000n, pct: 0.99 })
   })
 
+  it("the worker's answer as it is sent: the staker window it measured, its bounds, the pool's reach and a behind-data reason", () => {
+    const body = {
+      ...check,
+      pool: { ...siamRow, reachTs: 1_794_065_410_042, reasons: [...siamRow.reasons, 'Data as of 2026-11-07T12:10:10Z; indexing is behind'] },
+      windowDays: 5.8,
+      fromTs: 1_794_009_600_000,
+      toTs: 1_794_510_720_000,
+    }
+    const out = describeCheck(parseCheck(body))
+    expect(out).toMatchObject({ kind: 'verdict', windowDays: 5.8 })
+    expect(out.kind === 'verdict' && out.pool.reasons).toEqual(['Paid 97.5% of earnings against 97.0% promised.', 'Data as of 2026-11-07T12:10:10Z; indexing is behind'])
+  })
+
   it('a staker in a listed pool without a verdict from the API keeps no verdict', () => {
     const out = describeCheck(parseCheck({ ...check, verdict: undefined, pct: undefined, expectedLuna: undefined, receivedLuna: undefined }))
     expect(out).toMatchObject({ kind: 'verdict', verdict: null, pct: null })

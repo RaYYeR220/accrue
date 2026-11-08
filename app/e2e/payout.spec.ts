@@ -5,12 +5,12 @@ import { start, tab } from './app'
 const LABELS = ['Paid as promised', 'Behind schedule', 'Short', 'Not enough data', 'No payouts by design', "Can't verify — routed elsewhere", 'Not enough data yet']
 
 test.describe('Payout Check', () => {
-  test("your pool's verdict: expected against received over 7 days, the API's reasons, the methodology", async ({ page }) => {
+  test("your pool's verdict: expected against received over the window the API measured, the API's reasons, the methodology", async ({ page }) => {
     await start(page, 'happy')
     await tab(page, 'Payouts')
     const card = page.getByRole('region', { name: 'Siam Pool' })
     await expect(card.getByText('Paid as promised')).toBeVisible()
-    await expect(card.getByText('Over the last 7 days')).toBeVisible()
+    await expect(card.getByText('Over the last 6 days')).toBeVisible()
     await expect(card.getByRole('definition').nth(0)).toHaveText(/^\d+(\.\d+)? NIM$/)
     await expect(card.getByRole('definition').nth(1)).toHaveText(/^\d+(\.\d+)? NIM$/)
     await expect(card.getByText('99.2%')).toBeVisible()
@@ -29,5 +29,15 @@ test.describe('Payout Check', () => {
     await board.getByRole('button', { name: /Fjord Pool/ }).click()
     await expect(board.getByText('No verdict yet: not enough payouts in the window to say either way.')).toBeVisible()
     await expect(board.getByRole('link', { name: 'How Payout Check decides' })).toBeVisible()
+  })
+
+  test('a pool that publishes no fee is on the board and says so', async ({ page }) => {
+    await start(page, 'happy')
+    await tab(page, 'Payouts')
+    const board = page.getByRole('region', { name: 'All 7 pools' })
+    const quarry = board.getByRole('listitem').filter({ has: page.getByRole('button', { name: /Quarry Pool/ }) })
+    await expect(quarry).toContainText('fee not listed')
+    await quarry.getByRole('button', { name: /Quarry Pool/ }).click()
+    await expect(quarry).toContainText('Pool does not pay out; rewards are not distributed to stakers.')
   })
 })

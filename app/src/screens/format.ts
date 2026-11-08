@@ -16,6 +16,13 @@ export const num = (v: number, min = 0, max = min) => nf(`n${min}-${max}`, { min
 
 export const pct = (fraction: number, decimals = 2) => nf(`p${decimals}`, { style: 'percent', minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(fraction)
 
+// A window length from the API, in days: "7", "6", "5.8"
+export const days = (v: number) => num(v, 0, 1)
+
+// "fee 3 %", "fee 9.5 %": one decimal only when the fee has one; a pool may list none
+export const feeLine = (fee: number | null) =>
+  fee === null ? t('pool.feeNotListed') : t('pool.fee', { pct: pct(fee, Math.round(fee * 1000) % 10 === 0 ? 0 : 1) })
+
 // What people call the token. USDT0 is Tether's USDT on Polygon.
 export const SYMBOL: Record<AssetKey, string> = { USDT0: 'USDT', USDC: 'USDC' }
 

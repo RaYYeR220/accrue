@@ -1,5 +1,6 @@
 import { adaptiveDecimals, LIMITS, MIN_STAKE_LUNA, type AssetKey } from '@accrue/shared'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { NOMINAL_WINDOW_DAYS } from '../features/nim/api'
 import { t } from '../i18n'
 import { baselineFrom, loadVisit, nextVisit, saveVisit, sinceView, type Snapshot } from '../model/visit'
 import { heroView, side } from '../model/hero'
@@ -9,7 +10,7 @@ import { Button, Card } from '../ui/components'
 import { Ticker } from '../ui/components/Ticker'
 import { Spinner } from '../ui/components/Fields'
 import { useApp } from './context'
-import { about, every, exactTokens, nimAmount, num, pct, signed, SYMBOL, time, tokens, when } from './format'
+import { about, days, every, exactTokens, nimAmount, num, pct, signed, SYMBOL, time, tokens, when } from './format'
 import { ASSET_KEYS, useLiveDollars, useNow } from './live'
 import { ConnectEvm, ConnectNim, PoolVerdict } from './parts'
 
@@ -155,9 +156,11 @@ function SinceVisit() {
   const day = dayEstimate({
     balances: live.total === null ? null : ASSET_KEYS.flatMap(k => (live.assets[k] ? [{ units: live.assets[k]!.balance, rateRay: live.assets[k]!.reserve.liquidityRateRay }] : [])),
     receivedLuna: app.nim.check?.receivedLuna ?? null,
-    windowDays: app.nim.check?.windowDays ?? 7,
+    windowDays: app.nim.check?.windowDays ?? 0,
   })
   const v = sinceView({ base, now, dollars, nimStakedLuna: stakedAll, day })
+  // the window the NIM figure was averaged over; before a check answers, the pool window
+  const windowDays = days(app.nim.check?.windowDays ?? app.nim.pools?.windowDays ?? NOMINAL_WINDOW_DAYS)
   const dollarsText = v.dollarsUsd === null ? null : signed(app.fiat.format(app.fiat.toFiat(Math.abs(v.dollarsUsd)), 4), v.dollarsUsd < 0)
   const nimText = v.nimLuna === null ? null : signed(nimAmount(v.nimLuna < 0n ? -v.nimLuna : v.nimLuna), v.nimLuna < 0n)
 
@@ -173,9 +176,9 @@ function SinceVisit() {
         </div>
         <div className="since-row">
           <span className="since-v">{nimText ?? '—'}</span>
-          <span className="since-k">{v.mode === 'visit' ? t('home.since.staked') : t('home.since.payoutsDay')}</span>
+          <span className="since-k">{v.mode === 'visit' ? t('home.since.staked') : t('home.since.payoutsDay', { days: windowDays })}</span>
         </div>
-        <p className="src">{v.mode === 'visit' ? t('home.since.srcVisit') : t('home.since.srcDay')}</p>
+        <p className="src">{v.mode === 'visit' ? t('home.since.srcVisit') : t('home.since.srcDay', { days: windowDays })}</p>
       </Card>
     </section>
   )

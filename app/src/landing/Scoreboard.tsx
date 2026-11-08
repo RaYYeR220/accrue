@@ -2,7 +2,7 @@ import { Fragment, useState, type CSSProperties } from 'react'
 import { t } from '../i18n'
 import { VerdictBadge } from '../ui/components'
 import type { PoolRow, PoolsData } from './data'
-import { fmtAgo, fmtCompact, fmtDate, fmtDateTime, fmtNum, fmtPct } from './format'
+import { fmtAgo, fmtCompact, fmtDate, fmtDateTime, fmtDays, fmtNum, fmtPct } from './format'
 import { accentDot } from './orbit/tint'
 import { scheduleInfo } from './schedule'
 
@@ -34,7 +34,7 @@ function Reasons({ p, id }: { p: PoolRow; id: string }) {
 export function Scoreboard({ data, onShowPool }: { data: PoolsData; onShowPool: (address: string) => void }) {
   const [open, setOpen] = useState<string | null>(null)
   const live = data.source === 'live'
-  const days = data.windowDays
+  const days = fmtDays(data.windowDays)
 
   return (
     <div className="board" data-source={data.source}>

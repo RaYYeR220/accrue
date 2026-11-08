@@ -34,6 +34,13 @@ test.describe('Home', () => {
     await expect(page.getByRole('main').getByText(/APY$/).first()).toHaveText(/^3,66\s%\sAPY$/)
   })
 
+  test("the last-24-hours NIM figure says which window it averaged: the check's, not a fixed week", async ({ page }) => {
+    await start(page, 'happy')
+    const since = page.getByRole('region', { name: 'Last 24 hours, estimated' })
+    await expect(since.getByText('paid by your pool, daily average of 6 days')).toBeVisible()
+    await expect(since.getByText(/NIM: what your pool paid you over 6 days, per day\.$/)).toBeVisible()
+  })
+
   test('nothing known yet is a dash, not $0.00', async ({ page }) => {
     // no price source: a NIM-only staker has nothing that can be added up
     await start(page, 'happy', '&rates=down')

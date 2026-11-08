@@ -8,7 +8,8 @@ export type PayoutType = 'restake' | 'direct' | 'none'
 export interface PoolRow {
   address: string
   name: string
-  fee: number
+  // null: the pool publishes no fee (Private Whalidator); shown as "fee not listed"
+  fee: number | null
   payoutType: PayoutType
   schedule: string | null
   balanceLuna: bigint
@@ -18,7 +19,7 @@ export interface PoolRow {
   // null: the API gave no verdict (yet); never filled in here
   verdict: Verdict | null
   ratio: number | null
-  expectedRatio: number
+  expectedRatio: number | null
   lastPayoutTs: number | null
   reasons: string[]
 }
@@ -41,6 +42,10 @@ export interface CheckResponse {
 
 export const TESTNET_VALIDATORS_URL = 'https://validators-api-test.je-cf9.workers.dev/api/v1/validators'
 
+// The pool window the worker judges verdicts over. A staker's own window (/api/check with
+// amounts) is measured per check and is usually shorter; it always comes in `windowDays`.
+export const NOMINAL_WINDOW_DAYS = 7
+
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
 const str = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null)
@@ -54,10 +59,11 @@ function luna(v: unknown): bigint | null {
 }
 
 // A malformed row is dropped rather than shown with made-up numbers; a missing or unknown
-// verdict stays null, never a judgement the API did not make.
+// verdict stays null, never a judgement the API did not make. A pool that lists no fee is not
+// malformed: its fee and promised share stay null.
 function parsePoolRow(r: unknown): PoolRow | null {
   if (!isRecord(r) || typeof r.address !== 'string' || typeof r.name !== 'string') return null
-  if (!finite(r.fee) || !isPayoutType(r.payoutType)) return null
+  if (!(r.fee === null || finite(r.fee)) || !isPayoutType(r.payoutType)) return null
   const balanceLuna = luna(r.balanceLuna)
   if (balanceLuna === null) return null
   return {
@@ -72,7 +78,7 @@ function parsePoolRow(r: unknown): PoolRow | null {
     logo: str(r.logo),
     verdict: isVerdict(r.verdict) ? r.verdict : null,
     ratio: finite(r.ratio) ? r.ratio : null,
-    expectedRatio: finite(r.expectedRatio) ? r.expectedRatio : 1 - r.fee,
+    expectedRatio: finite(r.expectedRatio) ? r.expectedRatio : r.fee === null ? null : 1 - r.fee,
     lastPayoutTs: finite(r.lastPayoutTs) ? r.lastPayoutTs : null,
     reasons: Array.isArray(r.reasons) ? r.reasons.filter((x): x is string => typeof x === 'string') : [],
   }
@@ -82,7 +88,7 @@ export function parsePools(body: unknown): PoolsResponse {
   if (!isRecord(body) || !Array.isArray(body.pools)) throw new Error('pools: unexpected body')
   return {
     asOf: finite(body.asOf) ? body.asOf : 0,
-    windowDays: finite(body.windowDays) ? body.windowDays : 7,
+    windowDays: finite(body.windowDays) ? body.windowDays : NOMINAL_WINDOW_DAYS,
     pools: body.pools.map(parsePoolRow).filter((p): p is PoolRow => p !== null),
   }
 }
@@ -116,7 +122,7 @@ export function parseCheck(body: unknown, address: string): CheckResponse {
     receivedLuna: luna(body.receivedLuna),
     verdict: isVerdict(body.verdict) ? body.verdict : null,
     pct: finite(body.pct) ? body.pct : null,
-    windowDays: finite(body.windowDays) ? body.windowDays : 7,
+    windowDays: finite(body.windowDays) ? body.windowDays : NOMINAL_WINDOW_DAYS,
   }
 }
 
@@ -152,7 +158,7 @@ export async function fetchPools(network: Network, f: typeof fetch = fetch): Pro
   const body = await getJson(TESTNET_VALIDATORS_URL, f)
   if (!Array.isArray(body)) throw new Error('testnet validators: unexpected body')
   const pools = body.map(testnetRow).filter((p): p is PoolRow => p !== null)
-  return { asOf: Date.now(), windowDays: 7, pools }
+  return { asOf: Date.now(), windowDays: NOMINAL_WINDOW_DAYS, pools }
 }
 
 export async function fetchCheck(address: string, f: typeof fetch = fetch): Promise<CheckResponse> {

@@ -3,11 +3,8 @@ import { t } from '../i18n'
 import type { PoolRow } from '../features/nim/api'
 import type { UnstakeStep } from '../features/nim/unstake'
 import type { StepItem } from '../ui/components/Fields'
-import { about, ago, every, nimAmount, pct } from './format'
+import { about, ago, every, feeLine, nimAmount, pct } from './format'
 import { PoolVerdict } from './parts'
-
-// 3 %, 9.5 %: one decimal only when the fee has one
-export const feePct = (fee: number) => pct(fee, Math.round(fee * 1000) % 10 === 0 ? 0 : 1)
 
 export function payoutLine(p: PoolRow): string {
   if (p.payoutType === 'none') return t('pool.noPayouts')
@@ -22,9 +19,11 @@ export function PoolFacts({ p }: { p: PoolRow }) {
     <span className="pool-facts">
       <PoolVerdict verdict={p.verdict} />
       <span className="pool-line">
-        {t('pool.fee', { pct: feePct(p.fee) })} · {payoutLine(p)}
+        {feeLine(p.fee)} · {payoutLine(p)}
       </span>
-      {p.ratio !== null && <span className="pool-line">{t('pool.ratio', { ratio: pct(p.ratio, 1), expected: pct(p.expectedRatio, 1) })}</span>}
+      {p.ratio !== null && p.expectedRatio !== null && (
+        <span className="pool-line">{t('pool.ratio', { ratio: pct(p.ratio, 1), expected: pct(p.expectedRatio, 1) })}</span>
+      )}
       {p.lastPayoutTs !== null && <span className="pool-line">{t('pool.last', { when: ago(p.lastPayoutTs) })}</span>}
     </span>
   )

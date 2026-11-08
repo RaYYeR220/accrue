@@ -64,6 +64,16 @@ describe('in-app dictionaries', () => {
     for (const lang of LANGS) expect(dicts[lang]!['home.apy'], lang).not.toMatch(/%/)
   })
 
+  it("copy about the staker's check window names the length the API measured, never a fixed week", () => {
+    const keys = ['check.window', 'check.boardSrc', 'home.since.payoutsDay', 'home.since.srcDay', 'stake.compound.why']
+    for (const lang of LANGS) {
+      for (const k of keys) {
+        expect(dicts[lang]![k], `${lang}:${k}`).toContain('{days}')
+        expect(dicts[lang]![k], `${lang}:${k}`).not.toMatch(/\b7\b/)
+      }
+    }
+  })
+
   it('do not collide with the main or the landing dictionary', () => {
     expect(Object.keys(en).filter(k => k in mainEn || k in landingEn)).toEqual([])
   })

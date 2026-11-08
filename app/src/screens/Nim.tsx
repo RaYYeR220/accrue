@@ -1,11 +1,12 @@
 import { normalizeAddress } from '@accrue/shared'
 import { useEffect, useState } from 'react'
+import { NOMINAL_WINDOW_DAYS } from '../features/nim/api'
 import { t } from '../i18n'
 import { clearSwitchTarget, loadSwitchTarget } from '../model/switchTarget'
 import { Button, Card } from '../ui/components'
 import { Notice, Steps } from '../ui/components/Fields'
 import { useApp } from './context'
-import { about, nimAmount, nimExact } from './format'
+import { about, days, nimAmount, nimExact } from './format'
 import { useNow } from './live'
 import { PoolFacts, unstakeItems } from './nimParts'
 import { NimSheet, type NimSpec } from './NimSheet'
@@ -130,7 +131,7 @@ function Restake({ onOpen }: { onOpen: (s: NimSpec) => void }) {
       </h2>
       <Card tone="wash" className="compound">
         <p>{t('nim.restake.suggestion', { amount: nimAmount(r.amount, false), extra: nimAmount(r.extraPerYearLuna, false) })}</p>
-        <p className="muted">{t('stake.compound.why')}</p>
+        <p className="muted">{t('stake.compound.why', { days: days(nim.check?.windowDays ?? NOMINAL_WINDOW_DAYS) })}</p>
         <div className="row-actions">
           <Button onClick={() => onOpen({ mode: 'add', amount: r.amount })}>{t('stake.do.add', { amount: nimExact(r.amount) })}</Button>
         </div>

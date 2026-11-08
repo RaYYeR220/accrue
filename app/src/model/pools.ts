@@ -16,8 +16,14 @@ const RANK: Record<Verdict | 'none', number> = {
 // A pool that lists no payouts passes nothing on to its stakers, whatever the verdict says.
 const rankOf = (p: PoolRow) => (p.payoutType === 'none' ? RANK.NO_PAYOUTS_BY_DESIGN : RANK[p.verdict ?? 'none'])
 
+// A fee nobody published is not a low fee: those pools come after every listed one.
+function byFee(a: PoolRow, b: PoolRow): number {
+  if (a.fee === null || b.fee === null) return a.fee === b.fee ? 0 : a.fee === null ? 1 : -1
+  return a.fee - b.fee
+}
+
 export function rankPools(pools: readonly PoolRow[]): PoolRow[] {
-  return [...pools].sort((a, b) => rankOf(a) - rankOf(b) || a.fee - b.fee || (a.balanceLuna > b.balanceLuna ? -1 : a.balanceLuna < b.balanceLuna ? 1 : 0))
+  return [...pools].sort((a, b) => rankOf(a) - rankOf(b) || byFee(a, b) || (a.balanceLuna > b.balanceLuna ? -1 : a.balanceLuna < b.balanceLuna ? 1 : 0))
 }
 
 export type NextPayout =
@@ -38,9 +44,11 @@ export function nextPayout(p: Pick<PoolRow, 'payoutType' | 'schedule' | 'lastPay
 
 const DAY_SEC = 86_400n
 const YEAR_SEC = 31_536_000n
+const MILLI = 1_000
 
 // "Last 24 h" when there is no earlier visit: dollars at today's Aave rate on today's balance,
-// NIM as the daily average the pool paid this staker over the check window.
+// NIM as the daily average the pool paid this staker over the check window, whose length the API
+// measures (usually 6 days, not always whole).
 export function dayEstimate(args: {
   balances: { units: bigint; rateRay: bigint }[] | null
   receivedLuna: bigint | null
@@ -48,10 +56,10 @@ export function dayEstimate(args: {
 }): { dollarsUsd: number | null; nimLuna: bigint | null } {
   const { balances, receivedLuna, windowDays } = args
   const units = balances ? balances.reduce((s, b) => s + (b.units * b.rateRay * DAY_SEC) / (RAY * YEAR_SEC), 0n) : null
-  // whole days only: a window under a day has no daily average to give
-  const days = Number.isFinite(windowDays) ? Math.round(windowDays) : 0
+  // in thousandths of a day, so the division stays in luna; a window under a day has no daily average
+  const milliDays = Number.isFinite(windowDays) ? Math.round(windowDays * MILLI) : 0
   return {
     dollarsUsd: units === null ? null : Number(units) / 1e6,
-    nimLuna: receivedLuna !== null && days >= 1 ? receivedLuna / BigInt(days) : null,
+    nimLuna: receivedLuna !== null && milliDays >= MILLI ? (receivedLuna * BigInt(MILLI)) / BigInt(milliDays) : null,
   }
 }
