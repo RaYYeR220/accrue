@@ -5,7 +5,7 @@ import { keccak256, type Hex } from 'viem'
 /** D1 stand-in backed by an in-memory SQLite with the real migrations applied. */
 export function fakeD1() {
   const db = new DatabaseSync(':memory:')
-  for (const f of ['0001_init.sql', '0002_relay_jobs_detail.sql'])
+  for (const f of ['0001_init.sql', '0002_indexer.sql', '0003_indexer_runs.sql', '0004_relay_jobs_detail.sql'])
     db.exec(readFileSync(new URL(`../migrations/${f}`, import.meta.url), 'utf8'))
   const stmt = (sql: string, args: unknown[] = []) => ({
     bind: (...a: unknown[]) => stmt(sql, a),

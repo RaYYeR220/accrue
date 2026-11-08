@@ -28,9 +28,12 @@ export async function nimRpc<T>(env: Pick<Env, 'NIM_RPCS'>, method: string, para
         causes.push(`${url} HTTP ${res.status}`)
         continue
       }
-      const body = (await res.json()) as { result?: { data?: T } | null; error?: { message?: string } }
+      const body = (await res.json()) as { result?: { data?: T } | null; error?: { message?: string; data?: unknown } }
       if (body.error) {
-        causes.push(`${url} ${body.error.message ?? 'rpc error'}`)
+        // the detail ("No staker with address ...") is in `data`; callers need it to tell a
+        // negative answer from a server fault
+        const detail = typeof body.error.data === 'string' ? `: ${body.error.data}` : ''
+        causes.push(`${url} ${body.error.message ?? 'rpc error'}${detail}`)
         continue
       }
       const data = body.result?.data
