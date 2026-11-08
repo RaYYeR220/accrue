@@ -19,6 +19,13 @@ export const pct = (fraction: number, decimals = 2) => nf(`p${decimals}`, { styl
 // A window length from the API, in days: "7", "6", "5.8"
 export const days = (v: number) => num(v, 0, 1)
 
+// Copy that counts days: its `.one` form when the number shown reads 1, plural for any other
+// number, fractions included ("0.5 days", "1.5 days").
+export function daysText(key: string, v: number, vars: Record<string, string | number> = {}): string {
+  const shown = days(v)
+  return t(shown === days(1) ? `${key}.one` : key, { ...vars, days: shown })
+}
+
 // "fee 3 %", "fee 9.5 %": one decimal only when the fee has one; a pool may list none
 export const feeLine = (fee: number | null) =>
   fee === null ? t('pool.feeNotListed') : t('pool.fee', { pct: pct(fee, Math.round(fee * 1000) % 10 === 0 ? 0 : 1) })

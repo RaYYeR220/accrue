@@ -109,6 +109,16 @@ test.describe('landing outside Nimiq Pay', () => {
     await expect(page.locator('.checker-out')).toContainText('Your payouts, last 5.8 days')
   })
 
+  test('a one-day window reads "last day", and the explainer around the checker gives no fixed number of days', async ({ page }) => {
+    await mockApi(page, { pools: 'live', check: { ...CHECK_SIAM, windowDays: 1 } })
+    await page.goto('/')
+    await expect(page.locator('#checker')).toContainText('over the most recent full days')
+    await page.getByLabel('Nimiq or Polygon address').fill(SIAM_STAKER)
+    await page.getByRole('button', { name: 'Check', exact: true }).click()
+    await expect(page.locator('.checker-out')).toContainText('Your payouts, last day')
+    await expect(page.locator('.checker-out')).not.toContainText('1 days')
+  })
+
   test('without a verdict from the API the checker shows none, only "Not enough data yet"', async ({ page }) => {
     await mockApi(page, { pools: 'live', check: { ...CHECK_SIAM, verdict: undefined, pct: null, expectedLuna: undefined, receivedLuna: undefined } })
     await page.goto('/')

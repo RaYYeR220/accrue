@@ -10,7 +10,7 @@ import { Button, Card } from '../ui/components'
 import { Ticker } from '../ui/components/Ticker'
 import { Spinner } from '../ui/components/Fields'
 import { useApp } from './context'
-import { about, days, every, exactTokens, nimAmount, num, pct, signed, SYMBOL, time, tokens, when } from './format'
+import { about, daysText, every, exactTokens, nimAmount, num, pct, signed, SYMBOL, time, tokens, when } from './format'
 import { ASSET_KEYS, useLiveDollars, useNow } from './live'
 import { ConnectEvm, ConnectNim, PoolVerdict } from './parts'
 
@@ -160,7 +160,7 @@ function SinceVisit() {
   })
   const v = sinceView({ base, now, dollars, nimStakedLuna: stakedAll, day })
   // the window the NIM figure was averaged over; before a check answers, the pool window
-  const windowDays = days(app.nim.check?.windowDays ?? app.nim.pools?.windowDays ?? NOMINAL_WINDOW_DAYS)
+  const windowDays = app.nim.check?.windowDays ?? app.nim.pools?.windowDays ?? NOMINAL_WINDOW_DAYS
   const dollarsText = v.dollarsUsd === null ? null : signed(app.fiat.format(app.fiat.toFiat(Math.abs(v.dollarsUsd)), 4), v.dollarsUsd < 0)
   const nimText = v.nimLuna === null ? null : signed(nimAmount(v.nimLuna < 0n ? -v.nimLuna : v.nimLuna), v.nimLuna < 0n)
 
@@ -176,9 +176,9 @@ function SinceVisit() {
         </div>
         <div className="since-row">
           <span className="since-v">{nimText ?? '—'}</span>
-          <span className="since-k">{v.mode === 'visit' ? t('home.since.staked') : t('home.since.payoutsDay', { days: windowDays })}</span>
+          <span className="since-k">{v.mode === 'visit' ? t('home.since.staked') : daysText('home.since.payoutsDay', windowDays)}</span>
         </div>
-        <p className="src">{v.mode === 'visit' ? t('home.since.srcVisit') : t('home.since.srcDay', { days: windowDays })}</p>
+        <p className="src">{v.mode === 'visit' ? t('home.since.srcVisit') : daysText('home.since.srcDay', windowDays)}</p>
       </Card>
     </section>
   )

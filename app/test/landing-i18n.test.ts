@@ -40,6 +40,28 @@ describe('landing dictionaries', () => {
     expect(missing).toEqual([])
   })
 
+  it("the explainers around the checker give no fixed number of days: the staker's window is measured per check", () => {
+    for (const lang of LANGS) {
+      for (const k of ['landing.checker.body', 'landing.check.expected.body', 'landing.check.received.formula']) {
+        expect(dicts[lang]![k], `${lang}:${k}`).toBeTruthy()
+        expect(dicts[lang]![k], `${lang}:${k}`).not.toMatch(/\b\d+\b/)
+      }
+    }
+  })
+
+  it('copy that counts days has a one-day form in every language, without the number', () => {
+    const counted = Object.keys(en).filter(k => !k.endsWith('.one') && placeholders((en as Record<string, string>)[k]!).includes('days'))
+    expect(counted.sort()).toEqual(['landing.board.foot.live', 'landing.board.live', 'landing.checker.you'])
+    for (const lang of LANGS) {
+      for (const k of counted) {
+        const one = dicts[lang]![`${k}.one`]
+        expect(one?.trim(), `${lang}:${k}.one`).toBeTruthy()
+        expect(placeholders(one ?? ''), `${lang}:${k}.one`).toEqual(placeholders(dicts[lang]![k]!).filter(p => p !== 'days'))
+        expect(one, `${lang}:${k}.one`).not.toMatch(/\b\d+\b/)
+      }
+    }
+  })
+
   it('the landing keys do not collide with the app dictionary', () => {
     const clash = Object.keys(en).filter(k => k in mainEn)
     expect(clash).toEqual([])

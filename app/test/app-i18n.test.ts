@@ -74,6 +74,19 @@ describe('in-app dictionaries', () => {
     }
   })
 
+  it('copy that counts days has a one-day form in every language, without the number', () => {
+    const counted = Object.keys(en).filter(k => !k.endsWith('.one') && placeholders((en as Record<string, string>)[k]!).includes('days'))
+    expect(counted.sort()).toEqual(['check.boardSrc', 'check.window', 'home.since.payoutsDay', 'home.since.srcDay', 'stake.compound.why'])
+    for (const lang of LANGS) {
+      for (const k of counted) {
+        const one = dicts[lang]![`${k}.one`]
+        expect(one?.trim(), `${lang}:${k}.one`).toBeTruthy()
+        expect(placeholders(one ?? ''), `${lang}:${k}.one`).toEqual(placeholders(dicts[lang]![k]!).filter(p => p !== 'days'))
+        expect(one, `${lang}:${k}.one`).not.toMatch(/\b\d+\b/)
+      }
+    }
+  })
+
   it('do not collide with the main or the landing dictionary', () => {
     expect(Object.keys(en).filter(k => k in mainEn || k in landingEn)).toEqual([])
   })

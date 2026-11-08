@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { fmtDays } from '../src/landing/format'
-import { days, exactTokens, feeLine, nimAmount, nimExact, polUpTo, tokens } from '../src/screens/format'
+import { fmtDays, fmtDaysText } from '../src/landing/format'
+import { loadLandingStrings } from '../src/landing/strings'
+import { days, daysText, exactTokens, feeLine, nimAmount, nimExact, polUpTo, tokens } from '../src/screens/format'
 import { loadAppStrings } from '../src/screens/strings'
 
 describe('amounts on screen', () => {
@@ -61,5 +62,24 @@ describe("a pool's fee", () => {
     expect(feeLine(0.03)).toBe('fee 3%')
     expect(feeLine(0.095)).toBe('fee 9.5%')
     expect(feeLine(null)).toBe('fee not listed')
+  })
+})
+
+describe('copy that counts days', () => {
+  it('reads singular only when the number shown is exactly 1; fractions and other numbers stay plural', async () => {
+    await loadAppStrings('en')
+    await loadLandingStrings('en')
+    expect(daysText('check.window', 6)).toBe('Over the last 6 days')
+    expect(daysText('check.window', 1)).toBe('Over the last day')
+    // shown with one decimal at most: 0.96 and 1.04 both read "1"
+    expect(daysText('check.window', 0.96)).toBe('Over the last day')
+    expect(daysText('check.window', 1.04)).toBe('Over the last day')
+    expect(daysText('check.window', 1.5)).toBe('Over the last 1.5 days')
+    expect(daysText('check.window', 0.5)).toBe('Over the last 0.5 days')
+    expect(daysText('check.boardSrc', 1, { time: '05:25' })).toBe('Last day, as of 05:25. Tap a pool to see why.')
+    expect(fmtDaysText('landing.checker.you', 6)).toBe('Your payouts, last 6 days')
+    expect(fmtDaysText('landing.checker.you', 1)).toBe('Your payouts, last day')
+    expect(fmtDaysText('landing.checker.you', 5.8)).toBe('Your payouts, last 5.8 days')
+    expect(fmtDaysText('landing.board.live', 1, { date: 'Nov 8' })).toBe('From the Accrue indexer, Nov 8 · one-day window · sorted by stake')
   })
 })

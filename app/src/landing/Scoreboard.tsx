@@ -2,7 +2,7 @@ import { Fragment, useState, type CSSProperties } from 'react'
 import { t } from '../i18n'
 import { VerdictBadge } from '../ui/components'
 import type { PoolRow, PoolsData } from './data'
-import { fmtAgo, fmtCompact, fmtDate, fmtDateTime, fmtDays, fmtNum, fmtPct } from './format'
+import { fmtAgo, fmtCompact, fmtDate, fmtDateTime, fmtDaysText, fmtNum, fmtPct } from './format'
 import { accentDot } from './orbit/tint'
 import { scheduleInfo } from './schedule'
 
@@ -34,7 +34,6 @@ function Reasons({ p, id }: { p: PoolRow; id: string }) {
 export function Scoreboard({ data, onShowPool }: { data: PoolsData; onShowPool: (address: string) => void }) {
   const [open, setOpen] = useState<string | null>(null)
   const live = data.source === 'live'
-  const days = fmtDays(data.windowDays)
 
   return (
     <div className="board" data-source={data.source}>
@@ -42,7 +41,7 @@ export function Scoreboard({ data, onShowPool }: { data: PoolsData; onShowPool: 
         <h3>{t('landing.board.title', { n: data.pools.length })}</h3>
         <p>
           {live
-            ? t('landing.board.live', { date: fmtDateTime(data.asOf), days })
+            ? fmtDaysText('landing.board.live', data.windowDays, { date: fmtDateTime(data.asOf) })
             : t('landing.board.snapshot', { date: fmtDate(data.asOf) })}
         </p>
       </div>
@@ -114,7 +113,7 @@ export function Scoreboard({ data, onShowPool }: { data: PoolsData; onShowPool: 
           </tbody>
         </table>
       </div>
-      <p className="board-foot">{live ? t('landing.board.foot.live', { days }) : t('landing.board.foot.snapshot')}</p>
+      <p className="board-foot">{live ? fmtDaysText('landing.board.foot.live', data.windowDays) : t('landing.board.foot.snapshot')}</p>
     </div>
   )
 }

@@ -22,6 +22,13 @@ export const fmtPct = (fraction: number, decimals = 2) => nf(`p${decimals}`, { s
 // A window length from the API, in days: "7", "6", "5.8"
 export const fmtDays = (days: number) => nf('d', { maximumFractionDigits: 1 }).format(days)
 
+// Copy that counts days: its `.one` form when the number shown reads 1, plural for any other
+// number, fractions included ("0.5 days", "1.5 days").
+export function fmtDaysText(key: string, days: number, vars: Record<string, string | number> = {}): string {
+  const shown = fmtDays(days)
+  return t(shown === fmtDays(1) ? `${key}.one` : key, { ...vars, days: shown })
+}
+
 export const fmtFee = (fee: number | null) => (fee === null ? t('landing.orbit.feeNotListed') : t('landing.orbit.fee', { pct: fmtPct(fee) }))
 
 export function fmtNimLuna(luna: bigint): string {

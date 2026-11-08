@@ -4,7 +4,7 @@ import type { PoolRow } from '../features/nim/api'
 import { Card } from '../ui/components'
 import { Facts } from '../ui/components/Fields'
 import { useApp } from './context'
-import { days, feeLine, nimAmount, pct, when } from './format'
+import { daysText, feeLine, nimAmount, pct, when } from './format'
 import { payoutLine } from './nimParts'
 import { ConnectNim, PoolVerdict, ScreenHead, TestnetBadge } from './parts'
 
@@ -47,7 +47,7 @@ function Mine() {
         {pool.name}
       </p>
       <PoolVerdict verdict={c.verdict} size="lg" />
-      <p className="vc-window">{t('check.window', { days: days(c.windowDays) })}</p>
+      <p className="vc-window">{daysText('check.window', c.windowDays)}</p>
       <Facts
         rows={[
           { key: 'e', k: t('check.expected'), v: c.expectedLuna !== null ? nimAmount(c.expectedLuna) : '—' },
@@ -109,7 +109,7 @@ function Scoreboard() {
       </h2>
       {data && (
         <>
-          <p className="src">{app.network === 'testnet' ? t('check.boardTestnet') : t('check.boardSrc', { days: days(data.windowDays), time: when(data.asOf) })}</p>
+          <p className="src">{app.network === 'testnet' ? t('check.boardTestnet') : daysText('check.boardSrc', data.windowDays, { time: when(data.asOf) })}</p>
           <ul className="sb">
             {[...data.pools].sort((a, b) => (a.balanceLuna > b.balanceLuna ? -1 : a.balanceLuna < b.balanceLuna ? 1 : 0)).map(p => (
               <Row key={p.address} p={p} />
