@@ -1,5 +1,6 @@
 import { lunaToNim } from '@accrue/shared'
 import { useRef, useState } from 'react'
+import './app.css'
 import { useFiat } from './fiat/useFiat'
 import { t } from './i18n'
 import { toUiError, type UiError } from './providers/errors'

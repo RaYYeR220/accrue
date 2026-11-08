@@ -1,0 +1,51 @@
+/* The in-app shell until its screens are built on the shared components. */
+.shell {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: max(16px, env(safe-area-inset-top)) 16px calc(24px + var(--safe-bottom));
+}
+.shell header {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+.shell h1 {
+  font-size: 28px;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+}
+.shell h2 {
+  margin-top: var(--s-4);
+  font-size: 20px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+.shell section {
+  margin-top: var(--s-5);
+}
+.shell .badge {
+  padding: 2px 10px;
+  border: 1px solid var(--hair-strong);
+  border-radius: var(--r-pill);
+  font-size: 13px;
+  color: var(--muted);
+}
+.shell .hint {
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+.shell button {
+  min-width: var(--tap);
+  min-height: var(--tap);
+  padding: 0 18px;
+  border-radius: var(--r-pill);
+  background: var(--ink);
+  color: var(--ink-on);
+  font-weight: 500;
+}
+.shell button:disabled {
+  opacity: 0.45;
+}
+.shell .error {
+  color: var(--danger);
+}

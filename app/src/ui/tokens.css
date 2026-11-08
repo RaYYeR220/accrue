@@ -1,0 +1,151 @@
+@font-face {
+  font-family: 'General Sans';
+  src: url('/fonts/GeneralSans-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'General Sans';
+  src: url('/fonts/GeneralSans-Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'General Sans';
+  src: url('/fonts/GeneralSans-Semibold.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Geist Mono';
+  src: url('/fonts/GeistMono-Latin.woff2') format('woff2');
+  font-weight: 400 500;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+:root {
+  color-scheme: light;
+
+  /* ground and ink: a warm tinted light, never cool grey */
+  --ground: #f2f0ea;
+  --ground-raise: #faf9f5;
+  --surface: rgba(255, 255, 255, 0.38);
+  --surface-strong: rgba(255, 255, 255, 0.62);
+  --surface-ground: rgba(242, 240, 234, 0.7);
+  --ink: #17161a;
+  --ink-on: #f4f2ec;
+  --muted: #64616b;
+  /* small secondary text; the lightest grey that still reads at 4.5:1 on every surface below */
+  --subtle: #6e6a75;
+  /* strokes and dots only, never text */
+  --faint: #a29fa8;
+  --hair: rgba(23, 22, 26, 0.09);
+  --hair-strong: rgba(23, 22, 26, 0.17);
+  /* input errors only; verdicts stay neutral */
+  --danger: #a4312b;
+
+  /* one accent, as a scale */
+  --violet-50: #f6f3fe;
+  --violet-100: #ece7fb;
+  --violet-300: #b9a9f2;
+  --violet-500: #6b4fd8;
+  --violet-700: #4f4386;
+  --violet-800: #3d2c8f;
+  --violet-line: rgba(107, 79, 216, 0.18);
+  --accent: var(--violet-500);
+  --accent-soft: var(--violet-300);
+  --accent-wash: var(--violet-100);
+  --accent-tint: var(--violet-50);
+  --pool-glow: rgba(107, 79, 216, 0.07);
+
+  /* type */
+  --font-display: 'General Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-body: 'General Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  --fs-display: clamp(44px, 6.6vw, 88px);
+  --fs-h2: clamp(34px, 4.3vw, 58px);
+  --fs-h3: 24px;
+  --fs-sub: clamp(16px, 1.25vw, 18.5px);
+  --fs-lede: 17px;
+  --fs-body: 16px;
+  --fs-sm: 14px;
+  --fs-xs: 12.5px;
+  --fs-2xs: 11.5px;
+  --track-display: -0.045em;
+  --track-h2: -0.04em;
+  --track-h3: -0.03em;
+  --lh-tight: 0.98;
+  --lh-body: 1.5;
+
+  /* a wide radius scale, from chips to the hero card */
+  --r-xs: 6px;
+  --r-sm: 10px;
+  --r-md: 16px;
+  --r-lg: 22px;
+  --r-card: 28px;
+  --r-hero: 40px;
+  --r-pill: 999px;
+
+  /* spacing */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 20px;
+  --s-6: 24px;
+  --s-8: 32px;
+  --s-10: 40px;
+  --s-12: 48px;
+  --s-16: 64px;
+  --gutter: clamp(16px, 3vw, 40px);
+  --container: 1240px;
+  --nav-h: 68px;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  /* touch: every control is at least this big, whatever it looks like */
+  --tap: 44px;
+  --btn-h: 48px;
+  --chip-h: 32px;
+
+  /* motion: one entrance, long quiet idle loops */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-fast: 0.2s;
+  --dur-med: 0.35s;
+  --dur-digit: 0.42s;
+  --dur-enter: 0.85s;
+  --idle-live: 2.4s;
+  --idle-orbit: 320s;
+
+  /* focus */
+  --focus-color: var(--violet-500);
+  --focus-width: 2px;
+  --focus-offset: 2px;
+
+  --grain-o: 0.05;
+}
+
+@media (max-width: 820px) {
+  :root {
+    --chip-h: 44px;
+  }
+}
+
+@media (min-width: 1700px) {
+  :root {
+    --container: 1320px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0s;
+    --dur-med: 0s;
+    --dur-digit: 0s;
+    --dur-enter: 0s;
+  }
+}

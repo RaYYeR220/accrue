@@ -4,13 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc --noEmit && vite build && node scripts/check-dist.mjs",
+    "dev": "node scripts/fetch-fonts.mjs --optional && vite",
+    "build": "node scripts/fetch-fonts.mjs && tsc --noEmit && vite build && node scripts/check-dist.mjs",
     "preview": "vite preview",
-    "build:mock": "vite build --mode mock",
+    "build:mock": "node scripts/fetch-fonts.mjs && vite build --mode mock",
     "preview:mock": "vite preview --mode mock",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "fonts": "node scripts/fetch-fonts.mjs"
   },
   "dependencies": {
     "@accrue/shared": "workspace:*",

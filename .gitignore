@@ -9,3 +9,7 @@ contracts/broadcast/**/dry-run/
 .env*
 *.pem
 .dev.vars
+# General Sans is fetched at build time (ITF FFL: self-hosting allowed, redistribution is not)
+app/public/fonts/GeneralSans-*.woff2
+app/test-results/
+app/playwright-report/

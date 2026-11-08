@@ -4,6 +4,8 @@ import { createRoot } from 'react-dom/client'
 import { App, loadMiniApp } from './App'
 import { detectMode } from './boot'
 import { currentLang } from './i18n'
+import './ui/tokens.css'
+import './ui/base.css'
 
 async function start() {
   // Compiled out of production builds together with the mock module.

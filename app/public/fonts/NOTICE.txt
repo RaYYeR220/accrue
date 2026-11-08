@@ -1,0 +1,11 @@
+Fonts served by this site
+
+General Sans (400, 500, 600)
+  Copyright (c) Indian Type Foundry. https://www.fontshare.com/fonts/general-sans
+  Licensed under the ITF Free Font License (FFL) 2.0, which allows self-hosting on the licensee's
+  own website. The files are not part of the source repository: `pnpm --filter @accrue/app fonts`
+  downloads the official files from Fontshare into this folder before every build.
+
+Geist Mono (latin, variable 400-500)
+  Copyright 2026 The Geist Project Authors. https://github.com/vercel/geist-font
+  Licensed under the SIL Open Font License 1.1, see OFL-GeistMono.txt.
