@@ -1,6 +1,6 @@
 # Five-minute review path
 
-A short route through Accrue inside Nimiq Pay, for Community Council reviewers and anyone else trying it. You need
+A short route through Accrue inside Nimiq Pay, for reviewers and anyone else trying it. You need
 Nimiq Pay on a phone. NIM and USDT on Polygon make it more interesting but are not required: every screen explains
 itself with empty balances.
 
@@ -37,7 +37,7 @@ current):
 
 <!-- numbers:pools -->
 
-From [`accrue.pages.dev/api/pools`](https://accrue.pages.dev/api/pools), fetched 2026-11-08 05:46 UTC; pool data as of 2026-11-08 05:45 UTC, 7-day window. The app shows the same rows, live.
+From [`accrue.pages.dev/api/pools`](https://accrue.pages.dev/api/pools), fetched 2026-11-08 06:07 UTC; verdicts computed at 2026-11-08 06:05 UTC; indexed data reaches 2026-11-08 05:05 UTC to 2026-11-08 05:25 UTC depending on the pool, 7-day window. The app shows the same rows, live.
 
 | Pool | Pays | Fee | Verdict | Paid of earnings | Promised |
 |---|---|---:|---|---:|---:|
@@ -50,20 +50,20 @@ From [`accrue.pages.dev/api/pools`](https://accrue.pages.dev/api/pools), fetched
 | Siam Pool | restakes | 3 % | Paid as promised | 97.49 % | 97.00 % |
 | CHIPMUNK POOL | to wallet | 5 % | Not enough data | – | 95.00 % |
 | nim.re Staking Pool | restakes | 3.33 % | Not enough data | 87.01 % | 96.67 % |
+| NODENIMIQ1.NIMIQ-JU.FR by &#64;Ju | restakes | 1 % | Not enough data | – | 99.00 % |
+| NODENIMIQ2.NIMIQ-JU.FR by &#64;Ju | restakes | 1 % | Not enough data | – | 99.00 % |
 | Nimiq Surf | no payouts | 0 % | No payouts by design | – | 100.00 % |
 | Private Whalidator | no payouts | not listed | No payouts by design | – | – |
+| Nimiq Marketing Pool | restakes | 0 % | Can't verify (routed elsewhere) | 50.34 % | 100.00 % |
 | $NIM_pool | restakes | 0 % | no verdict yet | – | 100.00 % |
 | ImpactZero stake | restakes | 0 % | no verdict yet | – | 100.00 % |
 | Nimiq Base Staking | restakes | 0 % | no verdict yet | – | 100.00 % |
-| Nimiq Marketing Pool | restakes | 0 % | no verdict yet | – | 100.00 % |
 | NimiqCafe Staking | restakes | 3 % | no verdict yet | – | 97.00 % |
 | NimiqHub Staking | restakes | 5 % | no verdict yet | – | 95.00 % |
 | NimiqPocket | restakes | 1 % | no verdict yet | – | 99.00 % |
-| NODENIMIQ1.NIMIQ-JU.FR by &#64;Ju | restakes | 1 % | no verdict yet | – | 99.00 % |
-| NODENIMIQ2.NIMIQ-JU.FR by &#64;Ju | restakes | 1 % | no verdict yet | – | 99.00 % |
 | Synapse LN - Nimiq | restakes | 1 % | no verdict yet | – | 99.00 % |
 
-10 of 21 pools had no verdict yet when this was fetched; the API's reason: "Payout Check has not looked at this pool yet."
+7 of 21 pools had no verdict yet when this was fetched; the API's reason: "Payout Check has not looked at this pool yet."
 
 <!-- /numbers:pools -->
 

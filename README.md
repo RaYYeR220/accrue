@@ -70,20 +70,23 @@ flowchart LR
   end
   subgraph polygon["Polygon"]
     router["AccrueRouter"]
-    aave["Aave v3 Pool"]
+    aave["Aave v3 pool and aTokens"]
   end
-  app -- "staking transactions" --> nimprov --> staking
-  app -- "EIP-712 permit signature" --> evmprov
-  app -- "signed permit" --> relay
+  fx["CoinGecko, open.er-api.com"]
+  app -->|"staking transactions"| nimprov --> staking
+  app -.->|"EIP-712 permit signature"| evmprov
+  app -.->|"signed permit"| relay
   relay -.->|"supplyWithPermit / withdrawWithPermit, gas paid"| router
   router -.-> aave
-  app -- "verdicts, rates, positions" --> api --> db
-  idx -- "rewards in, payouts out" --> pools
+  app -->|"verdicts, rates, positions"| api --> db
+  api -->|"/api/aave, /api/position: eth_call"| aave
+  api -->|"/api/rates"| fx
+  idx -->|"rewards in, payouts out"| pools
   idx --> db
   idx -.->|"Supplied / Withdrawn logs"| router
 ```
 
-Solid lines are live. Dotted lines wait for the router deployment: until `packages/shared/src/deployments.json` names the router, the relayer has nothing to call and the app says dollar deposits are not open yet.
+Solid lines are live. Dotted lines wait for the router deployment: until `packages/shared/src/deployments.json` names the router, the app asks for no permit, the relayer has nothing to call, and the app says dollar deposits are not open yet.
 
 <!-- /numbers:architecture -->
 
@@ -124,7 +127,8 @@ Everything below runs inside Nimiq Pay through `@nimiq/mini-app-sdk` 0.2.5 and t
   `sendSetActiveStakeTransaction`, `sendUpdateStakerTransaction`, `sendRetireStakeTransaction` and
   `sendRemoveStakeTransaction`, with the network's rules checked first: 100 NIM minimum, never between 0 and
   100 NIM left behind, a pool change only once the stake is inactive and released, removal of the whole retired
-  balance. The rules were confirmed with real transactions on Nimiq testnet ([PROOF.md](PROOF.md#nimiq-testnet)).
+  balance. The refusals behind these rules were seen with real transactions on Nimiq testnet
+  ([PROOF.md](PROOF.md#nimiq-testnet)); the release timing comes from the protocol source.
 - **Read-only Nimiq RPC through the host:** `getStakerByAddress`, `getAccountByAddress`, `getBlockNumber`,
   `getPolicyConstants`, `getValidatorByAddress` (jail state for the unstake countdown), `getTransactionByHash`
   (to confirm or fail every staking transaction after it is sent) and `getTransactionsByAddress` (Activity).
@@ -164,7 +168,7 @@ Requirements: Node 24 and pnpm 9. The contract suites need Foundry and an archiv
 | `ROUTER_DEPLOY_BLOCK` | `worker/wrangler.toml`, optional | Deploy block of an overriding router, where its event scan starts. |
 | `DB`, `RELAYER`, cron | `worker/wrangler.toml` | D1 database, relayer Durable Object, indexer schedule `*/5 * * * *`. |
 | `CORE` | `app/wrangler.toml` | Service binding from the Pages project to the Worker; `app/functions/api/[[path]].ts` forwards `/api/*`. |
-| `POLYGON_RPC` | shell | Archive Polygon RPC for the fork tests and the scripts. Default `https://polygon.drpc.org`. |
+| `POLYGON_RPC` | shell | Polygon RPC. `forge test` needs it set to an archive endpoint (the fork is pinned to a block); `collect-results.mjs` passes `https://polygon.drpc.org` to forge when it is unset. Both scripts read Polygon from it when set, otherwise from publicnode, drpc and 1rpc in turn (`scripts/lib/deployment.mjs`). |
 | `ACCRUE_ORIGIN` | shell | Origin the scripts read `/api/*` from. Default `https://accrue.pages.dev`. |
 | `ACCRUE_DEPLOYER_PK` | shell | Deployer key for `contracts/script/Deploy.s.sol`; without it the script only simulates. |
 

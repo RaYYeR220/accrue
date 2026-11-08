@@ -9,8 +9,8 @@ It is a reading of public chain data. It is not an audit, it cannot see agreemen
 "not enough data" whenever the data does not support a firm answer.
 
 The code is `packages/shared/src/payout.ts` (classification, windows, verdict rules) and
-`worker/src/indexer/` (scanning, hourly and daily totals, windows over stored totals). Every threshold below is
-a named constant there.
+`worker/src/indexer/` (scanning, hourly and daily totals, windows over stored totals); the stale-data reason is
+added in `worker/src/api/pools.ts`. Every threshold below is in that code.
 
 ## 1. What is read
 
@@ -39,9 +39,11 @@ for "not a staker"):
 - A direct payout to a staker of this pool counts as paid. One to a non-staker or to another pool's staker counts
   as **other outflow**. One whose recipient has not been looked up yet counts as paid but **unverified**.
 
-The share paid to unverified recipients is shown as a reason on the verdict. Recipients who leave a pool can
-only move money from "paid" to "other outflow", which makes a verdict more cautious, never more accusing (see
-the 5 % rule below).
+The share paid to unverified recipients is shown as a reason on the verdict. A staker who moves to another pool
+after being paid turns that payout into other outflow, which lowers the paid ratio. For a pool that pays at least
+its promise this can at worst move it into the uncertainty band ("not enough data"), never to "Short": a drop of
+5 points or more from that alone means 5 % or more other outflow, which rules out "Short" (rule 6 below). A pool
+already paying a little under its promise can be pushed further down by it.
 
 What is stored: per pool and hour, the earned, paid (restake, direct, unverified) and other-outflow totals and
 the times of the first and last payout; per staker and UTC day, the number and sum of payouts received. No raw
@@ -98,8 +100,8 @@ The rules run in this order; the first that applies decides.
 | 3 | Fewer than 3 cycles, or nothing earned | **Not enough data** |
 | 4 | Other outflow is 30 % of earnings or more | **Can't verify (routed elsewhere)** |
 | 5 | Paid ratio ≥ promised − 2 percentage points | **Paid as promised** |
-| 6 | Paid ratio < promised − 5 points, other outflow < 5 %, and every confirmation window is short too | **Short** |
-| 7 | Paid ratio < promised − 5 points but a confirmation window is not short | **Not enough data** ("a payout may still be in progress") |
+| 6 | Paid ratio < promised − 5 points, other outflow < 5 %, at least one confirmation window, and every confirmation window short too | **Short** |
+| 7 | Paid ratio < promised − 5 points and other outflow < 5 %, but there is no confirmation window or one of them is not short | **Not enough data** ("a payout may still be in progress") |
 | 8 | Paid ratio < promised − 5 points with other outflow between 5 % and 30 % | **Not enough data** ("other outflows too large to conclude") |
 | 9 | Paid ratio between promised − 5 and promised − 2 points | **Not enough data** ("within the uncertainty band") |
 
@@ -151,8 +153,8 @@ independent count from the raw transactions. Test: `packages/shared/test/payout.
 **Negative controls.** The same recorded histories with every payout × 0.8 read **Short**, confirmed by the
 earlier window ends (`payout.test.ts`; `worker/test/cutsweep.test.ts`, "the same history with every payout x0.8
 is SHORT at every cut"). Synthetic pools paying 80 % (12-hour cycles paid over 2.5 hours, 24-hour cycles over 7
-or 9 hours, 4 random stake layouts each) read **Short** at every cut between the end of one distribution and the
-start of the next (`cutsweep.test.ts`).
+or 9 hours, 4 random stake layouts each) read **Short** at every cut from a quarter cycle (the run gap) after one
+distribution ends until the next one starts (`cutsweep.test.ts`).
 
 **No false "Short" from where the data stops.** `cutsweep.test.ts` cuts histories at every macro block (once a
 minute) of their last two cycles and asserts the verdict at each cut:
@@ -167,8 +169,10 @@ minute) of their last two cycles and asserts the verdict at each cut:
   of the raw transactions between the window's bounds.
 
 On live data (a one-off run on 2026-11-07 over a cached 7-day history of 16 paying pools, 1,441 cut points each
-over the last 24 hours): 0 Short and 0 Behind schedule; moving the window end anywhere in that day changed a
-pool's ratio by at most 0.87 points, apart from the pool with the one-off transfer. With every payout × 0.8 the
+over the last 24 hours): 0 Short and 0 Behind schedule, and across those cuts each pool's ratio moved by at most
+about 0.3 points, apart from the pool with the one-off transfer. A separate slide of the window's start over the
+first 24 hours and its end over the last 24 hours, in 30-minute steps (49 windows per pool), moved a ratio by at
+most 0.87 points. With every payout × 0.8 the
 same run read Short at every cut for every pool except three that the rules keep from a "Short" on purpose: one
 routes about half its rewards elsewhere, one has 13 % other outflow, and one holds the one-off transfer.
 

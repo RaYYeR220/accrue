@@ -1,8 +1,8 @@
 {
   "source": "pools",
   "url": "https://accrue.pages.dev/api/pools",
-  "fetchedAt": "2026-11-08T05:46:15.897Z",
-  "asOf": 1794116735792,
+  "fetchedAt": "2026-11-08T06:07:03.087Z",
+  "asOf": 1794117935286,
   "windowDays": 7,
   "pools": [
     {
@@ -193,13 +193,14 @@
       "payoutType": "restake",
       "schedule": "0 * * * *",
       "stakers": 72,
-      "verdict": null,
-      "ratio": null,
+      "verdict": "CANT_VERIFY_ROUTED",
+      "ratio": 0.503374,
       "expectedRatio": 1,
-      "lastPayoutTs": null,
-      "reachTs": null,
+      "lastPayoutTs": 1794114017523,
+      "reachTs": 1794115223958,
       "reasons": [
-        "Payout Check has not looked at this pool yet."
+        "49.7% of earnings leave the reward address to non-staker destinations.",
+        "The indexer is still catching up on recent transactions of this pool; the window uses the part it has."
       ]
     },
     {
@@ -305,13 +306,13 @@
       "payoutType": "restake",
       "schedule": "",
       "stakers": 12,
-      "verdict": null,
+      "verdict": "NOT_ENOUGH_DATA",
       "ratio": null,
       "expectedRatio": 0.99,
       "lastPayoutTs": null,
-      "reachTs": null,
+      "reachTs": 1794115525090,
       "reasons": [
-        "Payout Check has not looked at this pool yet."
+        "Only 0 complete payout cycle(s) with 0 luna earned in the window; need at least 3."
       ]
     },
     {
@@ -321,13 +322,13 @@
       "payoutType": "restake",
       "schedule": "",
       "stakers": 11,
-      "verdict": null,
+      "verdict": "NOT_ENOUGH_DATA",
       "ratio": null,
       "expectedRatio": 0.99,
       "lastPayoutTs": null,
-      "reachTs": null,
+      "reachTs": 1794115524090,
       "reasons": [
-        "Payout Check has not looked at this pool yet."
+        "Only 0 complete payout cycle(s) with 0 luna earned in the window; need at least 3."
       ]
     },
     {

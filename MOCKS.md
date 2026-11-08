@@ -41,7 +41,7 @@ URL options: `?mock=<scenario>[&lang=de][&fiat=EUR][&network=testnet][&chain=0x8
 | Scenario | What it sets up |
 |---|---|
 | `happy` | NIM in the wallet and its HTLC account, a stake with a pool, USDT and USDC on Polygon, an Aave position; everything succeeds |
-| `reject-sign` | Every wallet dialog is declined |
+| `reject-sign` | Every signature and transaction dialog is declined (permits, wallet transactions, NIM staking); connecting accounts still works |
 | `insufficient` | Too little NIM and 0.50 USDT; the relay answers `INSUFFICIENT_BALANCE` |
 | `relay-down` | The relay is unreachable |
 | `stale-nonce` | The relay answers `PERMIT_NONCE_STALE` once |

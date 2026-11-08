@@ -151,30 +151,41 @@ const blocks = {
       '  end',
       '  subgraph polygon["Polygon"]',
       '    router["AccrueRouter"]',
-      '    aave["Aave v3 Pool"]',
+      '    aave["Aave v3 pool and aTokens"]',
       '  end',
-      '  app -- "staking transactions" --> nimprov --> staking',
-      '  app -- "EIP-712 permit signature" --> evmprov',
-      '  app -- "signed permit" --> relay',
+      '  fx["CoinGecko, open.er-api.com"]',
+      '  app -->|"staking transactions"| nimprov --> staking',
+      `  app ${e('EIP-712 permit signature')} evmprov`,
+      `  app ${e('signed permit')} relay`,
       `  relay ${e('supplyWithPermit / withdrawWithPermit, gas paid')} router`,
       `  router ${plain} aave`,
-      '  app -- "verdicts, rates, positions" --> api --> db',
-      '  idx -- "rewards in, payouts out" --> pools',
+      '  app -->|"verdicts, rates, positions"| api --> db',
+      '  api -->|"/api/aave, /api/position: eth_call"| aave',
+      '  api -->|"/api/rates"| fx',
+      '  idx -->|"rewards in, payouts out"| pools',
       '  idx --> db',
       `  idx ${e('Supplied / Withdrawn logs')} router`,
       '```',
       '',
       live
         ? 'Solid lines are live.'
-        : 'Solid lines are live. Dotted lines wait for the router deployment: until `packages/shared/src/deployments.json` names the router, the relayer has nothing to call and the app says dollar deposits are not open yet.',
+        : 'Solid lines are live. Dotted lines wait for the router deployment: until `packages/shared/src/deployments.json` names the router, the app asks for no permit, the relayer has nothing to call, and the app says dollar deposits are not open yet.',
     ].join('\n')
   },
 
   pools: () => {
+    // how far the indexed chain data reached, oldest and newest pool
+    const reach = (p) => {
+      const r = p.pools.map((x) => x.reachTs).filter((t) => typeof t === 'number')
+      if (!r.length) return ''
+      const lo = Math.min(...r)
+      const hi = Math.max(...r)
+      return lo === hi ? `; indexed data reaches ${minute(lo)}` : `; indexed data reaches ${minute(lo)} to ${minute(hi)} depending on the pool`
+    }
     const p = results.pools
     if (!p) return missing('The live scoreboard', 'node scripts/collect-results.mjs --only pools')
     const out = [
-      `From [\`${p.url.replace(/^https?:\/\//, '')}\`](${p.url}), fetched ${minute(Date.parse(p.fetchedAt))}; pool data as of ${p.asOf ? minute(p.asOf) : 'unknown'}, ${p.windowDays}-day window. The app shows the same rows, live.`,
+      `From [\`${p.url.replace(/^https?:\/\//, '')}\`](${p.url}), fetched ${minute(Date.parse(p.fetchedAt))}; verdicts computed at ${p.asOf ? minute(p.asOf) : 'unknown'}${reach(p)}, ${p.windowDays}-day window. The app shows the same rows, live.`,
       '',
       '| Pool | Pays | Fee | Verdict | Paid of earnings | Promised |',
       '|---|---|---:|---|---:|---:|',
@@ -207,6 +218,21 @@ const blocks = {
     if (!ROUTER) return 'Deployment pending. Once the router is deployed, this section lists its deployment transaction and the first real deposit and withdrawal, each with its block and date, read back by `scripts/verify-onchain.mjs`.'
     const pr = results.polygon?.router?.toLowerCase() === ROUTER.toLowerCase() ? results.polygon : null
     const out = [`Router: ${polygonscanAddr(ROUTER)}, source on [Sourcify](https://repo.sourcify.dev/137/${ROUTER}).`, '']
+    if (pr?.problems?.length) {
+      out.push('The deployment record is inconsistent, so nothing is claimed from it:', '', ...pr.problems.map((p) => `- ${p}`))
+      return out.join('\n')
+    }
+    const f = pr?.facts
+    if (f) {
+      const yes = (v) => (v === true ? 'yes' : v === false ? '**no**' : 'not checked')
+      out.push(
+        `- runtime code keccak256 \`${f.codeHash}\`${f.codeHashMatchesRecord === null ? '' : `, equal to the recorded \`codeHash\`: ${yes(f.codeHashMatchesRecord)}`}`,
+        `- equal to a local \`forge build\` of \`contracts/src\` (immutable slots aside): ${yes(f.codeMatchesBuild)}`,
+        `- \`POOL()\` and \`aTokenOf()\` match Aave's registry: ${yes(f.wiredToAaveRegistry)}`,
+        `- Sourcify: ${f.sourcify}`,
+        '',
+      )
+    }
     if (!polygonRecord) {
       out.push('No transactions recorded yet in `contracts/deployments/polygon.json`.')
       return out.join('\n')
@@ -235,14 +261,20 @@ const blocks = {
     // each row is claimed only once results/polygon.json, read back from the chain for this router, shows it
     const pr = ROUTER && results.polygon?.router?.toLowerCase() === ROUTER.toLowerCase() ? results.polygon : null
     const facts = pr?.facts ?? null
-    const why = !ROUTER ? 'deployment pending' : !facts ? 'not read back yet: `node scripts/collect-results.mjs --only polygon`' : null
+    const why = !ROUTER
+      ? 'deployment pending'
+      : pr?.problems?.length
+        ? 'the deployment record is inconsistent (see PROOF.md)'
+        : !facts
+          ? 'not read back yet: `node scripts/collect-results.mjs --only polygon`'
+          : null
     // a deposit and a withdrawal, each sent (and paid for) by an address other than the owner it served
     const relayed = new Set((pr?.txs ?? []).flatMap((t) => (t.events ?? []).filter((e) => e.owner !== t.from).map((e) => e.name)))
     const hasProofs = relayed.has('Supplied') && relayed.has('Withdrawn')
-    const verified = ['exact_match', 'match'].includes(facts?.sourcify)
+    const verified = facts?.sourceVerified === true
     const row = (claim, ok, proof, failed, how) => [claim, ok ? 'VERIFIED-LIVE' : 'NOT-CLAIMED', ok ? proof : why ?? failed, how]
     const rows = [
-      row('AccrueRouter is live on Polygon mainnet, with its source verified.', facts?.hasCode && verified, `${ROUTER && polygonscanAddr(ROUTER)}, [Sourcify](https://repo.sourcify.dev/137/${ROUTER})`, facts?.hasCode ? 'source not verified on Sourcify yet' : 'no code at the address', '`node scripts/verify-onchain.mjs`'),
+      row('AccrueRouter is live on Polygon mainnet, with its source verified.', facts?.hasCode && verified, `${ROUTER && polygonscanAddr(ROUTER)}, [Sourcify](https://repo.sourcify.dev/137/${ROUTER})`, facts?.hasCode ? `source not verified on Sourcify (${facts.sourcify})` : 'no code at the address', '`node scripts/verify-onchain.mjs`'),
       row('The deployed code is the code in `contracts/src`.', facts?.codeMatchesBuild === true, 'runtime code equals a local `forge build` (immutable slots aside)', facts?.codeMatchesBuild === false ? 'runtime code differs from the local build' : 'not compared yet: `forge build` first', '`forge build` in `contracts/`, then `node scripts/verify-onchain.mjs`'),
       row("The deployed router is wired to the aTokens in Aave's own registry.", facts?.wiredToAaveRegistry === true, '`POOL()` and `aTokenOf()` against `Pool.getReserveData`', 'wiring does not match the registry', '`node scripts/verify-onchain.mjs`'),
       row('A real deposit and a real withdrawal went through the router on mainnet, each sent and paid for by an address other than the owner.', hasProofs, '[PROOF.md](PROOF.md#polygon-mainnet)', 'no such mainnet transactions recorded yet', '`node scripts/verify-onchain.mjs`'),

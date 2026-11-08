@@ -20,18 +20,20 @@ Deployment pending. Once the router is deployed, this section lists its deployme
 
 What `verify-onchain.mjs` checks once the router is deployed:
 
-- there is code at the address in `packages/shared/src/deployments.json`, and it equals the runtime code of a
-  local `forge build` of `contracts/src` (immutable slots aside);
+- there is code at the address in `packages/shared/src/deployments.json`, its keccak256 equals the recorded
+  `codeHash`, and it equals the runtime code of a local `forge build` of `contracts/src` (immutable slots aside);
 - `POOL()` is the Aave v3 pool, and `aTokenOf(USDT0)` and `aTokenOf(USDC)` are the aTokens Aave's own registry
   (`Pool.getReserveData`) lists for those assets;
-- the source is verified on Sourcify;
+- the source is verified on Sourcify (a match of `exact_match`, `match`, `perfect` or `partial`, printed as found);
 - every transaction recorded in `contracts/deployments/polygon.json` succeeded: the deployment created the router
   in the recorded block, and each deposit or withdrawal emitted the router's `Supplied` or `Withdrawn` event. Each
   line prints the block and its date.
 
-`contracts/deployments/polygon.json` holds `{ "router", "block", "txHash" }` for the deployment plus any further
-transaction hashes under descriptive keys (for example `"deposit"` and `"withdraw"`); every 32-byte hash in the
-file is read back.
+`contracts/deployments/polygon.json` holds `{ "router", "block", "txHash", "codeHash", "txs": { "deposit": "0x…",
+"withdraw": "0x…" } }`. Only `txHash` (the deployment) and the values of `txs` are read as transactions;
+`codeHash` is compared with the keccak256 of the deployed code, and any other field is ignored. Its `router` and
+`block` must match `packages/shared/src/deployments.json`, or the record is reported as inconsistent and nothing
+is claimed from it. The format and the checks live in `scripts/lib/deployment.mjs`, shared by both scripts.
 
 ## Nimiq testnet
 
@@ -76,7 +78,7 @@ pinned in `app/test/unstake.test.ts`.
 
 <!-- numbers:pools -->
 
-From [`accrue.pages.dev/api/pools`](https://accrue.pages.dev/api/pools), fetched 2026-11-08 05:46 UTC; pool data as of 2026-11-08 05:45 UTC, 7-day window. The app shows the same rows, live.
+From [`accrue.pages.dev/api/pools`](https://accrue.pages.dev/api/pools), fetched 2026-11-08 06:07 UTC; verdicts computed at 2026-11-08 06:05 UTC; indexed data reaches 2026-11-08 05:05 UTC to 2026-11-08 05:25 UTC depending on the pool, 7-day window. The app shows the same rows, live.
 
 | Pool | Pays | Fee | Verdict | Paid of earnings | Promised |
 |---|---|---:|---|---:|---:|
@@ -89,20 +91,20 @@ From [`accrue.pages.dev/api/pools`](https://accrue.pages.dev/api/pools), fetched
 | Siam Pool | restakes | 3 % | Paid as promised | 97.49 % | 97.00 % |
 | CHIPMUNK POOL | to wallet | 5 % | Not enough data | – | 95.00 % |
 | nim.re Staking Pool | restakes | 3.33 % | Not enough data | 87.01 % | 96.67 % |
+| NODENIMIQ1.NIMIQ-JU.FR by &#64;Ju | restakes | 1 % | Not enough data | – | 99.00 % |
+| NODENIMIQ2.NIMIQ-JU.FR by &#64;Ju | restakes | 1 % | Not enough data | – | 99.00 % |
 | Nimiq Surf | no payouts | 0 % | No payouts by design | – | 100.00 % |
 | Private Whalidator | no payouts | not listed | No payouts by design | – | – |
+| Nimiq Marketing Pool | restakes | 0 % | Can't verify (routed elsewhere) | 50.34 % | 100.00 % |
 | $NIM_pool | restakes | 0 % | no verdict yet | – | 100.00 % |
 | ImpactZero stake | restakes | 0 % | no verdict yet | – | 100.00 % |
 | Nimiq Base Staking | restakes | 0 % | no verdict yet | – | 100.00 % |
-| Nimiq Marketing Pool | restakes | 0 % | no verdict yet | – | 100.00 % |
 | NimiqCafe Staking | restakes | 3 % | no verdict yet | – | 97.00 % |
 | NimiqHub Staking | restakes | 5 % | no verdict yet | – | 95.00 % |
 | NimiqPocket | restakes | 1 % | no verdict yet | – | 99.00 % |
-| NODENIMIQ1.NIMIQ-JU.FR by &#64;Ju | restakes | 1 % | no verdict yet | – | 99.00 % |
-| NODENIMIQ2.NIMIQ-JU.FR by &#64;Ju | restakes | 1 % | no verdict yet | – | 99.00 % |
 | Synapse LN - Nimiq | restakes | 1 % | no verdict yet | – | 99.00 % |
 
-10 of 21 pools had no verdict yet when this was fetched; the API's reason: "Payout Check has not looked at this pool yet."
+7 of 21 pools had no verdict yet when this was fetched; the API's reason: "Payout Check has not looked at this pool yet."
 
 <!-- /numbers:pools -->
 
