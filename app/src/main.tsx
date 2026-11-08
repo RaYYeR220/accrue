@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { App, loadMiniApp } from './App'
+import { App, loadLanding, loadMiniApp } from './App'
 import { detectMode } from './boot'
 import { currentLang } from './i18n'
 import './ui/tokens.css'
@@ -14,8 +14,8 @@ async function start() {
     installMock(location.search)
   }
   const mode = detectMode(window)
-  // start fetching the wallet chunk while React renders the fallback
-  if (mode === 'app') void loadMiniApp()
+  // start fetching the right chunk while React renders the fallback
+  void (mode === 'app' ? loadMiniApp() : loadLanding())
   document.documentElement.lang = currentLang()
   const queryClient = new QueryClient()
   createRoot(document.getElementById('root')!).render(
