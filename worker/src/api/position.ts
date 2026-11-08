@@ -3,9 +3,8 @@ import { getAddress, isAddress, type Address } from 'viem'
 import { ASSETS, POLYGON, type AssetKey } from '@accrue/shared'
 import type { Env } from '../env'
 import { errorBody } from '../relayer/errors'
-import { routerAddress } from '../relayer/chain'
 import { polygonClient } from '../rpc/polygon'
-import { LOG_CHUNK_BLOCKS, applyEvent, deployBlock, holdingsFromJson, holdingsKey, routerEvents, scanKey, type Holdings } from '../indexer/router'
+import { LOG_CHUNK_BLOCKS, applyEvent, holdingsFromJson, holdingsKey, routerConfig, routerEvents, scanKey, type Holdings, type RouterConfig } from '../indexer/router'
 import { aavePoolAbi, tokenAbi } from './aave'
 import { cacheGet, cachePut } from './cache'
 
@@ -23,14 +22,19 @@ export interface AssetPosition {
 }
 
 class CatchingUp extends Error {}
+class DbError extends Error {}
 
 /** Accrue's holdings of an owner: what the cron folded, plus the router logs after it, read now for this owner only. */
-async function accrueHoldings(env: Env, router: Address, owner: Address): Promise<Holdings> {
-  const first = deployBlock(env)
-  if (first === null) throw new CatchingUp('router deploy block unknown')
+async function accrueHoldings(env: Env, cfg: RouterConfig & { deployBlock: number }, owner: Address): Promise<Holdings> {
+  const { router, deployBlock: first } = cfg
   const client = polygonClient(env)
   const [rows, head] = await Promise.all([
-    env.DB.prepare('SELECT key, value FROM meta WHERE key IN (?1, ?2)').bind(scanKey(router), holdingsKey(router, owner)).all<{ key: string; value: string }>(),
+    env.DB.prepare('SELECT key, value FROM meta WHERE key IN (?1, ?2)')
+      .bind(scanKey(router), holdingsKey(router, owner))
+      .all<{ key: string; value: string }>()
+      .catch((e: unknown) => {
+        throw new DbError(e instanceof Error ? e.message : String(e))
+      }),
     client.getBlockNumber({ cacheTime: 0 }),
   ])
   const meta = new Map((rows.results ?? []).map((r) => [r.key, r.value]))
@@ -57,7 +61,8 @@ position.get('/:evm', async (c) => {
   if (hit) return c.body(hit.body, 200, { 'content-type': 'application/json' })
 
   const env = c.env
-  const router = routerAddress(env)
+  const cfg = routerConfig(env)
+  if (cfg?.misconfigured) return c.json(errorBody('RPC_UNAVAILABLE', { reason: 'router_misconfigured' }), 503)
   const contracts = KEYS.flatMap((k) => [
     { address: ASSETS[k].aToken, abi: tokenAbi, functionName: 'balanceOf', args: [owner] } as const,
     { address: ASSETS[k].aToken, abi: tokenAbi, functionName: 'scaledBalanceOf', args: [owner] } as const,
@@ -68,9 +73,10 @@ position.get('/:evm', async (c) => {
   try {
     ;[live, holdings] = await Promise.all([
       polygonClient(env).multicall({ allowFailure: false, contracts }) as Promise<bigint[]>,
-      router ? accrueHoldings(env, router, owner) : Promise.resolve({} as Holdings),
+      cfg ? accrueHoldings(env, cfg as RouterConfig & { deployBlock: number }, owner) : Promise.resolve({} as Holdings),
     ])
   } catch (e) {
+    if (e instanceof DbError) return c.json(errorBody('INTERNAL', { reason: 'db_error' }), 500)
     return c.json(errorBody('RPC_UNAVAILABLE', { reason: e instanceof CatchingUp ? 'catching_up' : 'polygon_rpc' }), 503)
   }
 

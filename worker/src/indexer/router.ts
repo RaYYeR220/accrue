@@ -1,7 +1,7 @@
-import { decodeEventLog, encodeEventTopics, getAddress, numberToHex, type Address, type Hex, type PublicClient } from 'viem'
+import { decodeEventLog, encodeEventTopics, getAddress, isAddress, numberToHex, type Address, type Hex, type PublicClient } from 'viem'
 import { ASSETS, POLYGON, type AssetKey } from '@accrue/shared'
 import type { Env } from '../env'
-import { routerAbi, routerAddress } from '../relayer/chain'
+import { routerAbi } from '../relayer/chain'
 import { polygonClient } from '../rpc/polygon'
 import { bind, type Stmt } from './store'
 
@@ -71,12 +71,39 @@ export const holdingsToJson = (h: Holdings) =>
 export const scanKey = (router: Address) => `router_scan:${router.toLowerCase()}`
 export const holdingsKey = (router: Address, owner: Address) => `router_pos:${router.toLowerCase()}:${owner.toLowerCase()}`
 
-/** The block the router was deployed in: `ROUTER_DEPLOY_BLOCK` with an overridden router, else deployments.json. */
-export function deployBlock(env: Pick<Env, 'ROUTER_ADDRESS' | 'ROUTER_DEPLOY_BLOCK'>): number | null {
+type Deployed = { router: Address | null; deployBlock: number | null }
+
+/**
+ * The block the router was deployed in: `ROUTER_DEPLOY_BLOCK` when set; deployments.json's block when
+ * the router is deployments.json's (named again in ROUTER_ADDRESS or not); null for any other router.
+ */
+export function deployBlock(env: Pick<Env, 'ROUTER_ADDRESS' | 'ROUTER_DEPLOY_BLOCK'>, deployed: Deployed = POLYGON): number | null {
   const raw = env.ROUTER_DEPLOY_BLOCK?.trim()
   if (raw && /^\d+$/.test(raw)) return Number(raw)
-  return env.ROUTER_ADDRESS?.trim() ? null : POLYGON.deployBlock
+  const override = env.ROUTER_ADDRESS?.trim()
+  if (!override || (deployed.router !== null && override.toLowerCase() === deployed.router.toLowerCase())) return deployed.deployBlock
+  return null
 }
+
+export interface RouterConfig {
+  router: Address
+  deployBlock: number | null
+  /** a router whose deploy block is unknown: its logs cannot be read, which health reports */
+  misconfigured?: true
+}
+
+/** The router Accrue reads logs from and where they start; null before there is one. */
+export function routerConfig(env: Pick<Env, 'ROUTER_ADDRESS' | 'ROUTER_DEPLOY_BLOCK'>, deployed: Deployed = POLYGON): RouterConfig | null {
+  const raw = env.ROUTER_ADDRESS?.trim() || deployed.router
+  if (!raw || !isAddress(raw, { strict: false })) return null
+  const router = getAddress(raw.toLowerCase())
+  const block = deployBlock(env, deployed)
+  return block === null ? { router, deployBlock: null, misconfigured: true } : { router, deployBlock: block }
+}
+
+export const ROUTER_MISCONFIGURED = 'router misconfigured: ROUTER_ADDRESS is not the deployed router and ROUTER_DEPLOY_BLOCK is not set'
+// D1 binds at most 100 parameters per statement
+const MAX_IN = 90
 
 const EVENT_TOPICS = [
   encodeEventTopics({ abi: routerAbi, eventName: 'Supplied' })[0],
@@ -126,9 +153,10 @@ export interface RouterScan {
  * the scan cursor in the same D1 batch. Nothing moves unless the whole range was read.
  */
 export async function scanRouterLogs(env: Env, opts: { maxChunks?: number } = {}): Promise<RouterScan> {
-  const router = routerAddress(env)
-  const first = deployBlock(env)
-  if (!router || first === null) return { skipped: true }
+  const cfg = routerConfig(env)
+  if (!cfg) return { skipped: true }
+  if (cfg.misconfigured) return { error: ROUTER_MISCONFIGURED }
+  const { router, deployBlock: first } = cfg as RouterConfig & { deployBlock: number }
   try {
     const client = polygonClient(env)
     const [cursorRow, head] = await Promise.all([
@@ -150,10 +178,12 @@ export async function scanRouterLogs(env: Env, opts: { maxChunks?: number } = {}
     const writes: Stmt[] = []
     if (events.length) {
       const owners = [...new Set(events.map((e) => e.owner))]
-      const rows = await env.DB.prepare(`SELECT key, value FROM meta WHERE key IN (${owners.map(() => '?').join(', ')})`)
-        .bind(...owners.map((o) => holdingsKey(router, o)))
-        .all<{ key: string; value: string }>()
-      const stored = new Map((rows.results ?? []).map((r) => [r.key, r.value]))
+      const chunks: Address[][] = []
+      for (let i = 0; i < owners.length; i += MAX_IN) chunks.push(owners.slice(i, i + MAX_IN))
+      const reads = await env.DB.batch(
+        chunks.map((ch) => env.DB.prepare(`SELECT key, value FROM meta WHERE key IN (${ch.map(() => '?').join(', ')})`).bind(...ch.map((o) => holdingsKey(router, o)))),
+      )
+      const stored = new Map(reads.flatMap((r) => (r.results ?? []) as { key: string; value: string }[]).map((r) => [r.key, r.value]))
       const holdings = new Map(owners.map((o) => [o, holdingsFromJson(stored.get(holdingsKey(router, o)))]))
       for (const e of events) applyEvent(holdings.get(e.owner)!, e)
       for (const [o, h] of holdings) writes.push(guarded(holdingsKey(router, o), holdingsToJson(h)))

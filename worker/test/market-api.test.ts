@@ -14,7 +14,8 @@ import { ASSETS, POLYGON } from '@accrue/shared'
 import { app } from '../src/app'
 import { clearMemoryCache } from '../src/api/cache'
 import { aavePoolAbi } from '../src/api/aave'
-import { scanRouterLogs } from '../src/indexer/router'
+import { deployBlock, routerConfig, scanRouterLogs } from '../src/indexer/router'
+import { health } from '../src/api/health'
 import { routerAbi } from '../src/relayer/chain'
 import { runScheduled } from '../src/scheduled'
 import { FakeD1 } from './d1'
@@ -345,5 +346,61 @@ describe('GET /api/position/:evm and the router log scan', () => {
     expect(Number(r.body.assets.USDT0.earned) / 1e6).toBeCloseTo(114.545454 - 98.4375, 3)
     const other = await getJson(`/api/position/${OTHER}`, routed(db))
     expect(other.body.assets.USDT0.principal).toBe('7000000')
+  })
+
+  it('a router address without its deploy block: the deployed one falls back to deployments.json, any other is reported, not skipped', async () => {
+    const deployed = { router: ROUTER, deployBlock: 66_000_000 }
+    expect(deployBlock({ ROUTER_ADDRESS: '' }, deployed)).toBe(66_000_000)
+    expect(deployBlock({ ROUTER_ADDRESS: ROUTER.toLowerCase() }, deployed)).toBe(66_000_000)
+    expect(deployBlock({ ROUTER_ADDRESS: OTHER }, deployed)).toBeNull()
+    expect(deployBlock({ ROUTER_ADDRESS: OTHER, ROUTER_DEPLOY_BLOCK: '900' }, deployed)).toBe(900)
+    expect(routerConfig({ ROUTER_ADDRESS: ROUTER }, deployed)).toEqual({ router: ROUTER, deployBlock: 66_000_000 })
+    expect(routerConfig({ ROUTER_ADDRESS: OTHER }, deployed)).toEqual({ router: OTHER, deployBlock: null, misconfigured: true })
+    expect(routerConfig({ ROUTER_ADDRESS: '' }, { router: null, deployBlock: null })).toBeNull()
+
+    // today deployments.json has no router, so any override needs its block
+    world()
+    const bad = env(new FakeD1(), { ROUTER_ADDRESS: ROUTER })
+    expect(await scanRouterLogs(bad, { maxChunks: 3 })).toMatchObject({ error: expect.stringMatching(/misconfigured/) })
+    const r = await getJson(`/api/position/${OWNER}`, bad)
+    expect(r).toMatchObject({ status: 503, body: { error: 'RPC_UNAVAILABLE', detail: { reason: 'router_misconfigured' } } })
+    const h = await health(bad)
+    expect(h).toMatchObject({ ok: false, router: 'misconfigured' })
+    expect(await health(routed(new FakeD1()))).toMatchObject({ ok: true, router: { address: ROUTER, deployBlock: 900 } })
+    expect(await health(env(new FakeD1(), { ROUTER_ADDRESS: '' }))).toMatchObject({ ok: true, router: null })
+  })
+
+  it('folds 250 owners in one scan without binding more than 100 parameters in a statement', async () => {
+    const owners = Array.from({ length: 250 }, (_, i) => getAddress(`0x${(i + 1).toString(16).padStart(40, '0')}`))
+    polygon({
+      balances, head: 3_500, router: ROUTER,
+      logs: owners.map((owner, i) => ({ block: 1_000 + i, index: 0, event: 'Supplied' as const, owner, asset: USDT0, amount: 1_000_000n + BigInt(i), liquidityIndex: RAY })),
+    })
+    const db = new FakeD1()
+    // D1 refuses a statement with more than 100 bound parameters
+    const limited = {
+      prepare: (sql: string) =>
+        new Proxy(db.prepare(sql), {
+          get(target, prop, recv) {
+            if (prop !== 'bind') return Reflect.get(target, prop, recv)
+            return (...args: unknown[]) => {
+              if (args.length > 100) throw new Error('D1_ERROR: too many SQL variables')
+              return target.bind(...args)
+            }
+          },
+        }),
+      batch: (s: never[]) => db.batch(s),
+    }
+    expect(await scanRouterLogs(routed(limited), { maxChunks: 3 })).toMatchObject({ events: 250 })
+    expect(db.query<{ n: number }>("SELECT COUNT(*) n FROM meta WHERE key LIKE 'router_pos:%'")[0]!.n).toBe(250)
+    const r = await getJson(`/api/position/${owners[199]}`, routed(db))
+    expect(r.body.assets.USDT0.principal).toBe('1000199')
+  })
+
+  it('a D1 failure while reading Accrue holdings is db_error, not an RPC outage', async () => {
+    world()
+    const DB = { prepare: () => ({ bind: () => ({ all: async () => { throw new Error('D1_ERROR: internal') }, first: async () => { throw new Error('D1_ERROR: internal') } }) }) }
+    const r = await getJson(`/api/position/${OWNER}`, routed(DB))
+    expect(r).toMatchObject({ status: 500, body: { error: 'INTERNAL', detail: { reason: 'db_error' } } })
   })
 })

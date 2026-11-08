@@ -2,6 +2,7 @@ import type { Env } from '../env'
 import { VERSION } from '../env'
 import { GAS_POLICY } from '../relayer/gas'
 import { polygonClient } from '../rpc/polygon'
+import { routerConfig } from '../indexer/router'
 
 /** Early warning only; relays stop at GAS_POLICY.floorWei, which is also what makes health not ok. */
 const LOW_GAS_WEI = 1_000_000_000_000_000_000n // 1 POL
@@ -41,8 +42,16 @@ async function indexerStatus(env: Env) {
   }
 }
 
+// a router whose deploy block is unknown cannot have its logs read: /api/position answers 503 for it
+function routerStatus(env: Env) {
+  const cfg = routerConfig(env)
+  if (!cfg) return null
+  return cfg.misconfigured ? ('misconfigured' as const) : { address: cfg.router, deployBlock: cfg.deployBlock }
+}
+
 export async function health(env: Env) {
   const [r, indexer] = await Promise.all([relayerStatus(env), indexerStatus(env)])
   const indexerOk = !indexer.lastError && (indexer.lagMinutes === null || indexer.lagMinutes <= MAX_INDEXER_LAG_MIN)
-  return { ok: r.ok && indexerOk, relayer: r.relayer, indexer, version: VERSION }
+  const router = routerStatus(env)
+  return { ok: r.ok && indexerOk && router !== 'misconfigured', relayer: r.relayer, router, indexer, version: VERSION }
 }
