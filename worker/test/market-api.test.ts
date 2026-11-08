@@ -25,7 +25,7 @@ import { FakeChain, RpcError } from './helpers'
 
 const RAY = 10n ** 27n
 const MULTICALL3 = '0xca11bde05977b3631167028862be2a173976ca11'
-const COINGECKO = 'https://api.coingecko.com/api/v3/simple/price?ids=nimiq-2,tether&vs_currencies=usd'
+const COINGECKO = 'https://api.coingecko.com/api/v3/simple/price?ids=nimiq-2,tether&vs_currencies=usd&include_last_updated_at=true'
 const ER_API = 'https://open.er-api.com/v6/latest/USD'
 const PAPRIKA_NIM = 'https://api.coinpaprika.com/v1/tickers/nim-nimiq?quotes=USD'
 const PAPRIKA_USDT = 'https://api.coinpaprika.com/v1/tickers/usdt-tether?quotes=USD'
@@ -49,6 +49,7 @@ afterEach(() => {
 describe('GET /api/rates', () => {
   const T0 = Date.UTC(2026, 10, 8, 12)
   const DAY = 86_400_000
+  const PAPRIKA_AT = Date.parse('2026-11-08T11:58:15Z')
   let coingecko: () => Response
   let paprika: () => Response
   let paprikaUsdt: () => Response
@@ -100,7 +101,7 @@ describe('GET /api/rates', () => {
     const r = await getJson('/api/rates', env(null))
     expect(r.status).toBe(200)
     expect(r.body).toEqual({
-      asOf: T0, nimUsd: 0.00027882, usdtUsd: 1.0002, fx: { USD: 1, EUR: 0.8613, CRC: 502.27, GMD: 72.5 }, source: ['CoinGecko', 'open.er-api.com'],
+      asOf: T0, priceAsOf: T0, fxAsOf: T0, nimUsd: 0.00027882, usdtUsd: 1.0002, fx: { USD: 1, EUR: 0.8613, CRC: 502.27, GMD: 72.5 }, source: ['CoinGecko', 'open.er-api.com'],
     })
     vi.setSystemTime(T0 + 4 * 60_000)
     expect((await getJson('/api/rates', env(null))).body.asOf).toBe(T0)
@@ -133,8 +134,9 @@ describe('GET /api/rates', () => {
     coingecko = () => Response.json({ status: { error_code: 403 } }, { status: 403 })
     const r = await getJson('/api/rates', env(null))
     expect(r.status).toBe(200)
+    // the price is as old as CoinPaprika says, not as old as the fetch
     expect(r.body).toEqual({
-      asOf: T0, nimUsd: 0.0002626, usdtUsd: 0.9988, fx: { USD: 1, EUR: 0.8613, CRC: 502.27, GMD: 72.5 }, source: ['CoinPaprika', 'open.er-api.com'],
+      asOf: PAPRIKA_AT, priceAsOf: PAPRIKA_AT, fxAsOf: T0, nimUsd: 0.0002626, usdtUsd: 0.9988, fx: { USD: 1, EUR: 0.8613, CRC: 502.27, GMD: 72.5 }, source: ['CoinPaprika', 'open.er-api.com'],
     })
     expect(calls.filter((u) => u.startsWith('https://api.coinpaprika.com/')).sort()).toEqual([PAPRIKA_NIM, PAPRIKA_USDT])
   })
@@ -165,7 +167,7 @@ describe('GET /api/rates', () => {
     vi.setSystemTime(T0 + 4 * 60_000)
     const r = await getJson('/api/rates', env(db))
     expect(r.body).toEqual({
-      asOf: T0, nimUsd: 0.00027882, usdtUsd: 1.0002, fx: { USD: 1, EUR: 0.8613, CRC: 502.27, GMD: 72.5 }, source: ['CoinGecko', 'open.er-api.com'],
+      asOf: T0, priceAsOf: T0, fxAsOf: T0, nimUsd: 0.00027882, usdtUsd: 1.0002, fx: { USD: 1, EUR: 0.8613, CRC: 502.27, GMD: 72.5 }, source: ['CoinGecko', 'open.er-api.com'],
     })
     expect(calls).toEqual([])
     // a copy refreshed less than four minutes ago is left alone
@@ -187,7 +189,8 @@ describe('GET /api/rates', () => {
     const stale = await getJson('/api/rates', env(db))
     expect(stale.status).toBe(200)
     expect(stale.body).toEqual({
-      asOf: T0, nimUsd: 0.00027882, usdtUsd: 1.0002, fx: { USD: 1, EUR: 0.8613, CRC: 502.27, GMD: 72.5 }, source: ['CoinGecko', 'open.er-api.com'], stale: true,
+      asOf: T0, priceAsOf: T0, fxAsOf: T0, nimUsd: 0.00027882, usdtUsd: 1.0002, fx: { USD: 1, EUR: 0.8613, CRC: 502.27, GMD: 72.5 }, source: ['CoinGecko', 'open.er-api.com'],
+      stale: true, priceStale: true, fxStale: true,
     })
     vi.setSystemTime(T0 + DAY - 60_000)
     clearMemoryCache()
@@ -207,11 +210,13 @@ describe('GET /api/rates', () => {
     vi.setSystemTime(T0 + 2 * 3_600_000)
     clearMemoryCache()
     const r = await getJson('/api/rates', env(db))
-    expect(r.body).toMatchObject({ asOf: T0, nimUsd: 0.00027882, fx: { USD: 1, EUR: 0.8613, CRC: 502.27, GMD: 72.5 }, stale: true })
+    // a fresh price beside a stale FX copy: each part says how old it is
+    expect(r.body).toMatchObject({ asOf: T0, priceAsOf: T0 + 2 * 3_600_000, fxAsOf: T0, nimUsd: 0.00027882, fx: { USD: 1, EUR: 0.8613, CRC: 502.27, GMD: 72.5 }, stale: true, fxStale: true })
+    expect(r.body).not.toHaveProperty('priceStale')
     vi.setSystemTime(T0 + DAY + 60_000)
     clearMemoryCache()
     const later = await getJson('/api/rates', env(db))
-    expect(later.body).toEqual({ asOf: T0 + DAY + 60_000, nimUsd: 0.00027882, usdtUsd: 1.0002, fx: { USD: 1 }, source: ['CoinGecko'] })
+    expect(later.body).toEqual({ asOf: T0 + DAY + 60_000, priceAsOf: T0 + DAY + 60_000, nimUsd: 0.00027882, usdtUsd: 1.0002, fx: { USD: 1 }, source: ['CoinGecko'] })
   })
 
   it('a request that had to fetch keeps what it got as the last good copy, and an older copy never replaces it', async () => {
@@ -219,10 +224,10 @@ describe('GET /api/rates', () => {
     coingecko = () => new Response('', { status: 403 })
     await getJson('/api/rates', env(db))
     const price = () => JSON.parse(db.query<{ value: string }>("SELECT value FROM meta WHERE key = 'rates_last_good:price'")[0]!.value)
-    expect(price()).toEqual({ asOf: T0, nimUsd: 0.0002626, usdtUsd: 0.9988, source: 'CoinPaprika' })
+    expect(price()).toEqual({ asOf: PAPRIKA_AT, nimUsd: 0.0002626, usdtUsd: 0.9988, source: 'CoinPaprika' })
     // a slower writer that fetched earlier lands second
-    await db.batch(bind(db as never, [lastGoodStatement('price', { asOf: T0 - 60_000, nimUsd: 0.0001, source: 'CoinGecko' })]) as never)
-    expect(price().asOf).toBe(T0)
+    await db.batch(bind(db as never, [lastGoodStatement('price', { asOf: PAPRIKA_AT - 60_000, nimUsd: 0.0001, source: 'CoinGecko' })]) as never)
+    expect(price().asOf).toBe(PAPRIKA_AT)
   })
 
   it('while the sources are down, an isolate asks them again at most once a minute', async () => {
@@ -246,8 +251,9 @@ describe('GET /api/rates', () => {
     kraken = () => Response.json({ error: [], result: { USDTZUSD: { a: ['0.99856000'], b: ['0.99855000'], c: ['0.99856000', '18.3'] } } })
     const r = await getJson('/api/rates', env(new FakeD1()))
     expect(r.status).toBe(200)
-    expect(r.body.nimUsd).toBeCloseTo(0.000262 * 0.99856, 12)
-    expect(r.body.usdtUsd).toBe(0.99856)
+    // the middle of bid and ask on both books, not a last trade that may sit outside them
+    expect(r.body.nimUsd).toBe(Number((((0.0002672 + 0.0002622) / 2) * ((0.99856 + 0.99855) / 2)).toPrecision(6)))
+    expect(r.body.usdtUsd).toBe(0.998555)
     expect(r.body.source).toEqual(['Gate.io+Kraken', 'open.er-api.com'])
   })
 
@@ -260,22 +266,37 @@ describe('GET /api/rates', () => {
     expect(r.status).toBe(503)
   })
 
-  it('asks the source that gave the last good price first, so a refused source costs nothing each run', async () => {
+  it('keeps the order CoinGecko, CoinPaprika, Gate.io+Kraken, and skips a source for 15 minutes after it refuses', async () => {
     coingecko = () => new Response('', { status: 429 })
-    paprika = () => new Response('', { status: 402 })
-    gate = () => Response.json([{ currency_pair: 'NIM_USDT', last: '0.000262' }])
-    kraken = () => Response.json({ error: [], result: { USDTZUSD: { c: ['0.99856000', '18.3'] } } })
     const db = new FakeD1()
-    expect((await warmRates(env(db))).price).toBe('Gate.io+Kraken')
+    expect((await warmRates(env(db))).price).toBe('CoinPaprika')
     calls.length = 0
     vi.setSystemTime(T0 + 5 * 60_000)
-    expect((await warmRates(env(db))).price).toBe('Gate.io+Kraken')
-    expect(calls.filter((u) => u === COINGECKO || u.startsWith('https://api.coinpaprika.com/'))).toEqual([])
-    // and when it stops answering, the others are still asked
-    gate = () => new Response('', { status: 503 })
+    expect((await warmRates(env(db))).price).toBe('CoinPaprika')
+    expect(calls).not.toContain(COINGECKO)
+    // a request in another isolate skips it too: the refusal is kept in D1
+    clearMemoryCache()
+    vi.setSystemTime(T0 + 14 * 60_000)
+    calls.length = 0
+    expect((await getJson('/api/rates', env(db))).body.source[0]).toBe('CoinPaprika')
+    expect(calls).not.toContain(COINGECKO)
+    // fifteen minutes on, CoinGecko is asked first again, and wins when it answers
     coingecko = () => Response.json({ 'nimiq-2': { usd: 0.00027882 }, tether: { usd: 1.0002 } })
-    vi.setSystemTime(T0 + 10 * 60_000)
+    vi.setSystemTime(T0 + 16 * 60_000)
     expect((await warmRates(env(db))).price).toBe('CoinGecko')
+  })
+
+  it('a pair with no trade in a day is no price, and a price is rounded to six significant digits', async () => {
+    coingecko = () => new Response('', { status: 429 })
+    paprika = () => new Response('', { status: 402 })
+    gate = () => Response.json([{ currency_pair: 'NIM_USDT', last: '0.000262', lowest_ask: '0.0002672', highest_bid: '0.0002622', base_volume: '0' }])
+    kraken = () => Response.json({ error: [], result: { USDTZUSD: { a: ['1.0001'], b: ['0.9999'], c: ['1'] } } })
+    expect((await getJson('/api/rates', env(new FakeD1()))).status).toBe(503)
+    clearMemoryCache()
+    edge.clear()
+    coingecko = () => Response.json({ 'nimiq-2': { usd: 0.000278823456, last_updated_at: 1794139080 }, tether: { usd: 1.000234567 } })
+    const r = await getJson('/api/rates', env(new FakeD1()))
+    expect(r.body).toMatchObject({ nimUsd: 0.000278823, usdtUsd: 1.00023, priceAsOf: 1794139080_000 })
   })
 
   it('the cron reports what it did with the rates', async () => {
