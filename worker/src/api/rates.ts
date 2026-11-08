@@ -9,10 +9,13 @@ const FRESH_MS = 5 * 60_000
 const STALE_MS = 60 * 60_000
 const FIATS = ['EUR', 'CRC', 'GMD'] as const
 
+// CoinGecko refuses requests without a descriptive User-Agent, and a Worker's fetch sends none
+const USER_AGENT = 'accrue/0.1 (+https://github.com/RaYYeR220/accrue)'
+
 const positive = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v > 0
 
 async function getJson(url: string): Promise<unknown> {
-  const res = await fetch(url, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(5000) })
+  const res = await fetch(url, { headers: { accept: 'application/json', 'user-agent': USER_AGENT }, signal: AbortSignal.timeout(5000) })
   if (!res.ok) throw new Error(`${new URL(url).host} HTTP ${res.status}`)
   return res.json()
 }

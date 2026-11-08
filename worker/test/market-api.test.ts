@@ -55,9 +55,12 @@ describe('GET /api/rates', () => {
     erApi = () => Response.json({ result: 'success', time_last_update_unix: 1794096001, rates: { USD: 1, EUR: 0.8613, CRC: 502.27, GMD: 72.5, JPY: 150 } })
     vi.stubGlobal(
       'fetch',
-      vi.fn(async (input: RequestInfo | URL) => {
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input)
         calls.push(url)
+        // CoinGecko answers 403 to a request without a descriptive User-Agent (Workers send none)
+        const ua = new Headers(init?.headers).get('user-agent') ?? ''
+        if (url === COINGECKO && !/accrue/i.test(ua)) return Response.json({ status: { error_code: 403 } }, { status: 403 })
         if (url === COINGECKO) return coingecko()
         if (url === ER_API) return erApi()
         throw new Error(`unexpected ${url}`)
