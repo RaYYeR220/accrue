@@ -8,6 +8,7 @@ const HASH = `0x${'cd'.repeat(32)}` as const
 
 afterEach(() => {
   uninstallMock(window)
+  sessionStorage.clear()
   vi.unstubAllGlobals()
 })
 

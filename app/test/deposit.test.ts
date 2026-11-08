@@ -756,7 +756,10 @@ describe('withdraw', () => {
 })
 
 describe('against the dev mock (real evm wrapper)', () => {
-  afterEach(() => uninstallMock(window))
+  afterEach(() => {
+    uninstallMock(window)
+    sessionStorage.clear()
+  })
 
   async function start(scenario: string, draft: Draft = { kind: 'supply', asset: 'USDT0', amount: 1_000_000n }) {
     const m = installMock(`?mock=${scenario}&delay=0&chain=0x89`, window)

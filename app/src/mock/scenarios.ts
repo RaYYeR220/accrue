@@ -42,7 +42,8 @@ export interface Scenario {
     sign: 'ok' | 'reject'
     send: 'ok' | 'reject'
   }
-  relay: { supply: RelayOutcome; withdraw: RelayOutcome; confirms: boolean }
+  // lostAnswers: the relay takes the first job, then nothing it says arrives until the app is reopened
+  relay: { supply: RelayOutcome; withdraw: RelayOutcome; confirms: boolean; lostAnswers?: boolean }
 }
 
 // Valid-checksum fixture addresses (repeated bytes), never real accounts.
@@ -119,7 +120,7 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
   'unknown-outcome': {
     ...happy,
     nim: { ...happy.nim, tx: 'unknown-outcome' },
-    relay: { supply: OK, withdraw: OK, confirms: false },
+    relay: { supply: OK, withdraw: OK, confirms: true, lostAnswers: true },
   },
   'htlc-only-balance': {
     ...happy,

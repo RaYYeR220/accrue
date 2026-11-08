@@ -1,12 +1,15 @@
 import type { AssetKey, Job } from '@accrue/shared'
-import { ASSETS } from '@accrue/shared'
-import { keccak256, numberToHex, padHex, type Address, type Hex } from 'viem'
-import { sleep } from '../lib/util'
+import { ASSETS, normalizeAddress, STAKING_CONTRACT } from '@accrue/shared'
+import { keccak256, maxUint256, numberToHex, padHex, type Address, type Hex } from 'viem'
+import { isRecord, sleep } from '../lib/util'
 import { POLYGON_RPCS } from '../providers/evm'
-import { isScenarioName, MOCK_RATES, SCENARIO_NAMES, SCENARIOS, type RelayOutcome, type Scenario, type ScenarioName } from './scenarios'
+import { mockAave, mockCheck, mockPools, mockTestnetValidators, TESTNET_VALIDATORS_PREFIX } from './fixtures'
+import { isScenarioName, MOCK_RATES, SCENARIO_NAMES, SCENARIOS, type RelayOutcome, type Scenario, type ScenarioName, type StakerRpc } from './scenarios'
 
-// Dev-only stand-in for Nimiq Pay: window.nimiqPay, window.nimiq, window.ethereum,
-// plus the /api/relay*, /api/rates, /api/health endpoints and Polygon RPC reads.
+// Dev-only stand-in for Nimiq Pay: window.nimiqPay, window.nimiq, window.ethereum, plus the
+// /api/relay*, /api/rates, /api/health, /api/aave, /api/position, /api/pools, /api/check endpoints,
+// the testnet validators API and Polygon RPC reads. What a server or a chain would remember (relay
+// jobs, balances, the staker) lives in sessionStorage, so a reload finds it again.
 // Query: ?mock=<scenario>[&lang=de][&fiat=EUR][&network=testnet][&chain=0x89][&delay=0]
 // Loaded only through the `import.meta.env.DEV` guard in main.tsx.
 
@@ -19,6 +22,8 @@ export interface MockCall {
 
 export interface MockHandle {
   scenario: ScenarioName
+  // stands in for the router until one is deployed, so the flows can be driven end to end
+  router: Address
   calls: MockCall[]
   // e2e: provider calls made before the first pointerdown/keydown must be 0
   callsBeforeFirstInteraction(): number
@@ -38,6 +43,38 @@ interface Installed {
 
 const installed = new WeakMap<Window, Installed>()
 
+const MOCK_ROUTER = '0x00000000000000000000000000000000000acc01' as Address
+const STATE_KEY = 'accrue.mock.v1:'
+const NIM_GENESIS = { mainnet: 3_456_000, testnet: 3_032_010 }
+const NIM_BLOCK = 41_000_000
+const EPOCH = 43_200
+
+interface MockNimTx {
+  hash: string
+  from: string
+  to: string
+  value: number
+  recipientData: string
+  timestamp: number
+}
+
+// What a reload must not forget: the relay's jobs and what the chains hold.
+interface Persisted {
+  jobs: [string, { job: Job; polls: number }][]
+  balances: [string, string][]
+  nonces: [string, string][]
+  principal: [string, string][]
+  nim: { luna: Record<string, number>; staker: StakerRpc | null; txs: MockNimTx[] }
+}
+
+function loadState(name: string, w: Window): Persisted | null {
+  try {
+    const raw: unknown = JSON.parse(w.sessionStorage.getItem(STATE_KEY + name) ?? 'null')
+    return isRecord(raw) && Array.isArray(raw.jobs) && isRecord(raw.nim) ? (raw as unknown as Persisted) : null
+  } catch {
+    return null
+  }
+}
 
 function randomHex(bytes: number): string {
   const b = crypto.getRandomValues(new Uint8Array(bytes))
@@ -73,6 +110,7 @@ export function installMock(search: string, w: Window = window): MockHandle {
 
   const sc: Scenario = SCENARIOS[name]
   const delay = Number(q.get('delay') ?? 250) || 0
+  const saved = loadState(name, w)
   const calls: MockCall[] = []
   let firstInteraction: number | null = null
 
@@ -96,12 +134,97 @@ export function installMock(search: string, w: Window = window): MockHandle {
     requestDeviceIdentifier: recorded('nimiqPay', 'requestDeviceIdentifier', async () => randomHex(32)),
   })
 
+  // EVM state shared by window.ethereum, the public-RPC stand-in and the read API
+  const big = (e: [string, string][]) => new Map<string, bigint>(e.map(([k, v]) => [k, BigInt(v)]))
+  const balances = saved ? big(saved.balances) : new Map<string, bigint>(Object.entries(sc.evm.tokens).map(([k, v]) => [k.toLowerCase(), v]))
+  const nonces = saved ? big(saved.nonces) : new Map<string, bigint>()
+  // what went into Aave through Accrue, per aToken; the starting position is mostly principal
+  const principal = saved
+    ? big(saved.principal)
+    : new Map<string, bigint>(Object.values(ASSETS).map(a => [a.aToken.toLowerCase(), ((sc.evm.tokens[a.aToken] ?? 0n) * 984n) / 1000n]))
+  const jobs = new Map<string, { job: Job; polls: number }>(saved?.jobs ?? [])
+
+  // NIM state
+  const testnet = w.nimiqPay?.network === 'testnet'
+  const nim: Persisted['nim'] = saved?.nim ?? { luna: { ...sc.nim.luna }, staker: sc.nim.staker ? { ...sc.nim.staker } : null, txs: [] }
+  // hashes the mock handed out look up as included one block later
+  const nimSentTxs = new Set<string>(nim.txs.map(t => t.hash))
+  const lunaOf = (a: string) => nim.luna[a] ?? 0
+
+  function save(): void {
+    const str = (m: Map<string, bigint>): [string, string][] => [...m].map(([k, v]) => [k, v.toString()])
+    const state: Persisted = { jobs: [...jobs], balances: str(balances), nonces: str(nonces), principal: str(principal), nim }
+    try {
+      w.sessionStorage.setItem(STATE_KEY + name, JSON.stringify(state))
+    } catch {
+      // the mock still works within one page
+    }
+  }
+
+  const electionAfter = (block: number) => {
+    const g = testnet ? NIM_GENESIS.testnet : NIM_GENESIS.mainnet
+    return (Math.floor((block - g) / EPOCH) + 1) * EPOCH + g
+  }
+
+  // The chain's side of a staking transaction. The app refuses what the protocol would reject,
+  // so the mock does not check the rules again.
+  function applyStaking(method: string, tx: Record<string, unknown>): Omit<MockNimTx, 'hash' | 'timestamp'> {
+    const wallet = sc.nim.wallet
+    const value = typeof tx.value === 'number' ? tx.value : 0
+    const fund = sc.nim.htlc && lunaOf(sc.nim.htlc) >= value ? sc.nim.htlc : wallet
+    const st = nim.staker
+    const staking = (recipientData: string, v = value) => ({ from: wallet, to: STAKING_CONTRACT, value: v, recipientData })
+    switch (method) {
+      case 'sendNewStakerTransaction':
+        nim.luna[fund] = lunaOf(fund) - value
+        nim.staker = { balance: value, delegation: String(tx.delegation), inactiveBalance: 0, inactiveFrom: null, retiredBalance: 0 }
+        return staking('05')
+      case 'sendStakeTransaction':
+        nim.luna[fund] = lunaOf(fund) - value
+        if (st) st.balance += value
+        return staking('06')
+      case 'sendSetActiveStakeTransaction':
+        if (st) {
+          const total = st.balance + st.inactiveBalance
+          st.balance = Number(tx.newActiveBalance)
+          st.inactiveBalance = total - st.balance
+          st.inactiveFrom = st.inactiveBalance > 0 ? electionAfter(NIM_BLOCK) : null
+        }
+        return staking('08', 0)
+      case 'sendUpdateStakerTransaction':
+        if (st) {
+          st.delegation = String(tx.newDelegation)
+          if (tx.reactivateAllStake) {
+            st.balance += st.inactiveBalance
+            st.inactiveBalance = 0
+            st.inactiveFrom = null
+          }
+        }
+        return staking('07', 0)
+      case 'sendRetireStakeTransaction': {
+        const n = Number(tx.retireStake)
+        if (st) {
+          st.inactiveBalance -= n
+          st.retiredBalance += n
+        }
+        return staking('09', n)
+      }
+      case 'sendRemoveStakeTransaction':
+        nim.luna[wallet] = lunaOf(wallet) + value
+        if (st) {
+          st.retiredBalance -= value
+          if (st.balance + st.inactiveBalance + st.retiredBalance === 0) nim.staker = null
+        }
+        return { from: STAKING_CONTRACT, to: wallet, value, recipientData: '' }
+      default:
+        return { from: wallet, to: String(tx.recipient ?? ''), value, recipientData: '' }
+    }
+  }
+
   // NIM provider
   const accountListeners = new Set<(a: string[]) => void>()
-  // hashes the mock handed out; they look up as included one block later
-  const nimSentTxs = new Set<string>()
   const nimTx = (method: string) =>
-    recorded('nimiq', method, async (_tx: object): Promise<string> => {
+    recorded('nimiq', method, async (tx: object): Promise<string> => {
       switch (sc.nim.tx) {
         case 'reject':
           throw providerError('User rejected the request', { type: 'PERMISSION_DENIED', code: 4001 })
@@ -111,28 +234,51 @@ export function installMock(search: string, w: Window = window): MockHandle {
           throw providerError('Transaction sent, outcome unknown', { type: 'TRANSACTION_OUTCOME_UNKNOWN' })
         default: {
           const hash = randomHex(32)
+          nim.txs.unshift({ hash, timestamp: Date.now(), ...applyStaking(method, tx as Record<string, unknown>) })
           nimSentTxs.add(hash)
+          save()
           return hash
         }
       }
     })
 
-  const testnet = w.nimiqPay?.network === 'testnet'
   const nimRead = async ({ method, params }: { method: string; params?: unknown[] }): Promise<unknown> => {
     const arg = params?.[0]
     switch (method) {
       case 'getStakerByAddress':
-        if (arg === sc.nim.wallet && sc.nim.staker) return { data: { address: sc.nim.wallet, ...sc.nim.staker }, metadata: null }
+        if (arg === sc.nim.wallet && nim.staker) return { data: { address: sc.nim.wallet, ...nim.staker }, metadata: null }
         throw rpcNotFound(`No staker with address: ${String(arg)}`)
       case 'getAccountByAddress':
-        return { data: { address: arg, balance: sc.nim.luna[String(arg)] ?? 0, type: 'basic' }, metadata: null }
+        return { data: { address: arg, balance: lunaOf(String(arg)), type: 'basic' }, metadata: null }
       case 'getBlockNumber':
-        return { data: 41_000_000, metadata: null }
+        return { data: NIM_BLOCK, metadata: null }
       case 'getTransactionByHash':
         if (typeof arg === 'string' && nimSentTxs.has(arg)) {
-          return { data: { hash: arg, blockNumber: 41_000_001, executionResult: true }, metadata: null }
+          return { data: { hash: arg, blockNumber: NIM_BLOCK + 1, executionResult: true }, metadata: null }
         }
         throw rpcNotFound(`Transaction not found: ${String(arg)}`)
+      case 'getTransactionsByAddress': {
+        const a = normalizeAddress(String(arg))
+        const mine = nim.txs.filter(t => normalizeAddress(t.from) === a || normalizeAddress(t.to) === a)
+        return {
+          data: mine.map(t => ({
+            hash: t.hash,
+            blockNumber: NIM_BLOCK + 1,
+            timestamp: t.timestamp,
+            from: t.from,
+            to: t.to,
+            fromType: 0,
+            toType: 0,
+            value: t.value,
+            fee: 0,
+            senderData: '',
+            recipientData: t.recipientData,
+            relatedAddresses: [],
+            executionResult: true,
+          })),
+          metadata: null,
+        }
+      }
       case 'getValidatorByAddress':
         return { data: { address: arg, jailedFrom: null, retired: false }, metadata: null }
       case 'getPolicyConstants':
@@ -140,11 +286,11 @@ export function installMock(search: string, w: Window = window): MockHandle {
           data: {
             blocksPerBatch: 60,
             batchesPerEpoch: 720,
-            blocksPerEpoch: 43_200,
+            blocksPerEpoch: EPOCH,
             minimumStake: 10_000_000,
             blockSeparationTime: 1_000,
             jailEpochs: 8,
-            genesisBlockNumber: testnet ? 3_032_010 : 3_456_000,
+            genesisBlockNumber: testnet ? NIM_GENESIS.testnet : NIM_GENESIS.mainnet,
           },
           metadata: null,
         }
@@ -155,10 +301,10 @@ export function installMock(search: string, w: Window = window): MockHandle {
 
   const nimiqFake = {
     listAccounts: recorded('nimiq', 'listAccounts', async () => (sc.nim.htlc ? [sc.nim.wallet, sc.nim.htlc] : [sc.nim.wallet])),
-    getBalance: recorded('nimiq', 'getBalance', async (address: string) => sc.nim.luna[address] ?? 0),
+    getBalance: recorded('nimiq', 'getBalance', async (address: string) => lunaOf(address)),
     request: recorded('nimiq', 'request', nimRead),
     isConsensusEstablished: recorded('nimiq', 'isConsensusEstablished', async () => true),
-    getBlockNumber: recorded('nimiq', 'getBlockNumber', async () => 41_000_000),
+    getBlockNumber: recorded('nimiq', 'getBlockNumber', async () => NIM_BLOCK),
     sendNewStakerTransaction: nimTx('sendNewStakerTransaction'),
     sendStakeTransaction: nimTx('sendStakeTransaction'),
     sendSetActiveStakeTransaction: nimTx('sendSetActiveStakeTransaction'),
@@ -179,11 +325,8 @@ export function installMock(search: string, w: Window = window): MockHandle {
   }
   w.nimiq = nimiqFake as unknown as Window['nimiq']
 
-  // EVM state shared by window.ethereum and the public-RPC stand-in
   // Nimiq Pay starts on Ethereum (0x1); ?chain=0x89 starts on Polygon to skip the switch step
   let chainId = q.get('chain') ?? '0x1'
-  const balances = new Map<string, bigint>(Object.entries(sc.evm.tokens).map(([k, v]) => [k.toLowerCase(), v]))
-  const nonces = new Map<string, bigint>()
   // hashes the wallet "sent", so the public-RPC stand-in can hand back their receipts
   const evmSentTxs = new Set<string>()
 
@@ -257,8 +400,9 @@ export function installMock(search: string, w: Window = window): MockHandle {
   }
 
   // relay + read API
-  const jobs = new Map<string, { job: Job; polls: number }>()
   const failedOnce = new Set<string>()
+  // lostAnswers: once the first job is in, the connection to the relay is gone for this page
+  let relayCut = false
 
   function relayOutcome(kind: 'supply' | 'withdraw'): RelayOutcome {
     const o = sc.relay[kind]
@@ -269,9 +413,50 @@ export function installMock(search: string, w: Window = window): MockHandle {
     return o
   }
 
+  // What a confirmed job does on chain: tokens move between the wallet and Aave.
+  function settle(job: Job): void {
+    const a = ASSETS[job.asset]
+    if (!a) return
+    const under = a.address.toLowerCase()
+    const at = a.aToken.toLowerCase()
+    const get = (k: string) => balances.get(k) ?? 0n
+    let amount = BigInt(job.amount)
+    if (job.kind === 'supply') {
+      balances.set(under, get(under) - amount)
+      balances.set(at, get(at) + amount)
+      principal.set(at, (principal.get(at) ?? 0n) + amount)
+      return
+    }
+    if (amount === maxUint256 || amount > get(at)) amount = get(at)
+    balances.set(at, get(at) - amount)
+    balances.set(under, get(under) + amount)
+    const p = principal.get(at) ?? 0n
+    principal.set(at, p > amount ? p - amount : 0n)
+  }
+
+  function position(): unknown {
+    const assets: Record<string, unknown> = {}
+    for (const [k, a] of Object.entries(ASSETS)) {
+      const bal = balances.get(a.aToken.toLowerCase()) ?? 0n
+      const p = principal.get(a.aToken.toLowerCase()) ?? 0n
+      assets[k] = { aTokenBalance: bal.toString(), scaledFromAccrue: p.toString(), principal: p.toString(), earned: (bal - p).toString() }
+    }
+    return { assets }
+  }
+
   async function api(url: URL, method: string, body: string): Promise<Response | null> {
     const path = url.pathname
     if (path === '/api/rates') return json(200, { ...MOCK_RATES, asOf: Date.now() })
+    if (path === '/api/aave') {
+      const illiquid = sc.relay.withdraw.kind === 'error' && sc.relay.withdraw.error === 'AAVE_LIQUIDITY'
+      return json(200, mockAave(Date.now(), illiquid))
+    }
+    if (path.startsWith('/api/position/')) return json(200, position())
+    if (path === '/api/pools') return json(200, mockPools(Date.now()))
+    if (path.startsWith('/api/check/')) {
+      const who = normalizeAddress(decodeURIComponent(path.slice('/api/check/'.length)))
+      return json(200, mockCheck(who === normalizeAddress(sc.nim.wallet) ? nim.staker : null, Date.now()))
+    }
     if (path === '/api/health') {
       const down = sc.relay.supply.kind === 'down'
       return json(down ? 503 : 200, {
@@ -282,6 +467,7 @@ export function installMock(search: string, w: Window = window): MockHandle {
       })
     }
     if (!path.startsWith('/api/relay')) return null
+    if (relayCut) throw new TypeError('Failed to fetch')
     // what the worker answers when its relayer Durable Object cannot be reached
     if (sc.relay.supply.kind === 'down') return json(503, { error: 'RPC_UNAVAILABLE', detail: { reason: 'relayer_unavailable' } })
 
@@ -298,6 +484,11 @@ export function installMock(search: string, w: Window = window): MockHandle {
       if (token) nonces.set(token.toLowerCase(), (nonces.get(token.toLowerCase()) ?? 0n) + 1n)
       const job: Job = { jobId, owner: req.owner, kind: req.kind, asset: req.asset, amount: req.amount, status: 'queued', createdAt: Date.now() }
       jobs.set(jobId, { job, polls: 0 })
+      save()
+      if (sc.relay.lostAnswers) {
+        relayCut = true
+        throw new TypeError('Failed to fetch')
+      }
       return json(202, { jobId, status: job.status })
     }
 
@@ -313,7 +504,11 @@ export function installMock(search: string, w: Window = window): MockHandle {
       if (!entry) return json(404, { error: 'INTERNAL' })
       entry.polls += 1
       if (entry.job.status === 'queued') entry.job = { ...entry.job, status: 'submitted', txHash: `0x${randomHex(32)}` }
-      else if (entry.job.status === 'submitted' && sc.relay.confirms) entry.job = { ...entry.job, status: 'confirmed' }
+      else if (entry.job.status === 'submitted' && sc.relay.confirms) {
+        entry.job = { ...entry.job, status: 'confirmed' }
+        settle(entry.job)
+      }
+      save()
       return json(200, entry.job)
     }
     return null
@@ -337,6 +532,10 @@ export function installMock(search: string, w: Window = window): MockHandle {
     const url = requestUrl(input, w.location.href)
     const method = (init?.method ?? (input instanceof Request ? input.method : 'GET')).toUpperCase()
     if (POLYGON_RPCS.some(r => url.href.startsWith(r))) return polygonRpc(await requestBody(input, init))
+    if (url.href.startsWith(TESTNET_VALIDATORS_PREFIX)) {
+      await sleep(delay)
+      return json(200, mockTestnetValidators())
+    }
     if (url.origin === w.location.origin && url.pathname.startsWith('/api/')) {
       const body = await requestBody(input, init)
       await sleep(delay)
@@ -355,6 +554,7 @@ export function installMock(search: string, w: Window = window): MockHandle {
 
   const handle: MockHandle = {
     scenario: name,
+    router: MOCK_ROUTER,
     calls,
     callsBeforeFirstInteraction: () => firstInteraction ?? calls.length,
     emitAccountsChanged(accounts) {

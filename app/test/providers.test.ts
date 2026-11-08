@@ -6,7 +6,10 @@ import { toUiError, WrongChainError } from '../src/providers/errors'
 import { createEvm, type Eip1193 } from '../src/providers/evm'
 import { createNimiq, isNotFound, parseStaker } from '../src/providers/nimiq'
 
-afterEach(() => uninstallMock(window))
+afterEach(() => {
+  uninstallMock(window)
+  sessionStorage.clear()
+})
 
 const mock = (scenario: string) => installMock(`?mock=${scenario}&delay=0`, window)
 const owner = '0x1111111111111111111111111111111111111111' as const

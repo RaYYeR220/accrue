@@ -3,7 +3,10 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { installMock, uninstallMock } from '../src/mock/installMock'
 import { SCENARIO_NAMES } from '../src/mock/scenarios'
 
-afterEach(() => uninstallMock(window))
+afterEach(() => {
+  uninstallMock(window)
+  sessionStorage.clear()
+})
 
 const relay = (body: object) =>
   fetch('/api/relay', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
@@ -121,11 +124,34 @@ describe('mock relay', () => {
     expect(await (await relay(req)).json()).toEqual({ error: 'INSUFFICIENT_BALANCE' })
   })
 
-  it('unknown-outcome: the job never confirms', async () => {
+  it('unknown-outcome: the relay takes the job but no answer arrives until the app is reopened, then it confirms', async () => {
     installMock('?mock=unknown-outcome&delay=0', window)
-    const { jobId } = await (await relay(req)).json()
-    for (let i = 0; i < 4; i++) await fetch(`/api/relay/${jobId}`)
-    expect((await (await fetch(`/api/relay/${jobId}`)).json()).status).toBe('submitted')
+    await expect(relay(req)).rejects.toThrow(TypeError)
+    await expect(fetch('/api/relay/by-owner/' + req.owner)).rejects.toThrow(TypeError)
+    // a reload: the relay kept the job and answers again
+    uninstallMock(window)
+    installMock('?mock=unknown-outcome&delay=0', window)
+    const { jobs } = await (await fetch(`/api/relay/by-owner/${req.owner}`)).json()
+    expect(jobs).toHaveLength(1)
+    const seen: string[] = []
+    for (let i = 0; i < 2; i++) seen.push((await (await fetch(`/api/relay/${jobs[0].jobId}`)).json()).status)
+    expect(seen).toEqual(['submitted', 'confirmed'])
+  })
+
+  it('a confirmed deposit moves the mock balances, and the position API follows', async () => {
+    installMock('?mock=happy&delay=0', window)
+    const owner = '0xa11ce00000000000000000000000000000000a11'
+    const before = await (await fetch(`/api/position/${owner}`)).json()
+    expect(before.assets.USDT0.aTokenBalance).toBe('100000000')
+    const { jobId } = await (await relay({ ...req, owner })).json()
+    await fetch(`/api/relay/${jobId}`)
+    await fetch(`/api/relay/${jobId}`)
+    const after = await (await fetch(`/api/position/${owner}`)).json()
+    expect(after.assets.USDT0).toMatchObject({ aTokenBalance: '105000000', principal: '103400000' })
+    // and it survives a reload
+    uninstallMock(window)
+    installMock('?mock=happy&delay=0', window)
+    expect((await (await fetch(`/api/position/${owner}`)).json()).assets.USDT0.aTokenBalance).toBe('105000000')
   })
 
   // Same shapes the testnet RPC returned (task-12 report).
@@ -147,6 +173,42 @@ describe('mock relay', () => {
     expect(p).toMatchObject({ data: { blocksPerEpoch: 43_200, blockSeparationTime: 1_000, genesisBlockNumber: 3_456_000, jailEpochs: 8 } })
     const missing = await nimiq.request({ method: 'getNothing', params: [] }).catch((e: unknown) => e)
     expect(missing).toMatchObject({ code: -32601 })
+  })
+
+  it('staking transactions change the mock staker and show up in the address history', async () => {
+    installMock('?mock=htlc-only-balance&delay=0', window)
+    const nimiq = window.nimiq!
+    const [wallet, htlc] = (await nimiq.listAccounts()) as string[]
+    const siam = 'NQ38 VK34 DRBL S3CN M9KM 8UJN 9JY2 2KFN VQQH'
+    const hash = await nimiq.sendNewStakerTransaction({ delegation: siam, value: 20_000_000 })
+    expect(await nimiq.request({ method: 'getStakerByAddress', params: [wallet] })).toMatchObject({ data: { balance: 20_000_000, delegation: siam } })
+    expect(await nimiq.getBalance(htlc!)).toBe(105_000_000)
+    await nimiq.sendSetActiveStakeTransaction({ newActiveBalance: 0 })
+    const s = (await nimiq.request({ method: 'getStakerByAddress', params: [wallet] })) as { data: { balance: number; inactiveBalance: number; inactiveFrom: number } }
+    expect(s.data).toMatchObject({ balance: 0, inactiveBalance: 20_000_000 })
+    expect(s.data.inactiveFrom).toBeGreaterThan(41_000_000)
+    const history = (await nimiq.request({ method: 'getTransactionsByAddress', params: [wallet, 20] })) as { data: { hash: string; recipientData: string }[] }
+    expect(history.data.map(t => t.recipientData.slice(0, 2))).toEqual(['08', '05'])
+    expect(history.data[1]!.hash).toBe(hash)
+  })
+
+  it('answers the read APIs: pools with every verdict, the check for the wallet, Aave reserves', async () => {
+    installMock('?mock=happy&delay=0', window)
+    const pools = await (await fetch('/api/pools')).json()
+    const verdicts = new Set(pools.pools.map((p: { verdict?: string }) => p.verdict ?? null))
+    for (const v of ['PAID_AS_PROMISED', 'BEHIND_SCHEDULE', 'SHORT', 'NOT_ENOUGH_DATA', 'NO_PAYOUTS_BY_DESIGN', 'CANT_VERIFY_ROUTED', null]) expect(verdicts.has(v)).toBe(true)
+    const check = await (await fetch('/api/check/NQ68L6GS38D1L6GS38D1L6GS38D1L6GS38D1')).json()
+    expect(check).toMatchObject({ staker: { activeLuna: '100000000', delegation: 'NQ38 VK34 DRBL S3CN M9KM 8UJN 9JY2 2KFN VQQH' }, verdict: 'PAID_AS_PROMISED' })
+    expect(check.pool.name).toBe('Siam Pool')
+    const aave = await (await fetch('/api/aave')).json()
+    expect(Object.keys(aave.reserves).sort()).toEqual(['USDC', 'USDT0'])
+  })
+
+  it('testnet: pools come from the testnet validators API', async () => {
+    installMock('?mock=testnet&delay=0', window)
+    const list = await (await fetch('https://validators-api-test.je-cf9.workers.dev/api/v1/validators')).json()
+    expect(list.length).toBeGreaterThan(1)
+    expect(list.some((v: { address: string }) => v.address === 'NQ10 UPJX BRF5 UPJX BRF5 UPJX BRF5 UPJX BRF5')).toBe(true)
   })
 
   it('the testnet scenario reports testnet policy constants', async () => {

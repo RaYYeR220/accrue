@@ -371,6 +371,8 @@ describe('useNim', () => {
     cleanup?.()
     cleanup = null
     uninstallMock(window)
+    // the mock keeps chain state for a reload; every test starts from its scenario
+    sessionStorage.clear()
     vi.unstubAllGlobals()
   })
 
@@ -399,8 +401,9 @@ describe('useNim', () => {
   }
 
   async function render(scenario: string) {
-    stubApi()
     const m = installMock(`?mock=${scenario}&delay=0`, window)
+    // after the mock, so these pools answer instead of the mock's own
+    stubApi()
     const api = await mount(createNimiq())
     return { m, api }
   }
@@ -517,7 +520,8 @@ describe('useNim', () => {
     const [a, b] = await Promise.allSettled([api().stake(nim('10')), api().stake(nim('20'))])
     expect(a.status).toBe('fulfilled')
     expect(b).toMatchObject({ status: 'rejected', reason: { code: 'BUSY' } })
-    const [c, d] = await Promise.allSettled([api().deactivate(nim('1000')), api().deactivateAll()])
+    // the mock staker now holds the 1000 NIM it started with plus the 10 just added
+    const [c, d] = await Promise.allSettled([api().deactivate(nim('1010')), api().deactivateAll()])
     expect(c.status).toBe('fulfilled')
     expect(d).toMatchObject({ status: 'rejected', reason: { code: 'BUSY' } })
     expect(m.calls.filter(x => x.method.startsWith('send')).map(x => [x.method, x.params[0]])).toEqual([
