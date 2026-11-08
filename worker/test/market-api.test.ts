@@ -260,11 +260,33 @@ describe('GET /api/rates', () => {
     expect(r.status).toBe(503)
   })
 
+  it('asks the source that gave the last good price first, so a refused source costs nothing each run', async () => {
+    coingecko = () => new Response('', { status: 429 })
+    paprika = () => new Response('', { status: 402 })
+    gate = () => Response.json([{ currency_pair: 'NIM_USDT', last: '0.000262' }])
+    kraken = () => Response.json({ error: [], result: { USDTZUSD: { c: ['0.99856000', '18.3'] } } })
+    const db = new FakeD1()
+    expect((await warmRates(env(db))).price).toBe('Gate.io+Kraken')
+    calls.length = 0
+    vi.setSystemTime(T0 + 5 * 60_000)
+    expect((await warmRates(env(db))).price).toBe('Gate.io+Kraken')
+    expect(calls.filter((u) => u === COINGECKO || u.startsWith('https://api.coinpaprika.com/'))).toEqual([])
+    // and when it stops answering, the others are still asked
+    gate = () => new Response('', { status: 503 })
+    coingecko = () => Response.json({ 'nimiq-2': { usd: 0.00027882 }, tether: { usd: 1.0002 } })
+    vi.setSystemTime(T0 + 10 * 60_000)
+    expect((await warmRates(env(db))).price).toBe('CoinGecko')
+  })
+
   it('the cron reports what it did with the rates', async () => {
     const db = new FakeD1()
+    // the pool sync and the prune are done, the rates are due
+    db.db.prepare("INSERT INTO meta (key, value, updated_at) VALUES ('pools_synced_at', '21', ?), ('pruned_day', ?, ?)").run(T0, String(Math.floor(T0 / DAY)), T0)
     coingecko = () => new Response('', { status: 403 })
     const r = await runScheduled(env(db, { NIM_RPCS: '' }))
+    expect(r.job).toBe('rates')
     expect(r.rates).toEqual({ price: 'CoinPaprika', fx: 'open.er-api.com' })
+    expect(db.query<{ updated_at: number }>("SELECT updated_at FROM meta WHERE key = 'rates_tried_at'")[0]!.updated_at).toBe(T0)
   })
 
   it('never invents a rate: a currency the FX source lacks is left out, a failed FX source leaves USD only', async () => {

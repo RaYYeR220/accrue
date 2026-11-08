@@ -38,12 +38,16 @@ function world(chain: FakeChain, asked: number[]) {
 
 describe('pickJob', () => {
   const now = Date.UTC(2026, 10, 8, 12, 5)
-  it('one heavy job per run: the hourly pool sync, else the daily prune, else a scan', () => {
-    expect(pickJob({ syncedAt: null, prunedDay: null }, now)).toBe('sync')
-    expect(pickJob({ syncedAt: now - HOUR, prunedDay: String(dayOf(now)) }, now)).toBe('sync')
-    expect(pickJob({ syncedAt: now - HOUR + 1, prunedDay: null }, now)).toBe('prune')
-    expect(pickJob({ syncedAt: now - 5 * MIN, prunedDay: String(dayOf(now) - 1) }, now)).toBe('prune')
-    expect(pickJob({ syncedAt: now - 5 * MIN, prunedDay: String(dayOf(now)) }, now)).toBe('scan')
+  const today = String(dayOf(now))
+  it('one job per run: the hourly pool sync, the daily prune, the rates every five minutes, then verdicts and scans by turns', () => {
+    expect(pickJob({ syncedAt: null, prunedDay: null, ratesTriedAt: null }, now)).toBe('sync')
+    expect(pickJob({ syncedAt: now - HOUR, prunedDay: today, ratesTriedAt: now }, now)).toBe('sync')
+    expect(pickJob({ syncedAt: now - HOUR + 1, prunedDay: null, ratesTriedAt: null }, now)).toBe('prune')
+    expect(pickJob({ syncedAt: now - 5 * MIN, prunedDay: String(dayOf(now) - 1), ratesTriedAt: now }, now)).toBe('prune')
+    expect(pickJob({ syncedAt: now - 5 * MIN, prunedDay: today, ratesTriedAt: null }, now)).toBe('rates')
+    expect(pickJob({ syncedAt: now - 5 * MIN, prunedDay: today, ratesTriedAt: now - 5 * MIN }, now)).toBe('rates')
+    expect(pickJob({ syncedAt: now - 5 * MIN, prunedDay: today, ratesTriedAt: now - 3 * MIN }, now)).toBe('verdict')
+    expect(pickJob({ syncedAt: now - 5 * MIN, prunedDay: today, ratesTriedAt: now - 3 * MIN }, now + MIN)).toBe('scan')
   })
 })
 
@@ -67,10 +71,15 @@ describe('runScheduled', () => {
     }
     expect(cursor()!.backfill_done).toBe(1)
   }
-  // the hourly sync and the daily prune just ran, so the next runs scan
+  // the hourly sync, the daily prune and the rates just ran, so the next runs verdict or scan
   const housekept = () => {
     db.db.prepare("INSERT OR REPLACE INTO meta (key, value, updated_at) VALUES ('pools_synced_at', '1', ?)").run(t)
     db.db.prepare("INSERT OR REPLACE INTO meta (key, value, updated_at) VALUES ('pruned_day', ?, ?)").run(String(dayOf(t)), t)
+    db.db.prepare("INSERT OR REPLACE INTO meta (key, value, updated_at) VALUES ('rates_tried_at', '', ?)").run(t)
+  }
+  // an even minute: a scan, not a verdict
+  const evenMinute = () => {
+    if (Math.floor(t / MIN) % 2) t += MIN
   }
 
   beforeEach(() => {
@@ -84,34 +93,54 @@ describe('runScheduled', () => {
   // a pool with no new tx in sight is visited once it has gone this long unvisited (cron MAX_STALE_MS)
   const DUE = 95 * MIN
 
-  it('the pool sync and the prune each get a run of their own, with no tx pages and no verdicts', async () => {
+  it('the pool sync, the prune, the rates and a verdict each get a run of their own, with no tx pages', async () => {
     await indexedUpTo(top - 20_000)
     db.db.prepare("DELETE FROM meta WHERE key IN ('pools_synced_at', 'pruned_day')").run()
     chain.head = top
     asked.length = 0
+    t += DUE
+    evenMinute()
 
-    const sync = await run(DUE)
+    const sync = await run(0)
     expect(sync.job).toBe('sync')
     expect(sync.tick?.synced).toBe(true)
     expect(asked).toEqual([])
     expect(sync.verdicts).toBeNull()
 
-    const prune = await run()
+    const prune = await run(MIN)
     expect(prune.job).toBe('prune')
     expect(prune.verdicts?.pruned).toBe(true)
     expect(prune.verdicts?.computed).toBe(0)
     expect(asked).toEqual([])
 
-    const scan = await run()
+    const rates = await run(MIN)
+    expect(rates.job).toBe('rates')
+    expect(rates.rates).not.toBeNull()
+    expect(rates.tick).toBeNull()
+    expect(asked).toEqual([])
+
+    // odd minute: Garuda has no verdict yet, so this run computes it and scans nothing
+    const verdict = await run(MIN)
+    expect(verdict.job).toBe('verdict')
+    expect(verdict.verdicts?.computed).toBe(1)
+    expect(asked).toEqual([])
+
+    const scan = await run(MIN)
     expect(scan.job).toBe('scan')
     expect(asked.length).toBeGreaterThan(0)
-    expect(scan.verdicts?.computed).toBeLessThanOrEqual(2)
+    expect(asked.reduce((a, n) => a + n, 0)).toBeLessThanOrEqual(TXS_PER_RUN)
+
+    // odd minute again, but no verdict is due (the data moved less than 15 minutes ago): it scans
+    const next = await run(MIN)
+    expect(next.job).toBe('scan')
+    expect(next.verdicts?.computed).toBe(0)
   })
 
   it('a scan run asks for about as many txs as are waiting, never more than TXS_PER_RUN in all', async () => {
     await indexedUpTo(top - 20_000)
     const scanRun = async (advanceMs: number) => {
       t += advanceMs
+      evenMinute()
       housekept()
       asked.length = 0
       const r = await runScheduled(env(), { now: () => t, sleep: async () => {} })
@@ -122,18 +151,20 @@ describe('runScheduled', () => {
     let head = top - 20_000 + 5_700
     chain.head = head
     await scanRun(DUE)
-    // the next visit asks for what its pace says came since, with slack, not a full page, and finishes
+    // the next visit asks for what its pace says came since, with slack, not a full page
     head += 5_700
     chain.head = head
     await scanRun(DUE)
-    expect(asked[0]).toBeLessThan(250)
+    expect(asked[0]).toBeLessThan(TXS_PER_RUN)
     expect(asked.reduce((a, n) => a + n, 0)).toBeLessThanOrEqual(TXS_PER_RUN)
+    // what did not fit is the next scan's
+    for (let i = 0; i < 2 && cursor()!.resume_hash; i++) await scanRun(2 * MIN)
     expect(cursor()!.resume_hash).toBeNull()
     expect(cursor()!.newest_block).toBe(lastMacro(head))
 
     // a payout run of 250 stakers lands: at most TXS_PER_RUN asked per run, and the backlog drains
     chain.head = top
-    for (let i = 0; i < 4 && (cursor()!.newest_block !== lastMacro(top) || cursor()!.resume_hash); i++) {
+    for (let i = 0; i < 8 && (cursor()!.newest_block !== lastMacro(top) || cursor()!.resume_hash); i++) {
       const r = await scanRun(DUE)
       expect(asked.reduce((a, n) => a + n, 0)).toBeLessThanOrEqual(TXS_PER_RUN)
       expect(asked.length).toBeLessThanOrEqual(PAGES_PER_RUN)
@@ -149,7 +180,9 @@ describe('runScheduled', () => {
     db.db.prepare("DELETE FROM meta WHERE key = 'pools_synced_at'").run()
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => (String(input) === VALIDATORS_API ? new Response('', { status: 502 }) : world(chain, asked)(input, init))))
     chain.head = top - 20_000 + 1_200
-    const r = await run(DUE)
+    t += DUE
+    evenMinute()
+    const r = await run(0)
     expect(r.job).toBe('scan')
     expect(r.tick!.synced).toBe(false)
     expect(cursor()!.newest_block).toBe(lastMacro(top - 20_000 + 1_200))

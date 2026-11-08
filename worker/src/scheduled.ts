@@ -3,36 +3,45 @@ import { warmRates } from './api/rates'
 import { dayOf } from './indexer/aggregate'
 import { POOLS_SYNC_MS, runIndexerTick, type TickDeps, type TickResult } from './indexer/cron'
 import { scanRouterLogs } from './indexer/router'
+import { bind, metaSet } from './indexer/store'
 import { PRUNED_KEY, refreshVerdicts } from './indexer/verdicts'
 
-// The free plan allows 10 ms of CPU per invocation. Each run does one heavy job: the hourly pool sync
-// (~1.3 MB of validators JSON), the daily prune, or a scan of at most TXS_PER_RUN txs (the pools send
-// ~3,300 txs an hour, ~280 per run) followed by a verdict or two. Rates and the router logs are light
-// and run every time.
-export const TXS_PER_RUN = 500
+// The free plan allows 10 ms of CPU per invocation, and on Cloudflare each part of the cron costs more
+// than its Node profile suggests (measured one at a time: an empty run 2 ms, the rates 10 ms, one
+// verdict 11 ms, a 500-tx scan 16 ms). So the cron runs every minute and each run does one job:
+// the hourly pool sync, the daily prune, the rates every five minutes, a pool verdict on odd
+// minutes, otherwise a scan of at most TXS_PER_RUN txs. The pools send ~3,300 txs an hour; scans on
+// half the minutes take up to 7,500.
+export const TXS_PER_RUN = 250
 export const PAGES_PER_RUN = 3
-// a scan run that folded at most this many txs has room for a second verdict
-const LIGHT_TXS = 150
+export const RATES_EVERY_MS = 4.5 * 60_000
+const RATES_TRIED_KEY = 'rates_tried_at'
 const MAX_MS = 25_000
 
-export type Job = 'sync' | 'prune' | 'scan'
+export type Job = 'sync' | 'prune' | 'rates' | 'verdict' | 'scan'
 
-export function pickJob(state: { syncedAt: number | null; prunedDay: string | null }, now: number): Job {
-  if (state.syncedAt === null || now - state.syncedAt >= POOLS_SYNC_MS) return 'sync'
-  if (state.prunedDay !== String(dayOf(now))) return 'prune'
-  return 'scan'
+export interface JobState {
+  syncedAt: number | null
+  prunedDay: string | null
+  ratesTriedAt: number | null
 }
 
-async function nextJob(env: Env, now: number): Promise<Job> {
+export function pickJob(state: JobState, now: number): Job {
+  if (state.syncedAt === null || now - state.syncedAt >= POOLS_SYNC_MS) return 'sync'
+  if (state.prunedDay !== String(dayOf(now))) return 'prune'
+  if (state.ratesTriedAt === null || now - state.ratesTriedAt >= RATES_EVERY_MS) return 'rates'
+  return Math.floor(now / 60_000) % 2 === 1 ? 'verdict' : 'scan'
+}
+
+async function jobState(env: Env): Promise<JobState | null> {
   try {
-    const { results } = await env.DB.prepare("SELECT key, value, updated_at FROM meta WHERE key IN ('pools_synced_at', ?)")
-      .bind(PRUNED_KEY)
+    const { results } = await env.DB.prepare('SELECT key, value, updated_at FROM meta WHERE key IN (?, ?, ?)')
+      .bind('pools_synced_at', PRUNED_KEY, RATES_TRIED_KEY)
       .all<{ key: string; value: string; updated_at: number }>()
     const row = (k: string) => results.find((r) => r.key === k)
-    return pickJob({ syncedAt: row('pools_synced_at')?.updated_at ?? null, prunedDay: row(PRUNED_KEY)?.value ?? null }, now)
+    return { syncedAt: row('pools_synced_at')?.updated_at ?? null, prunedDay: row(PRUNED_KEY)?.value ?? null, ratesTriedAt: row(RATES_TRIED_KEY)?.updated_at ?? null }
   } catch {
-    // the tick records the D1 failure itself
-    return 'scan'
+    return null
   }
 }
 
@@ -47,21 +56,21 @@ export function verdictBudget(tick: Pick<TickResult, 'pages' | 'synced'>): numbe
   return tick.pages === 0 ? 3 : tick.pages === 1 ? 2 : 1
 }
 
-/** Verdicts after a scan run: verdictBudget, at most two, one once the run folded more than LIGHT_TXS. */
-export const verdictsAfterScan = (tick: TickResult) => Math.min(verdictBudget(tick), tick.txs > LIGHT_TXS ? 1 : 2)
+/** A scan run that found nothing to fold (or could not reach the RPC) spends its time on up to two verdicts. */
+export const verdictsAfterScan = (tick: TickResult) => (tick.txs === 0 ? Math.min(2, verdictBudget(tick)) : 0)
 
 /**
- * One cron invocation, one heavy job (see pickJob): the hourly pool sync, the daily prune, or the
- * indexer scan followed by the verdicts of pools whose data changed (the read API only ever reads
- * cached verdicts). A sync the validators API refuses turns into a scan, so the indexer never idles.
- * Then the router's new Supplied/Withdrawn logs for /api/position and the rates. About 40
- * subrequests at most.
+ * One cron invocation, one job (see pickJob). A sync the validators API refuses, or a verdict run
+ * with no verdict due, turns into a scan, so the indexer never idles. The router's new
+ * Supplied/Withdrawn logs (for /api/position) are read every run. About 30 subrequests at most.
  */
 export async function runScheduled(env: Env, deps: TickDeps = {}) {
   const now = (deps.now ?? Date.now)()
-  let job = await nextJob(env, now)
+  const state = await jobState(env)
+  let job: Job = state ? pickJob(state, now) : 'scan'
   let tick: TickResult | null = null
   let verdicts: { computed: number; pruned: boolean } | null = null
+  let rates: Awaited<ReturnType<typeof warmRates>> | null = null
   if (job === 'sync') {
     tick = await runIndexerTick(env, { maxPages: 0, maxMs: MAX_MS }, deps)
     if (!tick.synced) job = 'scan'
@@ -70,12 +79,28 @@ export async function runScheduled(env: Env, deps: TickDeps = {}) {
     const r = await refreshVerdicts(env, { now, maxPools: 0 })
     verdicts = { computed: r.computed.length, pruned: r.pruned }
   }
+  if (job === 'rates') {
+    rates = await warmRates(env, now)
+    try {
+      await env.DB.batch(bind(env.DB, [metaSet(RATES_TRIED_KEY, '', now)]))
+    } catch {
+      // the next run tries again
+    }
+  }
+  if (job === 'verdict') {
+    const r = await refreshVerdicts(env, { now, maxPools: 1, prune: false })
+    verdicts = { computed: r.computed.length, pruned: r.pruned }
+    if (!r.computed.length) job = 'scan'
+  }
   if (job === 'scan') {
     tick = await runIndexerTick(env, { maxPages: PAGES_PER_RUN, maxTxs: TXS_PER_RUN, maxMs: MAX_MS }, deps)
-    const r = await refreshVerdicts(env, { now, maxPools: verdictsAfterScan(tick), prune: false })
-    verdicts = { computed: r.computed.length, pruned: r.pruned }
+    // a verdict run that found none due has already looked
+    const n = verdicts ? 0 : verdictsAfterScan(tick)
+    if (n) {
+      const r = await refreshVerdicts(env, { now, maxPools: n, prune: false })
+      verdicts = { computed: r.computed.length, pruned: r.pruned }
+    }
   }
   const router = await scanRouterLogs(env, { maxChunks: 3 })
-  const rates = await warmRates(env, now)
   return { job, tick, verdicts, router, rates }
 }

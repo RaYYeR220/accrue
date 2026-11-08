@@ -15,7 +15,7 @@ import { FakeD1 } from './d1'
 //
 // Node -> workerd: the free plan's 10 ms is workerd CPU. The same scan run measured here at ~2-4 ms
 // (cold, first run in the process) costs a few times that on Cloudflare (see task-15b-report.md for
-// the measured factor), so a Node bound of 8 ms is the line a run must stay well under.
+// the measured factor), so a Node bound of 6 ms is the line a run must stay well under.
 
 const garuda = load('garuda-2026-11-07.json')
 const POOL = garuda.address
@@ -91,9 +91,12 @@ async function scenario() {
   const keep = (k: string, v: string) => db.db.prepare('INSERT OR REPLACE INTO meta (key, value, updated_at) VALUES (?, ?, ?)').run(k, v, t)
   return {
     db,
-    run: async (job: 'scan' | 'sync') => {
+    run: async (job: 'scan' | 'sync' | 'verdict') => {
+      // scans run on even minutes, verdicts on odd ones
+      if (Math.floor(t / MIN) % 2 !== (job === 'verdict' ? 1 : 0)) t += MIN
       keep('pools_synced_at', '21')
       keep('pruned_day', String(dayOf(t)))
+      keep('rates_tried_at', '')
       // a day's first sync also writes the logos
       if (job === 'sync') db.db.prepare("UPDATE meta SET updated_at = ? WHERE key = 'pools_synced_at'").run(t - 2 * 60 * MIN - 86_400_000)
       stubMs = 0
@@ -104,7 +107,7 @@ async function scenario() {
   }
 }
 
-const BOUND_MS = 8
+const BOUND_MS = 6
 
 describe('CPU of one cron run (Node)', () => {
   afterEach(() => vi.unstubAllGlobals())
@@ -115,11 +118,25 @@ describe('CPU of one cron run (Node)', () => {
       const s = await scenario()
       const { r, ms } = await s.run('scan')
       expect(r.job).toBe('scan')
-      expect(r.tick!.txs).toBeGreaterThan(300)
-      expect(r.verdicts!.computed).toBe(1)
+      expect(r.tick!.txs).toBeGreaterThan(200)
+      expect(r.verdicts).toBeNull()
       runs.push(ms)
     }
     console.log('scan run CPU ms (first, then repeats):', runs.map((m) => m.toFixed(2)).join(' '))
+    expect(Math.min(...runs)).toBeLessThan(BOUND_MS)
+  })
+
+  it(`a verdict run over ~2,000 staker-day rows stays under ${BOUND_MS} ms`, async () => {
+    const runs: number[] = []
+    for (let i = 0; i < 5; i++) {
+      const s = await scenario()
+      const { r, ms } = await s.run('verdict')
+      expect(r.job).toBe('verdict')
+      expect(r.verdicts!.computed).toBe(1)
+      expect(r.tick).toBeNull()
+      runs.push(ms)
+    }
+    console.log('verdict run CPU ms (first, then repeats):', runs.map((m) => m.toFixed(2)).join(' '))
     expect(Math.min(...runs)).toBeLessThan(BOUND_MS)
   })
 

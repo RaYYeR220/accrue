@@ -4,7 +4,8 @@ compatibility_date = "2026-09-01"
 compatibility_flags = ["nodejs_compat"]
 
 [triggers]
-crons = ["*/5 * * * *"]
+# every minute, one small job per run (see src/scheduled.ts): the free plan allows 10 ms of CPU each
+crons = ["* * * * *"]
 
 [vars]
 NIM_RPCS = "https://rpc.nimiqwatch.com"

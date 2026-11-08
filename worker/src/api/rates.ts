@@ -80,13 +80,19 @@ async function fromGateKraken(now: number): Promise<PricePart> {
 }
 
 // Keyless price APIs throttle Cloudflare's shared egress addresses now and then (CoinGecko 429,
-// CoinPaprika 402, seen live), each at different times; the first that answers wins.
-const PRICE_SOURCES = [fromCoinGecko, fromCoinPaprika, fromGateKraken]
+// CoinPaprika 402, seen live), each at different times; the first that answers wins. The one that
+// gave the last good price is asked first, so a source that keeps refusing costs nothing.
+const PRICE_SOURCES: [string, (now: number) => Promise<PricePart>][] = [
+  ['CoinGecko', fromCoinGecko],
+  ['CoinPaprika', fromCoinPaprika],
+  ['Gate.io+Kraken', fromGateKraken],
+]
 
-/** NIM (and USDT) in USD from the first source that answers. */
-async function fetchPrice(now: number): Promise<PricePart> {
+/** NIM (and USDT) in USD from the first source that answers, `first` (a source name) tried before the others. */
+async function fetchPrice(now: number, first?: string): Promise<PricePart> {
   const failures: string[] = []
-  for (const source of PRICE_SOURCES) {
+  const order = [...PRICE_SOURCES].sort(([a], [b]) => Number(b === first) - Number(a === first))
+  for (const [, source] of order) {
     try {
       return await source(now)
     } catch (e) {
@@ -105,7 +111,7 @@ async function fetchFx(now: number): Promise<FxPart> {
   return { asOf: now, fx, source: 'open.er-api.com' }
 }
 
-const FETCH: Record<Kind, (now: number) => Promise<PricePart | FxPart>> = { price: fetchPrice, fx: fetchFx }
+const FETCH: Record<Kind, (now: number, first?: string) => Promise<PricePart | FxPart>> = { price: fetchPrice, fx: fetchFx }
 
 function parsePart(k: Kind, raw: string | null | undefined): PricePart | FxPart | undefined {
   if (!raw) return undefined
@@ -181,7 +187,7 @@ async function resolvePart(k: Kind, now: number, lastGood: () => Promise<Parts>,
   }
   if (!(await cacheGet(failKey(k), RETRY_MS, now))) {
     try {
-      const part = await FETCH[k](now)
+      const part = await FETCH[k](now, stored?.source)
       await cachePut(memoKey(k), JSON.stringify(part), LAST_GOOD_MS, now)
       Object.assign(fetched, { [k]: part })
       return { part, stale: false }
@@ -242,7 +248,7 @@ export async function warmRates(env: Pick<Env, 'DB'>, now = Date.now()): Promise
       const have = stored[k]
       if (have && now - have.asOf < REWARM_MS && now >= have.asOf) return
       try {
-        const part = await FETCH[k](now)
+        const part = await FETCH[k](now, have?.source)
         Object.assign(fetched, { [k]: part })
         out[k] = part.source
       } catch (e) {
