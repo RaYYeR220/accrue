@@ -29,6 +29,8 @@ const COINGECKO = 'https://api.coingecko.com/api/v3/simple/price?ids=nimiq-2,tet
 const ER_API = 'https://open.er-api.com/v6/latest/USD'
 const PAPRIKA_NIM = 'https://api.coinpaprika.com/v1/tickers/nim-nimiq?quotes=USD'
 const PAPRIKA_USDT = 'https://api.coinpaprika.com/v1/tickers/usdt-tether?quotes=USD'
+const GATE = 'https://api.gateio.ws/api/v4/spot/tickers?currency_pair=NIM_USDT'
+const KRAKEN = 'https://api.kraken.com/0/public/Ticker?pair=USDTZUSD'
 
 const env = (DB: unknown, over: Record<string, unknown> = {}) =>
   ({ DB, NIM_RPCS: 'https://nim.test', POLYGON_RPCS: 'https://polygon.test', RELAYER_ADDRESS: '', RELAYER: null, ...over }) as never
@@ -50,6 +52,8 @@ describe('GET /api/rates', () => {
   let coingecko: () => Response
   let paprika: () => Response
   let paprikaUsdt: () => Response
+  let gate: () => Response
+  let kraken: () => Response
   let erApi: () => Response
   const calls: string[] = []
   const edge = new Map<string, Response>()
@@ -62,6 +66,9 @@ describe('GET /api/rates', () => {
     coingecko = () => Response.json({ 'nimiq-2': { usd: 0.00027882 }, tether: { usd: 1.0002 } })
     paprika = () => Response.json({ id: 'nim-nimiq', symbol: 'NIM', last_updated: '2026-11-08T11:58:15Z', quotes: { USD: { price: 0.0002626 } } })
     paprikaUsdt = () => Response.json({ id: 'usdt-tether', symbol: 'USDT', last_updated: '2026-11-08T11:59:13Z', quotes: { USD: { price: 0.9988 } } })
+    // the third source is down unless a test says otherwise
+    gate = () => new Response('', { status: 503 })
+    kraken = () => new Response('', { status: 503 })
     erApi = () => Response.json({ result: 'success', time_last_update_unix: 1794096001, rates: { USD: 1, EUR: 0.8613, CRC: 502.27, GMD: 72.5, JPY: 150 } })
     vi.stubGlobal(
       'fetch',
@@ -74,6 +81,8 @@ describe('GET /api/rates', () => {
         if (url === COINGECKO) return coingecko()
         if (url === PAPRIKA_NIM) return paprika()
         if (url === PAPRIKA_USDT) return paprikaUsdt()
+        if (url === GATE) return gate()
+        if (url === KRAKEN) return kraken()
         if (url === ER_API) return erApi()
         throw new Error(`unexpected ${url}`)
       }),
@@ -228,6 +237,27 @@ describe('GET /api/rates', () => {
     vi.setSystemTime(T0 + 21 * 60_000 + 1)
     await getJson('/api/rates', env(db))
     expect(calls.filter((u) => u === COINGECKO)).toHaveLength(2)
+  })
+
+  it('with CoinGecko and CoinPaprika both refusing, NIM/USDT from Gate.io times USDT/USD from Kraken', async () => {
+    coingecko = () => new Response('Throttled', { status: 429 })
+    paprika = () => new Response('', { status: 402 })
+    gate = () => Response.json([{ currency_pair: 'NIM_USDT', last: '0.000262', lowest_ask: '0.0002672', highest_bid: '0.0002622' }])
+    kraken = () => Response.json({ error: [], result: { USDTZUSD: { a: ['0.99856000'], b: ['0.99855000'], c: ['0.99856000', '18.3'] } } })
+    const r = await getJson('/api/rates', env(new FakeD1()))
+    expect(r.status).toBe(200)
+    expect(r.body.nimUsd).toBeCloseTo(0.000262 * 0.99856, 12)
+    expect(r.body.usdtUsd).toBe(0.99856)
+    expect(r.body.source).toEqual(['Gate.io+Kraken', 'open.er-api.com'])
+  })
+
+  it('a NIM/USDT price alone is not a USD price: without USDT/USD there is no third source', async () => {
+    coingecko = () => new Response('', { status: 429 })
+    paprika = () => new Response('', { status: 402 })
+    gate = () => Response.json([{ currency_pair: 'NIM_USDT', last: '0.000262' }])
+    kraken = () => Response.json({ error: ['EGeneral:Too many requests'] })
+    const r = await getJson('/api/rates', env(new FakeD1()))
+    expect(r.status).toBe(503)
   })
 
   it('the cron reports what it did with the rates', async () => {

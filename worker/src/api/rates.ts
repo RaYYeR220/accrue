@@ -7,6 +7,8 @@ import { cacheGet, cachePut } from './cache'
 export const PRICE_URL = 'https://api.coingecko.com/api/v3/simple/price?ids=nimiq-2,tether&vs_currencies=usd'
 export const PAPRIKA_NIM_URL = 'https://api.coinpaprika.com/v1/tickers/nim-nimiq?quotes=USD'
 export const PAPRIKA_USDT_URL = 'https://api.coinpaprika.com/v1/tickers/usdt-tether?quotes=USD'
+export const GATE_NIM_URL = 'https://api.gateio.ws/api/v4/spot/tickers?currency_pair=NIM_USDT'
+export const KRAKEN_USDT_URL = 'https://api.kraken.com/0/public/Ticker?pair=USDTZUSD'
 export const FX_URL = 'https://open.er-api.com/v6/latest/USD'
 // a copy this young is answered without asking anyone (the cron refreshes D1 every 5 minutes)
 const CURRENT_MS = 10 * 60_000
@@ -65,17 +67,33 @@ async function fromCoinPaprika(now: number): Promise<PricePart> {
   return { asOf: now, nimUsd, ...(positive(usdtUsd) ? { usdtUsd } : {}), source: 'CoinPaprika' }
 }
 
-/** NIM (and USDT) in USD: CoinGecko, or CoinPaprika when CoinGecko does not answer (it refuses some Cloudflare egress). */
+const decimal = (v: unknown) => (typeof v === 'string' && /^\d+(\.\d+)?$/.test(v) ? Number(v) : NaN)
+
+// NIM trades against USDT, not USD: the USD price is Gate.io's last NIM/USDT trade times Kraken's
+// last USDT/USD trade, and without the second there is no USD price at all
+async function fromGateKraken(now: number): Promise<PricePart> {
+  const [gate, kraken] = await Promise.all([getJson(GATE_NIM_URL), getJson(KRAKEN_USDT_URL)])
+  const nimUsdt = decimal((gate as { last?: unknown }[] | null)?.[0]?.last)
+  const usdtUsd = decimal((kraken as { result?: { USDTZUSD?: { c?: unknown[] } } } | null)?.result?.USDTZUSD?.c?.[0])
+  if (!positive(nimUsdt) || !positive(usdtUsd)) throw new Error('Gate.io/Kraken: no NIM/USDT or USDT/USD')
+  return { asOf: now, nimUsd: nimUsdt * usdtUsd, usdtUsd, source: 'Gate.io+Kraken' }
+}
+
+// Keyless price APIs throttle Cloudflare's shared egress addresses now and then (CoinGecko 429,
+// CoinPaprika 402, seen live), each at different times; the first that answers wins.
+const PRICE_SOURCES = [fromCoinGecko, fromCoinPaprika, fromGateKraken]
+
+/** NIM (and USDT) in USD from the first source that answers. */
 async function fetchPrice(now: number): Promise<PricePart> {
-  try {
-    return await fromCoinGecko(now)
-  } catch (first) {
+  const failures: string[] = []
+  for (const source of PRICE_SOURCES) {
     try {
-      return await fromCoinPaprika(now)
-    } catch (second) {
-      throw new Error(`${msg(first)}; ${msg(second)}`)
+      return await source(now)
+    } catch (e) {
+      failures.push(msg(e))
     }
   }
+  throw new Error(failures.join('; '))
 }
 
 async function fetchFx(now: number): Promise<FxPart> {
@@ -180,7 +198,7 @@ async function resolvePart(k: Kind, now: number, lastGood: () => Promise<Parts>,
 
 export const rates = new Hono<{ Bindings: Env }>()
 
-// NIM in USD (CoinGecko, else CoinPaprika) and USD in EUR/CRC/GMD (open.er-api.com). The cron keeps
+// NIM in USD (CoinGecko, else CoinPaprika, else Gate.io with Kraken) and USD in EUR/CRC/GMD (open.er-api.com). The cron keeps
 // the last good copy of each in D1, so a request rarely asks upstream. When the sources fail, the
 // last good copy (at most a day old) is served with its own asOf and `stale: true`. A rate no source
 // gave is left out, never filled in: the app then shows USD. Without any NIM price there is nothing
