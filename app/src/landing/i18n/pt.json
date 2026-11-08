@@ -124,7 +124,7 @@
   "landing.checker.position.note": "Lido da Polygon agora mesmo. O rendimento varia.",
   "landing.board.title": "Todos os {n} pools listados",
   "landing.board.live": "Do indexador do Accrue, {date} · janela de {days} dias · por stake",
-  "landing.board.snapshot": "Dados dos pools publicados em {date} · por stake",
+  "landing.board.snapshot": "Dados dos pools da API de validadores da Nimiq, em {date} · por stake",
   "landing.board.scroll": "Tabela de pools",
   "landing.board.col.pool": "Pool",
   "landing.board.col.fee": "Taxa",

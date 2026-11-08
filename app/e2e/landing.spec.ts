@@ -50,7 +50,7 @@ test.describe('landing outside Nimiq Pay', () => {
     await page.goto('/')
     const board = page.locator('.board')
     await expect(board).toHaveAttribute('data-source', 'snapshot')
-    await expect(board).toContainText('Pool facts as published on Nov 7, 2026')
+    await expect(board).toContainText('Pool facts from the Nimiq validators API as of Nov 7, 2026')
     await expect(board.locator('tbody tr')).toHaveCount(21)
     await expect(board.getByText('Not enough data yet')).toHaveCount(21)
     await expect(board.locator('.vd-btn')).toHaveCount(0)

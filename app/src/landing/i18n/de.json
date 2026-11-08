@@ -124,7 +124,7 @@
   "landing.checker.position.note": "Gerade eben von Polygon gelesen. Der Zinssatz schwankt.",
   "landing.board.title": "Alle {n} gelisteten Pools",
   "landing.board.live": "Vom Accrue-Indexer, {date} · {days}-Tage-Fenster · nach Stake sortiert",
-  "landing.board.snapshot": "Pool-Angaben wie am {date} veröffentlicht · nach Stake sortiert",
+  "landing.board.snapshot": "Pool-Angaben aus der Nimiq-Validators-API, Stand {date} · nach Stake sortiert",
   "landing.board.scroll": "Pool-Übersicht",
   "landing.board.col.pool": "Pool",
   "landing.board.col.fee": "Gebühr",

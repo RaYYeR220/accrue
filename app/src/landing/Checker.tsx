@@ -151,7 +151,7 @@ export function Checker({ poolCount }: { poolCount: number }) {
           type="text"
           inputMode="text"
           autoComplete="off"
-          autoCapitalize="characters"
+          autoCapitalize="none"
           spellCheck={false}
           placeholder={t('landing.checker.placeholder')}
           value={value}

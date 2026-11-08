@@ -29,6 +29,11 @@ describe('classifyQuery', () => {
     expect(classifyQuery(` ${EVM} `)).toEqual({ kind: 'evm', address: EVM })
   })
 
+  it('treats an all-uppercase 0x address (a phone keyboard in caps) as unchecksummed', () => {
+    expect(classifyQuery(EVM.toUpperCase())).toEqual({ kind: 'evm', address: EVM })
+    expect(classifyQuery(`0x${EVM.slice(2).toUpperCase()}`)).toEqual({ kind: 'evm', address: EVM })
+  })
+
   it('rejects a mixed-case 0x address whose checksum is wrong', () => {
     const broken = EVM.slice(0, -1) + 'f'
     expect(classifyQuery(broken)).toEqual({ kind: 'invalid', reason: 'evmChecksum' })

@@ -124,7 +124,7 @@
   "landing.checker.position.note": "Read from Polygon just now. The rate varies.",
   "landing.board.title": "All {n} listed pools",
   "landing.board.live": "From the Accrue indexer, {date} · {days}-day window · sorted by stake",
-  "landing.board.snapshot": "Pool facts as published on {date} · sorted by stake",
+  "landing.board.snapshot": "Pool facts from the Nimiq validators API as of {date} · sorted by stake",
   "landing.board.scroll": "Pool scoreboard",
   "landing.board.col.pool": "Pool",
   "landing.board.col.fee": "Fee",

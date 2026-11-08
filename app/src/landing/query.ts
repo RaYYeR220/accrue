@@ -23,8 +23,10 @@ export function classifyQuery(raw: string): Query {
     return isValidNimAddress(compact) ? { kind: 'nim', address: formatNimAddress(compact) } : { kind: 'invalid', reason: 'nimChecksum' }
   }
   if (/^0x/i.test(s)) {
-    if (!EVM_SHAPE.test(s)) return { kind: 'invalid', reason: 'evmFormat' }
-    return isAddress(s) ? { kind: 'evm', address: getAddress(s) } : { kind: 'invalid', reason: 'evmChecksum' }
+    // all caps carries no checksum (EIP-55 is mixed case), like all lower case
+    const hex = /^0X[0-9A-F]{40}$/i.test(s) && s.slice(2) === s.slice(2).toUpperCase() ? `0x${s.slice(2).toLowerCase()}` : s
+    if (!EVM_SHAPE.test(hex)) return { kind: 'invalid', reason: 'evmFormat' }
+    return isAddress(hex) ? { kind: 'evm', address: getAddress(hex) } : { kind: 'invalid', reason: 'evmChecksum' }
   }
   return { kind: 'invalid', reason: 'unknown' }
 }
