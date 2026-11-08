@@ -1,8 +1,8 @@
 {
   "source": "pools",
   "url": "https://accrue.pages.dev/api/pools",
-  "fetchedAt": "2026-11-08T08:39:30.963Z",
-  "asOf": 1794127024441,
+  "fetchedAt": "2026-11-08T08:49:49.718Z",
+  "asOf": 1794127744635,
   "windowDays": 7,
   "pools": [
     {
@@ -13,13 +13,12 @@
       "schedule": "Every minute",
       "stakers": 415,
       "verdict": "PAID_AS_PROMISED",
-      "ratio": 0.957964,
+      "ratio": 0.957586,
       "expectedRatio": 0.95,
       "lastPayoutTs": 1794123712150,
       "reachTs": 1794123949176,
       "reasons": [
-        "Paid 95.8% of earnings against 95.0% promised.",
-        "The indexer is still catching up on recent transactions of this pool; the window uses the part it has."
+        "Paid 95.8% of earnings against 95.0% promised."
       ]
     },
     {
@@ -63,13 +62,12 @@
       "schedule": "Every 3 hours",
       "stakers": 217,
       "verdict": "PAID_AS_PROMISED",
-      "ratio": 0.949606,
+      "ratio": 0.949648,
       "expectedRatio": 0.95,
       "lastPayoutTs": 1794120135205,
       "reachTs": 1794123471069,
       "reasons": [
-        "Paid 95.0% of earnings against 95.0% promised.",
-        "The indexer is still catching up on recent transactions of this pool; the window uses the part it has."
+        "Paid 95.0% of earnings against 95.0% promised."
       ]
     },
     {
@@ -80,13 +78,12 @@
       "schedule": "Every 3 hours",
       "stakers": 104,
       "verdict": "PAID_AS_PROMISED",
-      "ratio": 0.973069,
+      "ratio": 0.973042,
       "expectedRatio": 0.97,
       "lastPayoutTs": 1794122962684,
       "reachTs": 1794123231971,
       "reasons": [
-        "Paid 97.3% of earnings against 97.0% promised.",
-        "The indexer is still catching up on recent transactions of this pool; the window uses the part it has."
+        "Paid 97.3% of earnings against 97.0% promised."
       ]
     },
     {
