@@ -8,6 +8,8 @@ export interface Env {
   RELAYER_ADDRESS: string
   /** Router override; empty falls back to the deployed address in @accrue/shared. */
   ROUTER_ADDRESS?: string
+  /** Block the overriding ROUTER_ADDRESS was deployed in; its Supplied/Withdrawn logs are read from there. */
+  ROUTER_DEPLOY_BLOCK?: string
   /** Secret (wrangler secret / .dev.vars). The relayer's hot key. */
   RELAYER_KEY?: string
 }
