@@ -5,7 +5,7 @@ import { reduce, type ActionEvent, type ActionState, type Draft, type FlowEvent,
 import { toUiError, type UiError } from '../../providers/errors'
 import { evm } from '../../providers/evm'
 import { deposit } from './deposit'
-import { follow, type FlowOpts } from './flow'
+import { follow, report, type FlowOpts } from './flow'
 import { withdraw } from './withdraw'
 
 export interface DollarAction {
@@ -129,10 +129,17 @@ export function createDollarAction(): DollarAction {
 
     attach(jobId) {
       const job = getLocal(jobId)
-      if (!job || isFinal(job.status)) return
-      const ev: ActionEvent =
-        job.status === 'sent' ? { type: 'ATTACH', jobId, lost: true } : { type: 'ATTACH', jobId, ...(job.txHash ? { txHash: job.txHash } : {}) }
-      if (!apply(ev)) return
+      if (!job) return
+      const tx = job.txHash ? { txHash: job.txHash } : {}
+      // finished just before the tap: show how it ended
+      if (isFinal(job.status)) {
+        if (apply({ type: 'ATTACH', jobId, ...tx })) report(job, apply)
+        return
+      }
+      const ev: ActionEvent = job.status === 'sent' ? { type: 'ATTACH', jobId, lost: true } : { type: 'ATTACH', jobId, ...tx }
+      // already showing this job, but its follower was stopped (a sheet mounted twice): follow again
+      const showing = (state.s === 'submitted' || state.s === 'unknown') && state.jobId?.toLowerCase() === jobId.toLowerCase()
+      if (!apply(ev) && !(showing && (!run || run.signal.aborted))) return
       const { signal, emit } = begin()
       void follow(jobId, emit, signal)
     },
