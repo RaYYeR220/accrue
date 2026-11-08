@@ -13,9 +13,11 @@ import { FakeD1 } from './d1'
 // the direct measure, but on Windows it moves in 15.6 ms steps. Bounds are generous: they catch a run
 // that goes back to doing several jobs or pages at once, not noise.
 //
-// Node -> workerd: the free plan's 10 ms is workerd CPU. The same scan run measured here at ~2-4 ms
-// (cold, first run in the process) costs a few times that on Cloudflare (see task-15b-report.md for
-// the measured factor), so a Node bound of 6 ms is the line a run must stay well under.
+// Node -> workerd: the free plan's 10 ms is workerd CPU, and Cloudflare runs each cron invocation on
+// an isolate that has rarely run the indexer's code before. Measured with `wrangler tail` on Nov 8,
+// 2026, a scan run that takes 2-3 ms here took 9-23 ms there, a verdict run (1-5 ms here) 8-17 ms, the
+// pool sync (~3 ms here) ~16 ms: a factor of 3 to 7. So this test only guards against regressions
+// (a run doing several jobs or pages again); the cron's real budget is read from the tail.
 
 const garuda = load('garuda-2026-11-07.json')
 const POOL = garuda.address
