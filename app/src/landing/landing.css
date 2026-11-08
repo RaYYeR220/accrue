@@ -1326,6 +1326,9 @@
   .checker-form {
     flex-direction: column;
   }
+  .checker-form .field {
+    flex: none;
+  }
   .checker-error {
     margin-top: 0;
     padding-left: 0;
