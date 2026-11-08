@@ -6,7 +6,7 @@ import type { TxOutcome } from '../features/nim/useNim'
 import { t } from '../i18n'
 import { nimTxUrl, type NimKind } from '../model/activity'
 import { parseAmount, plainUnits } from '../model/amount'
-import { clearSwitchTarget, loadSwitchTarget, saveSwitchTarget } from '../model/switchTarget'
+import { clearSwitchTarget, loadSwitchTarget, stopForSwitch } from '../model/switchTarget'
 import { rankPools } from '../model/pools'
 import { Button, Chip, Sheet } from '../ui/components'
 import { AmountField, ExtLink, Facts, Notice, Spinner, Steps, type StepItem } from '../ui/components/Fields'
@@ -242,11 +242,11 @@ export function NimSheet({ spec, onClose }: { spec: NimSpec; onClose: () => void
         <Button
           block
           disabled={!chosen || busy}
-          onClick={() => {
-            // remembered for the move, which is only possible after the wait
-            if (chosen && wallet) saveSwitchTarget(wallet, chosen.address)
-            void go('deactivate', staker?.activeLuna ?? 0n, () => nim.deactivateAll())
-          }}
+          onClick={() =>
+            chosen &&
+            // remembered for the move after the wait, but only once the stop went through
+            void go('deactivate', staker?.activeLuna ?? 0n, () => stopForSwitch(() => nim.deactivateAll(), wallet, chosen.address))
+          }
         >
           {busy && <Spinner />}
           {t('stake.sw.stopDo', { amount: nimExact(staker?.activeLuna ?? 0n) })}

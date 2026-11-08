@@ -74,6 +74,21 @@ test.describe('NIM staking', () => {
     await expect(sheet(page, 'Switch pool').getByRole('radio', { name: /Harbor Pool/ })).toBeChecked()
   })
 
+  test('a declined stop does not leave a switch behind: the screen stays as it was', async ({ page }) => {
+    await start(page, 'reject-sign')
+    await tab(page, 'NIM')
+    await page.getByRole('button', { name: 'Switch pool' }).click()
+    const d = sheet(page, 'Switch pool')
+    await d.getByRole('radio', { name: /Harbor Pool/ }).check()
+    await d.getByRole('button', { name: 'Stop staking 1,000 NIM' }).click()
+    await expect(d.getByText('You cancelled in your wallet. Nothing was sent.')).toBeVisible()
+    await d.getByRole('button', { name: 'Close' }).click()
+    await page.reload()
+    await page.getByRole('button', { name: 'Show my NIM' }).first().click()
+    await expect(page.getByText('Siam Pool').first()).toBeVisible()
+    await expect(page.getByRole('region', { name: /^Switching to/ })).toHaveCount(0)
+  })
+
   test('testnet: a Testnet badge on NIM screens, pools from the testnet validators API, dollars said to stay on mainnet', async ({ page }) => {
     await start(page, 'testnet')
     await expect(page.getByRole('banner').getByText('Testnet')).toBeVisible()

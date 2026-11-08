@@ -60,6 +60,10 @@ describe('in-app dictionaries', () => {
     for (const v of ['contract', 'rate', 'exit', 'unstake', 'pools']) expect(known).toHaveProperty([`about.risk.${v}.body`])
   })
 
+  it('values formatted as a percent bring their own sign, so the copy around them adds none', () => {
+    for (const lang of LANGS) expect(dicts[lang]!['home.apy'], lang).not.toMatch(/%/)
+  })
+
   it('do not collide with the main or the landing dictionary', () => {
     expect(Object.keys(en).filter(k => k in mainEn || k in landingEn)).toEqual([])
   })

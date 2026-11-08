@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { heroView, side } from '../src/model/hero'
 import { idleOffers } from '../src/model/idle'
-import { clearSwitchTarget, loadSwitchTarget, saveSwitchTarget, SWITCH_KEY } from '../src/model/switchTarget'
+import { clearSwitchTarget, loadSwitchTarget, saveSwitchTarget, stopForSwitch, SWITCH_KEY } from '../src/model/switchTarget'
 
 const USD = 1_000_000n
 const NIM = 100_000n
@@ -73,6 +73,16 @@ describe('the pool a switch is heading to survives the wait', () => {
     expect(loadSwitchTarget('NQ03 NARB 5CMJ NARB 5CMJ NARB 5CMJ NARB 5CMJ')).toBeNull()
     clearSwitchTarget(WALLET)
     expect(loadSwitchTarget(WALLET)).toBeNull()
+  })
+
+  it('is remembered only once the stop went through: a declined or failed stop leaves nothing behind', async () => {
+    await expect(stopForSwitch(() => Promise.reject(new Error('User rejected')), WALLET, HARBOR)).rejects.toThrow()
+    expect(loadSwitchTarget(WALLET)).toBeNull()
+    expect(await stopForSwitch(async () => null, WALLET, HARBOR)).toBeNull()
+    expect(loadSwitchTarget(WALLET)).toBeNull()
+    const out = { hash: 'ab', status: 'confirmed' as const }
+    expect(await stopForSwitch(async () => out, WALLET, HARBOR)).toBe(out)
+    expect(loadSwitchTarget(WALLET)).toBe(HARBOR)
   })
 
   it('ignores junk in storage', () => {

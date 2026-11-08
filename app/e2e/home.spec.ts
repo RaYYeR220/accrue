@@ -22,6 +22,18 @@ test.describe('Home', () => {
     await expect(hero(page).getByText(/\$100\.\d+/).first()).toBeVisible()
   })
 
+  test('the APY reads as one percent, in English and in German', async ({ page }) => {
+    await start(page, 'happy')
+    await tab(page, 'Dollars')
+    await connectPolygon(page)
+    await tab(page, 'Home')
+    const dollars = page.getByRole('main').getByText(/APY$/).first()
+    await expect(dollars).toHaveText('3.66% APY')
+
+    await page.goto('/?mock=happy&delay=30&lang=de#')
+    await expect(page.getByRole('main').getByText(/APY$/).first()).toHaveText(/^3,66\s%\sAPY$/)
+  })
+
   test('nothing known yet is a dash, not $0.00', async ({ page }) => {
     // no price source: a NIM-only staker has nothing that can be added up
     await start(page, 'happy', '&rates=down')

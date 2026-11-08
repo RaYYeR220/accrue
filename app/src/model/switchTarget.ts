@@ -36,3 +36,11 @@ export function clearSwitchTarget(wallet: string): void {
   delete all[normalizeAddress(wallet)]
   write(all)
 }
+
+// The stop that starts a switch: the pool is remembered only once the stop went through, so a
+// declined or failed stop never leaves a switch behind to mislabel a later unstake.
+export async function stopForSwitch<T>(stop: () => Promise<T | null>, wallet: string | null, pool: string): Promise<T | null> {
+  const out = await stop()
+  if (out !== null && wallet) saveSwitchTarget(wallet, pool)
+  return out
+}
