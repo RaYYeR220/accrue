@@ -10,17 +10,19 @@
 //   node scripts/collect-results.mjs --origin http://127.0.0.1:8787
 //
 // Sources: forge (contract tests), coverage (forge coverage), shared / worker / app (vitest),
-// e2e (Playwright), pools (GET <origin>/api/pools), polygon (receipts of the transactions recorded in
-// contracts/deployments/polygon.json for the router in packages/shared/src/deployments.json).
-// The contract suites fork Polygon at a pinned block and need an archive RPC: POLYGON_RPC, default
-// https://polygon.drpc.org. A source that fails or cannot run keeps its previous results file and
-// makes the script exit 1.
+// e2e (Playwright), pools (GET <origin>/api/pools), polygon (the router in
+// packages/shared/src/deployments.json and the transactions in contracts/deployments/polygon.json, read
+// back from the chain; see scripts/lib/deployment.mjs). The contract suites fork Polygon at a pinned
+// block and need an archive RPC: forge gets POLYGON_RPC, or https://polygon.drpc.org when it is unset;
+// the polygon source reads from POLYGON_RPC, or from the list in scripts/lib/deployment.mjs.
+// A source that fails or cannot run keeps its previous results file and makes the script exit 1.
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { SOURCIFY_VERIFIED, loadViem, maskedCode, polygon, readDeployment, readTx, routerArtifact, routerWiring, same, sourcifyMatch } from './lib/deployment.mjs'
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)))
 const RESULTS = join(ROOT, 'results')
@@ -42,8 +44,8 @@ for (const s of [...only, ...skip]) {
   }
 }
 const ORIGIN = (opt('origin') ?? process.env.ACCRUE_ORIGIN ?? 'https://accrue.pages.dev').replace(/\/+$/, '')
-const POLYGON_RPC = process.env.POLYGON_RPC || 'https://polygon.drpc.org'
-const POLYGON_READ_RPCS = process.env.POLYGON_RPC ? [process.env.POLYGON_RPC] : ['https://polygon-bor-rpc.publicnode.com', 'https://polygon.drpc.org']
+// the fork tests need an archive node
+const FORGE_RPC = process.env.POLYGON_RPC || 'https://polygon.drpc.org'
 const wanted = SOURCES.filter((s) => (only.length ? only.includes(s) : true) && !skip.includes(s))
 
 const scratch = mkdtempSync(join(tmpdir(), 'accrue-results-'))
@@ -88,7 +90,7 @@ function write(name, data) {
 // forge test
 
 function forge() {
-  const r = run('forge', ['test', '--json'], { cwd: join(ROOT, 'contracts'), env: { POLYGON_RPC } })
+  const r = run('forge', ['test', '--json'], { cwd: join(ROOT, 'contracts'), env: { POLYGON_RPC: FORGE_RPC } })
   let report
   try {
     report = JSON.parse(r.stdout.slice(r.stdout.indexOf('{')))
@@ -139,7 +141,7 @@ function forge() {
 // forge coverage
 
 function coverage() {
-  const r = run('forge', ['coverage', '--report', 'summary'], { cwd: join(ROOT, 'contracts'), env: { POLYGON_RPC } })
+  const r = run('forge', ['coverage', '--report', 'summary'], { cwd: join(ROOT, 'contracts'), env: { POLYGON_RPC: FORGE_RPC } })
   const files = []
   for (const line of r.stdout.split(/\r?\n/)) {
     const cells = line.split('|').map((c) => c.trim()).filter((c, i, a) => i > 0 && i < a.length - 1)
@@ -294,117 +296,61 @@ async function pools() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// router transactions on Polygon
+// the router on Polygon
 
-async function polygonRpc(method, params) {
-  let last
-  for (const url of POLYGON_READ_RPCS) {
-    try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
-        signal: AbortSignal.timeout(20_000),
-      })
-      const body = await res.json()
-      if (body.error) throw new Error(body.error.message)
-      return body.result
-    } catch (e) {
-      last = e
-    }
-  }
-  throw last
-}
-
-// topic0 of AccrueRouter's events
-const ROUTER_EVENTS = {
-  '0x2b650c94fbe31b46ae7946bf007a115a23c6e4532d75ad025261819304334598': 'Supplied',
-  '0x91fb9d98b786c57d74c099ccd2beca1739e9f6a81fb49001ca465c4b7591bbe2': 'Withdrawn',
-}
-
-function hashesIn(node, path = []) {
-  if (typeof node === 'string') return /^0x[0-9a-fA-F]{64}$/.test(node) ? [{ key: path.join('.'), hash: node }] : []
-  if (Array.isArray(node)) return node.flatMap((v, i) => hashesIn(v, [...path, v?.label ?? String(i)]))
-  if (node && typeof node === 'object') return Object.entries(node).flatMap(([k, v]) => (k === 'label' ? [] : hashesIn(v, [...path, k])))
-  return []
-}
-
-const AAVE_POOL = '0x794a61358d6845594f94dc1db02a252b5b4814ad'
-const RESERVES = { USDT0: '0xc2132d05d31c914a87c6611c10748aeb04b58e8f', USDC: '0x3c499c542cef5e3811e1192ce70d8cc03d5c3359' }
-const word = (addr) => addr.slice(2).toLowerCase().padStart(64, '0')
-const addrAt = (data, i) => `0x${data.slice(2 + i * 64 + 24, 2 + (i + 1) * 64)}`.toLowerCase()
-
-// What the docs may claim about a deployed router: its code is this repository's, it is wired to the
-// aTokens in Aave's registry, and its source is verified on Sourcify.
-async function routerFacts(router) {
-  const code = await polygonRpc('eth_getCode', [router, 'latest'])
-  let codeMatchesBuild = null
-  const artifact = join(ROOT, 'contracts/out/AccrueRouter.sol/AccrueRouter.json')
-  if (code && code !== '0x' && existsSync(artifact)) {
-    const built = JSON.parse(readFileSync(artifact, 'utf8')).deployedBytecode
-    const mask = (hex) => {
-      const b = Buffer.from(hex.replace(/^0x/, ''), 'hex')
-      for (const refs of Object.values(built.immutableReferences ?? {})) for (const { start, length } of refs) b.fill(0, start, start + length)
-      return b
-    }
-    codeMatchesBuild = mask(built.object).equals(mask(code))
-  }
+// What the docs may claim about the deployed router, read back from the chain: the code is this
+// repository's, it is wired to the aTokens in Aave's registry, its source is verified, and what each
+// recorded transaction did. The record format and the rules live in scripts/lib/deployment.mjs.
+async function polygonSource() {
+  const dep = readDeployment(ROOT)
+  const base = { source: 'polygon', fetchedAt: new Date().toISOString(), router: dep.router, deployBlock: dep.deployBlock, problems: dep.problems }
+  if (!dep.router || dep.problems.length) return { ...base, txs: [] }
+  const { keccak256, isAddress } = await loadViem(ROOT)
+  if (!isAddress(dep.router)) return { ...base, problems: [`deployments.json router ${dep.router} has a wrong checksum`], txs: [] }
+  const code = await polygon('eth_getCode', [dep.router, 'latest'])
+  const hasCode = Boolean(code && code !== '0x')
+  const built = routerArtifact(ROOT)
   let wired = false
   try {
-    wired = addrAt(await polygonRpc('eth_call', [{ to: router, data: '0x7535d246' }, 'latest']), 0) === AAVE_POOL // POOL()
-    for (const asset of Object.values(RESERVES)) {
-      const aToken = addrAt(await polygonRpc('eth_call', [{ to: router, data: `0x144f4dce${word(asset)}` }, 'latest']), 0) // aTokenOf(asset)
-      const registered = addrAt(await polygonRpc('eth_call', [{ to: AAVE_POOL, data: `0x35ea6a75${word(asset)}` }, 'latest']), 8) // getReserveData(asset).aTokenAddress
-      wired &&= aToken === registered
-    }
+    wired = hasCode && (await routerWiring(dep.router)).ok
   } catch (e) {
-    // a contract without these views is not wired as a router
+    // a contract without the router's views reverts: not wired as a router
     if (!/revert/i.test(e.message)) throw e
-    wired = false
   }
-  let sourcify = 'none'
-  const res = await fetch(`https://sourcify.dev/server/v2/contract/137/${router}`, { signal: AbortSignal.timeout(20_000) })
-  if (res.ok) sourcify = (await res.json()).match ?? 'none'
-  return { hasCode: Boolean(code && code !== '0x'), codeMatchesBuild, wiredToAaveRegistry: wired, sourcify }
-}
-
-async function polygon() {
-  const dep = JSON.parse(readFileSync(join(ROOT, 'packages/shared/src/deployments.json'), 'utf8'))
-  const recordPath = join(ROOT, 'contracts/deployments/polygon.json')
-  const base = { source: 'polygon', fetchedAt: new Date().toISOString(), router: dep.router ?? null, deployBlock: dep.deployBlock ?? null }
-  if (!dep.router) return { ...base, txs: [] }
-  base.facts = await routerFacts(dep.router)
-  if (!existsSync(recordPath)) return { ...base, txs: [] }
+  const sourcify = await sourcifyMatch(dep.router)
+  const facts = {
+    hasCode,
+    codeHash: hasCode ? keccak256(code) : null,
+    codeHashMatchesRecord: dep.codeHash && hasCode ? same(dep.codeHash, keccak256(code)) : null,
+    codeMatchesBuild: hasCode && built ? maskedCode(built.object, built.immutableReferences).equals(maskedCode(code, built.immutableReferences)) : null,
+    wiredToAaveRegistry: wired,
+    sourcify,
+    sourceVerified: SOURCIFY_VERIFIED.includes(sourcify),
+  }
   const txs = []
-  for (const { key, hash } of hashesIn(JSON.parse(readFileSync(recordPath, 'utf8')))) {
-    const receipt = await polygonRpc('eth_getTransactionReceipt', [hash])
-    if (!receipt) throw new Error(`no receipt for ${hash} (${key})`)
-    const block = await polygonRpc('eth_getBlockByNumber', [receipt.blockNumber, false])
-    const deployment = key === 'txHash'
-    const created = deployment && receipt.contractAddress?.toLowerCase() === dep.router.toLowerCase()
-    // Supplied / Withdrawn carry the owner as their first indexed topic
-    const events = receipt.logs
-      .filter((l) => l.address.toLowerCase() === dep.router.toLowerCase() && ROUTER_EVENTS[l.topics[0]])
-      .map((l) => ({ name: ROUTER_EVENTS[l.topics[0]], owner: `0x${l.topics[1].slice(26)}` }))
-    const sender = receipt.from.toLowerCase()
+  for (const tx of dep.txs) {
+    const t = await readTx(tx, dep.router)
+    if (!t.found) throw new Error(`no receipt for ${tx.hash} (${tx.label})`)
+    const by = (owner) => (same(owner, t.from) ? 'the owner' : `${t.from.slice(0, 8)}…`)
     txs.push({
-      label: deployment ? 'deployment' : key,
-      hash,
-      block: Number(BigInt(receipt.blockNumber)),
-      time: new Date(Number(BigInt(block.timestamp)) * 1000).toISOString().slice(0, 19).replace('T', ' '),
-      from: sender,
-      result:
-        receipt.status !== '0x1'
-          ? 'reverted'
-          : deployment
-            ? created ? 'created the router' : 'did not create the router'
-            : events.length
-              ? events.map((e) => `${e.name} for ${e.owner.slice(0, 8)}…, sent by ${e.owner === sender ? 'the owner' : `${sender.slice(0, 8)}…`}`).join('; ')
-              : 'no router event',
-      events,
+      label: tx.label,
+      deployment: tx.deployment,
+      hash: tx.hash,
+      block: t.block,
+      time: t.time,
+      from: t.from,
+      created: t.created,
+      events: t.events,
+      result: !t.ok
+        ? 'reverted'
+        : tx.deployment
+          ? same(t.created, dep.router) ? 'created the router' : 'did not create the router'
+          : t.events.length
+            ? t.events.map((e) => `${e.name} for ${e.owner.slice(0, 8)}…, sent by ${by(e.owner)}`).join('; ')
+            : 'no router event',
     })
   }
-  return { ...base, txs }
+  return { ...base, facts, txs }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -417,7 +363,7 @@ const jobs = {
   app: () => vitest('app', '@accrue/app'),
   e2e,
   pools,
-  polygon,
+  polygon: polygonSource,
 }
 
 let bad = 0
