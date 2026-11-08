@@ -31,34 +31,56 @@ function guardSql(g: Guard, pool: string): { sql: string; params: SqlValue[] } {
 
 const marks = (n: number) => Array(n).fill('?').join(', ')
 
+const HOUR_INSERT = 'INSERT INTO pool_hour (pool, hour, earned, paid_restake, paid_direct, paid_unverified, other_out, payout_batches, first_payout_ts, last_payout_ts) '
+const HOUR_MERGE =
+  'ON CONFLICT(pool, hour) DO UPDATE SET earned = earned + excluded.earned, paid_restake = paid_restake + excluded.paid_restake, ' +
+  'paid_direct = paid_direct + excluded.paid_direct, paid_unverified = paid_unverified + excluded.paid_unverified, ' +
+  'other_out = other_out + excluded.other_out, payout_batches = payout_batches + excluded.payout_batches, ' +
+  'first_payout_ts = CASE WHEN first_payout_ts IS NULL THEN excluded.first_payout_ts ' +
+  'WHEN excluded.first_payout_ts IS NULL THEN first_payout_ts ELSE MIN(first_payout_ts, excluded.first_payout_ts) END, ' +
+  'last_payout_ts = NULLIF(MAX(COALESCE(last_payout_ts, 0), COALESCE(excluded.last_payout_ts, 0)), 0)'
+const hourValues = (h: HourAgg): SqlValue[] => [
+  h.hour, num(h.earned), num(h.paidRestake), num(h.paidDirect), num(h.paidUnverified), num(h.otherOut), h.payoutBatches, h.firstPayoutTs, h.lastPayoutTs,
+]
+const DAY_INSERT = 'INSERT INTO staker_day (pool, staker, day, received, payouts) '
+const DAY_MERGE = 'ON CONFLICT(pool, staker, day) DO UPDATE SET received = received + excluded.received, payouts = payouts + excluded.payouts'
+const dayValues = (s: StakerDayAgg): SqlValue[] => [s.staker, s.day, num(s.received), s.payouts]
+
 export function hourUpsert(pool: string, h: HourAgg, g: Guard): Stmt {
   const w = guardSql(g, pool)
-  return {
-    sql:
-      'INSERT INTO pool_hour (pool, hour, earned, paid_restake, paid_direct, paid_unverified, other_out, payout_batches, first_payout_ts, last_payout_ts) ' +
-      `SELECT ${marks(10)} WHERE ${w.sql} ` +
-      'ON CONFLICT(pool, hour) DO UPDATE SET earned = earned + excluded.earned, paid_restake = paid_restake + excluded.paid_restake, ' +
-      'paid_direct = paid_direct + excluded.paid_direct, paid_unverified = paid_unverified + excluded.paid_unverified, ' +
-      'other_out = other_out + excluded.other_out, payout_batches = payout_batches + excluded.payout_batches, ' +
-      'first_payout_ts = CASE WHEN first_payout_ts IS NULL THEN excluded.first_payout_ts ' +
-      'WHEN excluded.first_payout_ts IS NULL THEN first_payout_ts ELSE MIN(first_payout_ts, excluded.first_payout_ts) END, ' +
-      'last_payout_ts = NULLIF(MAX(COALESCE(last_payout_ts, 0), COALESCE(excluded.last_payout_ts, 0)), 0)',
-    params: [
-      pool, h.hour, num(h.earned), num(h.paidRestake), num(h.paidDirect), num(h.paidUnverified), num(h.otherOut),
-      h.payoutBatches, h.firstPayoutTs, h.lastPayoutTs, ...w.params,
-    ],
-  }
+  return { sql: `${HOUR_INSERT}SELECT ${marks(10)} WHERE ${w.sql} ${HOUR_MERGE}`, params: [pool, ...hourValues(h), ...w.params] }
 }
 
 export function stakerDayUpsert(pool: string, s: StakerDayAgg, g: Guard): Stmt {
   const w = guardSql(g, pool)
-  return {
-    sql:
-      `INSERT INTO staker_day (pool, staker, day, received, payouts) SELECT ${marks(5)} WHERE ${w.sql} ` +
-      'ON CONFLICT(pool, staker, day) DO UPDATE SET received = received + excluded.received, payouts = payouts + excluded.payouts',
-    params: [pool, s.staker, s.day, num(s.received), s.payouts, ...w.params],
-  }
+  return { sql: `${DAY_INSERT}SELECT ${marks(5)} WHERE ${w.sql} ${DAY_MERGE}`, params: [pool, ...dayValues(s), ...w.params] }
 }
+
+// D1 binds at most 100 parameters per statement
+const MAX_PARAMS = 100
+
+/**
+ * The same upserts, many rows per statement: D1 work on Cloudflare (binding, the per-statement
+ * results) grows with the number of statements, and a payout run writes a row per staker.
+ */
+function manyRows<T>(pool: string, rows: readonly T[], g: Guard, insert: string, merge: string, cols: number, values: (r: T) => SqlValue[]): Stmt[] {
+  const w = guardSql(g, pool)
+  const per = Math.floor((MAX_PARAMS - 1 - w.params.length) / cols)
+  const out: Stmt[] = []
+  for (let i = 0; i < rows.length; i += per) {
+    const chunk = rows.slice(i, i + per)
+    const select = Array.from({ length: cols }, (_, k) => `column${k + 1}`).join(', ')
+    const tuples = chunk.map(() => `(${marks(cols)})`).join(', ')
+    out.push({
+      sql: `${insert}SELECT ?, ${select} FROM (VALUES ${tuples}) WHERE ${w.sql} ${merge}`,
+      params: [pool, ...chunk.flatMap(values), ...w.params],
+    })
+  }
+  return out
+}
+
+export const hourUpserts = (pool: string, hours: readonly HourAgg[], g: Guard) => manyRows(pool, hours, g, HOUR_INSERT, HOUR_MERGE, 9, hourValues)
+export const stakerDayUpserts = (pool: string, days: readonly StakerDayAgg[], g: Guard) => manyRows(pool, days, g, DAY_INSERT, DAY_MERGE, 4, dayValues)
 
 const CURSOR_COLS = [
   'newest_hash', 'newest_block', 'oldest_block', 'backfill_done', 'resume_hash', 'floor_block',

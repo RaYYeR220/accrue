@@ -3,7 +3,7 @@ import type { Env } from '../env'
 import { DAY_MS, HOUR_MS, aggregate, canonicalAddress, dayOf, delegationOracle, payoutRecipients } from './aggregate'
 import { cursorResetStatement, fetchValidators, poolStatements, rewardMissStatement, rewardStatement, scannable, type PoolRow } from './pools'
 import { Budget, BudgetExhausted, PAGE_SIZE, PAGE_TOKENS, rpcSource, scanPool, type Cursor, type NimSource } from './scan'
-import { bind, cursorWrite, delegationUpsert, hourUpsert, metaDelete, metaSet, stakerDayUpsert, type Guard, type Stmt } from './store'
+import { bind, cursorWrite, delegationUpsert, hourUpserts, metaDelete, metaSet, stakerDayUpserts, type Guard, type Stmt } from './store'
 
 export const SUBREQUEST_BUDGET = 25
 // the public RPC grants 20 tokens per 10 s per IP and a tick runs inside one window; keep slack
@@ -367,8 +367,7 @@ export async function runIndexerTick(
       // the slice continues from the head only when this tick started there
       const prev = v.fromHead ? (before?.lastPayoutBlock ?? null) : null
       const agg = aggregate(v.txs, { rewardAddress: v.pool.reward_address }, delegationOracle(delegations, v.pool.address), prev)
-      for (const h of agg.hours) scanWrites.push(hourUpsert(v.pool.address, h, g))
-      for (const s of agg.stakerDays) scanWrites.push(stakerDayUpsert(v.pool.address, s, g))
+      scanWrites.push(...hourUpserts(v.pool.address, agg.hours, g), ...stakerDayUpserts(v.pool.address, agg.stakerDays, g))
       const cursor = v.cursor!
       if (v.fromHead) cursor.lastPayoutBlock = agg.lastPayoutBlock
       scanWrites.push(cursorWrite(v.pool.address, cursor, g))

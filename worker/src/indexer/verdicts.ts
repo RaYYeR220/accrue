@@ -115,7 +115,7 @@ export function computeEntry(
   p: PoolMetaRow & { fee: number },
   c: CursorReachRow & { reach_ts: number },
   hours: PoolHourDb[],
-  days: { staker: string; day: number; payouts: number; received: number }[],
+  days: { staker: string; day: number; payouts: number; received: number | string }[],
 ): Omit<VerdictEntry, 'meta' | 'data' | 'at'> {
   const type = payoutTypeOf(p.payout_type)
   const scheduleMs = scheduleMsOf(p.schedule)
@@ -135,6 +135,19 @@ export function computeEntry(
     cycleMs,
     reachTs: c.reach_ts,
   }
+}
+
+/** Rows of the grouped staker_day read back as one row per staker and day (`d` = "day:payouts:received,..."). */
+export function ungroupDays(grouped: readonly { staker: string; d: string | null }[]) {
+  const out: { staker: string; day: number; payouts: number; received: string }[] = []
+  for (const g of grouped) {
+    if (!g.d) continue
+    for (const part of g.d.split(',')) {
+      const [day, payouts, received] = part.split(':')
+      out.push({ staker: g.staker, day: Number(day), payouts: Number(payouts), received: received! })
+    }
+  }
+  return out
 }
 
 export interface RefreshResult {
@@ -204,13 +217,17 @@ export async function refreshVerdicts(
             env.DB.prepare(
               'SELECT hour, earned, paid_restake, paid_direct, paid_unverified, other_out, payout_batches, first_payout_ts, last_payout_ts FROM pool_hour WHERE pool = ? AND hour >= ?',
             ).bind(p.address, Math.floor(fromTs / HOUR_MS)),
-            env.DB.prepare('SELECT staker, day, payouts, received FROM staker_day WHERE pool = ? AND day >= ?').bind(p.address, dayOf(fromTs)),
+            // one row per staker instead of one per staker and day: on Cloudflare, turning D1's answer into
+            // rows costs CPU per row (~2,000 day rows took 3-4 ms, ~250 grouped ones 1 ms)
+            env.DB.prepare(
+              "SELECT staker, group_concat(day || ':' || payouts || ':' || received) AS d FROM staker_day WHERE pool = ? AND day >= ? GROUP BY staker",
+            ).bind(p.address, dayOf(fromTs)),
           ]
         }),
       )
       pick.forEach(({ p, c, meta: mk, data: dk }, i) => {
         const hours = (reads[2 * i]?.results ?? []) as PoolHourDb[]
-        const days = (reads[2 * i + 1]?.results ?? []) as { staker: string; day: number; payouts: number; received: number }[]
+        const days = ungroupDays((reads[2 * i + 1]?.results ?? []) as { staker: string; d: string }[])
         next[p.address] = { ...computeEntry(p, c, hours, days), meta: mk, data: dk, at: now }
         out.computed.push(p.address)
         changed = true
