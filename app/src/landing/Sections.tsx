@@ -1,8 +1,10 @@
 import { POLYGON, VERDICTS } from '@accrue/shared'
 import { LANGS, currentLang, t, type Lang } from '../i18n'
 import { VerdictGlyph } from '../ui/components'
+import { Checker } from './Checker'
 import type { PoolsData } from './data'
 import { InlineQr, OpenLink, useDesktop } from './OpenInApp'
+import { Scoreboard } from './Scoreboard'
 
 export const REPO_URL = 'https://github.com/RaYYeR220/accrue'
 
@@ -34,7 +36,7 @@ export function Nav({ onShowQr }: { onShowQr: (from: HTMLElement) => void }) {
   )
 }
 
-export function PayoutCheck(_: { data: PoolsData; onShowPool: (address: string) => void }) {
+export function PayoutCheck({ data, onShowPool }: { data: PoolsData; onShowPool: (address: string) => void }) {
   return (
     <section className="section" id="check" aria-labelledby="check-title">
       <div className="wrap">
@@ -47,6 +49,8 @@ export function PayoutCheck(_: { data: PoolsData; onShowPool: (address: string) 
           </div>
           <p className="lede">{t('landing.check.lede')}</p>
         </div>
+
+        <Checker poolCount={data.pools.length} />
 
         <div className="er">
           <div className="er-col">
@@ -80,6 +84,8 @@ export function PayoutCheck(_: { data: PoolsData; onShowPool: (address: string) 
             </li>
           ))}
         </ul>
+
+        <Scoreboard data={data} onShowPool={onShowPool} />
       </div>
     </section>
   )
