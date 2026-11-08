@@ -99,6 +99,8 @@ export interface TickResult {
   synced: boolean
   /** txs the RPC returned this tick, the bulk of its CPU */
   txs: number
+  /** of those, the new ones folded into the aggregates */
+  folded: number
 }
 
 /**
@@ -126,6 +128,8 @@ export async function runIndexerTick(
     rpcTokens?: number
     /** txs the tick may ask the RPC for in all; head pages are then sized to what is waiting */
     maxTxs?: number
+    /** false: leave the hourly pool sync to a run of its own, even when it is due */
+    sync?: boolean
   },
   deps: TickDeps = {},
 ): Promise<TickResult> {
@@ -202,7 +206,7 @@ export async function runIndexerTick(
     // Pool metadata, hourly. The API inlines logos (up to ~360 kB each), so they are written once a
     // day or when missing, in their own batch; a sync tick also scans a single page to keep CPU low.
     let maxPages = budget.maxPages
-    if (now - syncedAt >= POOLS_SYNC_MS && b.can(2, reserve)) {
+    if (budget.sync !== false && now - syncedAt >= POOLS_SYNC_MS && b.can(2, reserve)) {
       b.take()
       try {
         const list = await fetchValidators(deps.fetch ?? fetch)
@@ -402,7 +406,7 @@ export async function runIndexerTick(
     } catch {
       // D1 itself is down; nothing left to record into
     }
-    return { poolsTouched: 0, pages, lagMinutes, synced, txs }
+    return { poolsTouched: 0, pages, lagMinutes, synced, txs, folded: 0 }
   }
-  return { poolsTouched, pages, lagMinutes, synced, txs }
+  return { poolsTouched, pages, lagMinutes, synced, txs, folded: visits.reduce((n, v) => n + v.txs.length, 0) }
 }

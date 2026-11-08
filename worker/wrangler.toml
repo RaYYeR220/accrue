@@ -4,7 +4,7 @@ compatibility_date = "2026-09-01"
 compatibility_flags = ["nodejs_compat"]
 
 [triggers]
-# every minute, one small job per run (see src/scheduled.ts): the free plan allows 10 ms of CPU each
+# every minute, one small job per run (see src/scheduled.ts and the CRON_* vars): the free plan allows 10 ms of CPU each
 crons = ["* * * * *"]
 
 [vars]
@@ -12,6 +12,15 @@ NIM_RPCS = "https://rpc.nimiqwatch.com"
 POLYGON_RPCS = "https://polygon-bor-rpc.publicnode.com,https://1rpc.io/matic,https://polygon.drpc.org"
 RELAYER_ADDRESS = "0x6967c6f5cAD390E5D506974d8A8Cd2e4e0374057"
 ROUTER_ADDRESS = ""
+# cron cadence and job sizes (src/scheduled.ts, cronConfig); keep CRON_EVERY_MIN in step with [triggers] crons.
+# With more CPU per run: e.g. crons = ["*/5 * * * *"], CRON_EVERY_MIN = "5", CRON_ONE_JOB_PER_RUN = "false",
+# CRON_TXS_PER_RUN = "1500", CRON_VERDICTS_PER_RUN = "3".
+CRON_EVERY_MIN = "1"
+CRON_ONE_JOB_PER_RUN = "true"
+CRON_TXS_PER_RUN = "250"
+CRON_PAGES_PER_RUN = "3"
+CRON_VERDICTS_PER_RUN = "1"
+CRON_RATES_EVERY_MIN = "5"
 
 [[d1_databases]]
 binding = "DB"

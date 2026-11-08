@@ -207,7 +207,8 @@ export async function refreshVerdicts(
     }
     if (Object.keys(old).some((a) => !next[a])) changed = true
 
-    todo.sort((x, y) => Number(y.urgent) - Number(x.urgent) || x.at - y.at)
+    // urgent ones first, then the longest unrefreshed, then the one whose data is oldest
+    todo.sort((x, y) => Number(y.urgent) - Number(x.urgent) || x.at - y.at || x.c.reach_ts - y.c.reach_ts)
     const pick = todo.slice(0, maxPools)
     if (pick.length) {
       const reads = await env.DB.batch(
