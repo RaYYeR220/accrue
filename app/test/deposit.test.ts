@@ -605,7 +605,7 @@ describe('withdraw', () => {
     expect(ev.signPermit).not.toHaveBeenCalled()
   })
 
-  it('AAVE_LIQUIDITY surfaces the available amount and offers to withdraw that much (Review Focus 5)', async () => {
+  it('AAVE_LIQUIDITY surfaces the available amount and offers to withdraw that much', async () => {
     const ev = stubEvm()
     stubFetch(() => relayError(422, 'AAVE_LIQUIDITY', { available: '3000000' }))
     const a = createDollarAction()

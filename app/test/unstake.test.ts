@@ -126,7 +126,7 @@ describe('unstakeSteps', () => {
     expect(steps[3]).toEqual({ step: 'remove', done: false })
   })
 
-  it('works with the policy the brief names (no genesis) for mainnet stakers', () => {
+  it('works with the staking policy without a genesis block for mainnet stakers', () => {
     const steps = unstakeSteps({
       staker: deactivated({ inactiveFrom: 66_312_000 }),
       amount: nim('250'),

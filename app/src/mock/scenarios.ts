@@ -149,7 +149,7 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
 
 export const isScenarioName = (s: string): s is ScenarioName => (SCENARIO_NAMES as readonly string[]).includes(s)
 
-// Shape of GET /api/rates (Task 9); fixed numbers so screens are reproducible.
+// Shape of GET /api/rates; fixed numbers so screens are reproducible.
 export const MOCK_RATES = {
   asOf: 1_762_500_000_000,
   nimUsd: 0.0003,

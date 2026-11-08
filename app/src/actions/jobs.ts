@@ -5,7 +5,7 @@ import { isRecord, nowSec, sleep } from '../lib/util'
 import { HttpError, toUiError, type UiError } from '../providers/errors'
 import { evm } from '../providers/evm'
 
-// POST /api/relay body (Task 7). permitValue only for withdraw; amount 2^256-1 there means "everything".
+// POST /api/relay body. permitValue only for withdraw; amount 2^256-1 there means "everything".
 export interface RelayBody {
   kind: 'supply' | 'withdraw'
   asset: AssetKey

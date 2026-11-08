@@ -235,7 +235,7 @@ const existing = (newestBlock: number): Cursor => ({ ...freshCursor(), newestHas
 const run = (src: ReturnType<typeof synth>, c: Cursor | null, maxPages: number, now = 1e9) =>
   scanPool(src, ADDR, c, { maxPages, now, canFetch: () => true })
 
-describe('scanPool paging edge cases (review r1)', () => {
+describe('scanPool paging edge cases', () => {
   it('an empty page after a full one is an error that keeps the descent open; nothing is lost', async () => {
     const txs = [...Array.from({ length: 2000 }, (_, i) => mk(i, 20_000 + i * 2)), ...Array.from({ length: 30 }, (_, i) => mk(5000 + i, 18_000 + i))]
     const head = { head: 24_100 }
@@ -265,7 +265,7 @@ describe('scanPool paging edge cases (review r1)', () => {
     expect(s2.txs).toHaveLength(0)
   })
 
-  it('a short page that never reaches indexed history is an RPC fault: error, resume kept (review r2 M1)', async () => {
+  it('a short page that never reaches indexed history is an RPC fault: error, resume kept', async () => {
     const txs = [...Array.from({ length: 900 }, (_, i) => mk(i, 80_000 + i * 2)), ...Array.from({ length: 30 }, (_, i) => mk(5000 + i, 78_000 + i))]
     const head = { head: 81_900 }
     const src = synth(txs, head)
@@ -283,7 +283,7 @@ describe('scanPool paging edge cases (review r1)', () => {
     expect(all.length).toBe(txs.filter((t) => t.blockNumber > 79_000 && t.blockNumber <= lastMacro(head.head)).length)
   })
 
-  it('reviewer r3 probe: a first visit that only saw unfinalised txs does not wedge the cursor', async () => {
+  it('a first visit that only saw unfinalised txs does not wedge the cursor', async () => {
     // the whole history is above the last macro block at the first visit, so nothing is folded and
     // there is no tx at or below newestBlock; a later short page is then the plain end of history
     const ADDR3 = 'NQ38 VK34 DRBL S3CN M9KM 8UJN 9JY2 2KFN VQQH'
@@ -387,7 +387,7 @@ describe('scanPool paging edge cases (review r1)', () => {
   })
 })
 
-describe('rpcSource negative answers (review r1)', () => {
+describe('rpcSource negative answers', () => {
   afterEach(() => vi.unstubAllGlobals())
   const env = { NIM_RPCS: 'https://rpc.test' }
   const rpcErr = (data?: string) =>

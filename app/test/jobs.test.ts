@@ -79,7 +79,7 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-describe('resumePending (Review Focus 2: app killed after signing)', () => {
+describe('resumePending (the app is killed after signing)', () => {
   it('a pending job the relay reports confirmed comes back confirmed, and the same jobId is never submitted again', async () => {
     seed(stored(S))
     const calls = stubFetch(c => {

@@ -110,7 +110,7 @@ const emptyWindow: PoolWindow = {
   earned: 0n, paidRestake: 0n, paidDirect: 0n, paidUnverified: 0n, otherOut: 0n, cycles: 0, lastPayoutTs: null, windowStartTs: 0, windowEndTs: 0,
 }
 
-/** The verdict of one pool from its stored rows, read the way Task 8 laid down (data reach, never the clock). */
+/** The verdict of one pool from its stored rows, read by data reach (never by the clock). */
 export function computeEntry(
   p: PoolMetaRow & { fee: number },
   c: CursorReachRow & { reach_ts: number },

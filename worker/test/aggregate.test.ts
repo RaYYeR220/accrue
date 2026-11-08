@@ -221,8 +221,8 @@ describe('poolWindowFromAggregates', () => {
   })
 })
 
-// Review r1: the window may only close at a payout run known to be complete.
-describe('poolWindowFromAggregates: complete runs only (review r1)', () => {
+// The window may only close at a payout run known to be complete.
+describe('poolWindowFromAggregates: complete runs only', () => {
   const GARUDA_CFG = { fee: 0.05, payoutType: 'restake' as const, scheduleMs: null }
   const sorted = [...garuda.txs].sort((a, b) => a.blockNumber - b.blockNumber)
   const isPay = (t: NimTx) => t.from === garuda.address && t.to !== garuda.address

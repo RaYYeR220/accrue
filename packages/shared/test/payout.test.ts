@@ -181,7 +181,7 @@ describe('buildPoolWindow', () => {
     })
   })
 
-  describe('slow payers and cut position (review r2)', () => {
+  describe('slow payers and cut position', () => {
     // honest pools paying exactly 95 % of a 12 h cycle, spread over hours at a constant pace
     const REWARD = 'NQ38 VK34 DRBL S3CN M9KM 8UJN 9JY2 2KFN VQQH'
     const CFG = { rewardAddress: REWARD, fee: 0.05, payoutType: 'restake' as const, scheduleMs: null }

@@ -222,7 +222,7 @@ describe('runIndexerTick', () => {
   })
 })
 
-describe('a wedged pool cannot starve the others (review r3)', () => {
+describe('a wedged pool cannot starve the others', () => {
   const WEDGE = 'NQ24 8V0E L24U TGQ6 KAGA 0KGY SR4F GVV1 SXNA'
   const vals = [validators[0], { ...validators[0], address: WEDGE, name: 'Wedge Pool' }]
   afterEach(() => vi.unstubAllGlobals())
@@ -271,7 +271,7 @@ describe('a wedged pool cannot starve the others (review r3)', () => {
   })
 })
 
-describe('one pool the RPC fails on cannot starve the others (Task 8 minor)', () => {
+describe('one pool the RPC fails on cannot starve the others', () => {
   const BAD = 'NQ51 7BS3 0HVH 9R5M TUDH C5PG 490G S7XT KD4D'
   const BAD2 = 'NQ40 FC4D HAT6 9N1H P52H P4FX QL8P CE6Y 10VT'
   afterEach(() => vi.unstubAllGlobals())

@@ -1,5 +1,5 @@
-// Review r2 acceptance: a pool is never SHORT (or BEHIND_SCHEDULE) because of where the data was cut,
-// only because of what it paid. Cuts land on every macro block, read the way Task 9 reads them.
+// Acceptance: a pool is never SHORT (or BEHIND_SCHEDULE) because of where the data was cut,
+// only because of what it paid. Cuts land on every macro block, read the way the indexer reads them.
 import { afterEach, describe, expect, it } from 'vitest'
 import { BATCH_BLOCKS, COINBASE_ADDRESS, poolVerdict, type NimTx } from '@accrue/shared'
 import { HOUR_MS, aggregate, dayOf, hourOf, poolWindowsFromAggregates, type HourAgg, type StakerDayAgg } from '../src/indexer/aggregate'
@@ -107,7 +107,7 @@ const verdictAt = (at: ReturnType<ReturnType<typeof cutter>>, cfg: Cfg) => {
   return { window, v: poolVerdict(window, cfg, at.reach, { earlier }) }
 }
 
-describe('cut sweep: honest slow payers are never SHORT (review r2)', () => {
+describe('cut sweep: honest slow payers are never SHORT', () => {
   const pools = reviewerPools(0.95)
   const cases = [
     ...[7, 8, 9].map((s) => [24, s] as const),
@@ -132,7 +132,7 @@ describe('cut sweep: honest slow payers are never SHORT (review r2)', () => {
   }
 })
 
-describe('cut sweep: a pool paying 80 % stays SHORT (review r2 negative control)', () => {
+describe('cut sweep: a pool paying 80 % stays SHORT', () => {
   const pools = reviewerPools(0.8)
   for (const [cycleH, spreadH] of [[12, 2.5], [24, 7], [24, 9]] as const) {
     it(`${cycleH} h cycle over ${spreadH} h at 80 %: SHORT at every cut after a complete cycle`, () => {
@@ -156,7 +156,7 @@ describe('cut sweep: a pool paying 80 % stays SHORT (review r2 negative control)
   }
 })
 
-describe('cut sweep: recorded Garuda (review r2)', () => {
+describe('cut sweep: recorded Garuda', () => {
   const garuda = load('garuda-2026-11-07.json')
   const GCFG: Cfg = { fee: 0.05, payoutType: 'restake', scheduleMs: 12 * HOUR_MS }
   const sorted = [...garuda.txs].sort((a, b) => a.blockNumber - b.blockNumber)
@@ -186,7 +186,7 @@ describe('cut sweep: recorded Garuda (review r2)', () => {
   }, 120_000)
 })
 
-describe('live-like streams keep their windows (review r2)', () => {
+describe('live-like streams keep their windows', () => {
   // a pool paying every batch, 30 blocks after each reward, to stakers of very different size
   let n = 0
   const tx = (block: number, from: string, to: string, value: number, data = '', toType = 0) =>
@@ -217,7 +217,7 @@ describe('live-like streams keep their windows (review r2)', () => {
   }, 120_000)
 })
 
-// Review r3: constant-pace distributions with even stakes (the reviewer's rr3-eq generator). Every
+// Constant-pace distributions with even stakes. Every
 // inner hour of such a distribution pays the same multiple of its earnings, which must not pass for
 // a stream: an honest pool reads about its true 95 %, a pool paying 85 % is never PAID.
 function evenPool(seed: number, cycleH: number, spreadH: number, pays: number) {
@@ -241,7 +241,7 @@ function evenPool(seed: number, cycleH: number, spreadH: number, pays: number) {
   return { txs: txs.sort((a, b) => a.blockNumber - b.blockNumber), dists }
 }
 
-describe('cut sweep: even stakes at a constant pace (review r3)', () => {
+describe('cut sweep: even stakes at a constant pace', () => {
   const configs = [[24, 9], [24, 8], [24, 7], [24, 6], [12, 8], [12, 7], [12, 6], [12, 5]] as const
   for (const [cycleH, spreadH] of configs) {
     it(`${cycleH} h over ${spreadH} h: honest 95 % reads ~95 %, never SHORT; 85 % is never PAID and SHORT after every complete cycle`, () => {

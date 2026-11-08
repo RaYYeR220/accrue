@@ -169,7 +169,7 @@ export async function findLanded(
 export type Verdict = { landed: Hex } | { error: RelayError } | null
 
 /**
- * Reads that explain why a relay cannot go through, in the brief's order: used nonce (possibly by a landed relay),
+ * Reads that explain why a relay cannot go through, in this order: used nonce (possibly by a landed relay),
  * future nonce, balance, then reserve liquidity. null = nothing wrong on-chain.
  */
 export async function judgeState(
