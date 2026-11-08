@@ -92,6 +92,8 @@ export interface TickResult {
   poolsTouched: number
   pages: number
   lagMinutes: number
+  /** this tick fetched and parsed the validators list (~1.3 MB of JSON) */
+  synced: boolean
 }
 
 /**
@@ -121,19 +123,22 @@ export async function runIndexerTick(
   const cursors = new Map<string, Cursor>()
   const pools = new Map<string, PoolRow>()
   let pages = 0
+  let synced = false
   let rpcDown = false
-  // A failed RPC call may be about its subject alone (one pool's history, one recipient); only failures
-  // for two different subjects in one tick say the RPC itself is down and end its use for the tick.
-  const failedSubjects = new Set<string>()
+  // A failed RPC call for one pool (its history, its reward address) may be about that pool alone;
+  // only failures for two different pools in one tick say the RPC itself is down and end its use.
+  const failedPools = new Set<string>()
   // pools whose RPC call failed: backed off like a data error, unless the RPC turned out to be down
   const rpcFailedPools = new Map<string, string>()
-  const rpcFailed = (subject: string) => {
-    failedSubjects.add(subject)
-    if (failedSubjects.size >= 2) rpcDown = true
+  const poolFailed = (pool: string) => {
+    failedPools.add(pool)
+    if (failedPools.size >= 2) rpcDown = true
   }
+  // staker lookups have their own stop: two failed lookups end the lookups, nothing else
+  const LOOKUP_FAILURES_TO_STOP = 2
 
   // { ok: false, failed: false } = out of budget (or the RPC is already down): a normal stop
-  const rpc = async <T>(what: string, subject: string, f: () => Promise<T>): Promise<{ ok: true; value: T } | { ok: false; failed: boolean; error: string }> => {
+  const rpc = async <T>(what: string, f: () => Promise<T>): Promise<{ ok: true; value: T } | { ok: false; failed: boolean; error: string }> => {
     if (rpcDown) return { ok: false, failed: false, error: '' }
     try {
       return { ok: true, value: await f() }
@@ -141,7 +146,6 @@ export async function runIndexerTick(
       if (e instanceof BudgetExhausted) return { ok: false, failed: false, error: '' }
       const error = `${what}: ${msg(e)}`
       errors.push(error)
-      rpcFailed(subject)
       return { ok: false, failed: true, error }
     }
   }
@@ -188,6 +192,7 @@ export async function runIndexerTick(
         }
         for (const p of pools.values()) if (!keep.has(p.address)) p.listed = 0
         maxPages = Math.min(maxPages, 1)
+        synced = true
       } catch (e) {
         errors.push(`pools sync: ${msg(e)}`)
       }
@@ -202,9 +207,11 @@ export async function runIndexerTick(
     const skip = new Set<string>()
     for (const p of rewardDue) {
       if (!b.can(1, reserve + 1, 1 + PAGE_TOKENS)) break
-      const r = await rpc(`reward ${p.name}`, p.address, () => src.rewardAddress(p.address))
+      const r = await rpc(`reward ${p.name}`, () => src.rewardAddress(p.address))
       if (!r.ok) {
-        if (!r.failed || rpcDown) break
+        if (!r.failed) break
+        poolFailed(p.address)
+        if (rpcDown) break
         rpcFailedPools.set(p.address, r.error)
         continue
       }
@@ -252,7 +259,7 @@ export async function runIndexerTick(
         errors.push(`${v.pool.name}: ${s.error}`)
         // one pool's failure or inconsistent answer backs that pool off; a second pool failing stops the tick
         if (s.errorKind === 'rpc') {
-          rpcFailed(v.pool.address)
+          poolFailed(v.pool.address)
           rpcFailedPools.set(v.pool.address, s.error)
         } else writes.push(metaSet(key, s.error.slice(0, 200), now))
       } else if (s.pages > 0 && scanErrors.has(key)) {
@@ -302,11 +309,12 @@ export async function runIndexerTick(
         ...list.filter((a) => !cache.has(a)),
         ...list.filter((a) => cache.has(a) && stale(cache.get(a)!)).sort((x, y) => cache.get(x)!.checkedAt - cache.get(y)!.checkedAt),
       ]
+      let lookupFailures = 0
       for (const a of todo) {
         if (!b.can(1, reserve, 1)) break
-        const d = await rpc(`staker ${a}`, a, () => src.delegation(a))
+        const d = await rpc(`staker ${a}`, () => src.delegation(a))
         if (!d.ok) {
-          if (!d.failed || rpcDown) break
+          if (!d.failed || ++lookupFailures >= LOOKUP_FAILURES_TO_STOP) break
           continue
         }
         cache.set(a, { delegation: d.value, checkedAt: now })
@@ -357,7 +365,7 @@ export async function runIndexerTick(
     } catch {
       // D1 itself is down; nothing left to record into
     }
-    return { poolsTouched: 0, pages, lagMinutes }
+    return { poolsTouched: 0, pages, lagMinutes, synced }
   }
-  return { poolsTouched, pages, lagMinutes }
+  return { poolsTouched, pages, lagMinutes, synced }
 }

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { BATCH_BLOCKS, COINBASE_ADDRESS, addressFromBytesHex, type NimTx } from '@accrue/shared'
 import { aggregate, hourFromDb, poolWindowFromAggregates, type PoolHourDb } from '../src/indexer/aggregate'
 import { runIndexerTick } from '../src/indexer/cron'
+import { verdictBudget } from '../src/scheduled'
 import { VALIDATORS_API } from '../src/indexer/pools'
 import { FakeChain, load } from './chain'
 import { FakeD1 } from './d1'
@@ -388,5 +389,73 @@ describe('one pool the RPC fails on cannot starve the others (Task 8 minor)', ()
     expect(blocks[0]).toBeGreaterThan(0)
     // tried once (three attempts), then left alone for the back-off
     expect(rewardFaults).toBe(3)
+  })
+
+  it('staker lookups that fail neither count as an RPC outage nor cancel a failing pool back-off', async () => {
+    const db = new FakeD1()
+    const chain = new FakeChain(POOL, garuda.txs, top - 20_000)
+    let lookups = 0
+    const vals = [validators[0]!, { ...validators[0]!, address: BAD, name: 'Bad Pages' }]
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input) === VALIDATORS_API) return new Response(JSON.stringify(vals))
+        const { method, params } = JSON.parse(String(init!.body)) as { method: string; params: unknown[] }
+        const ok = (data: unknown) => new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { data } }))
+        if (method === 'getStakerByAddress') {
+          lookups++
+          return rpcFault()
+        }
+        if (params[0] === BAD) return new Response('', { status: 400 })
+        return ok(chain.page(params[0] as string, params[2] as string | null))
+      }),
+    )
+    let t = Date.UTC(2026, 10, 7, 12)
+    for (const v of vals) {
+      db.db.prepare('INSERT INTO pools (address, name, fee, payout_type, schedule, listed, reward_address, reward_checked_at) VALUES (?,?,?,?,?,?,?,?)')
+        .run(v.address, v.name, 0.05, 'restake', 'Every 12 hours', 1, v.address, t)
+    }
+    db.db.prepare("INSERT INTO meta (key, value, updated_at) VALUES ('pools_synced_at', '2', ?)").run(t)
+    db.db.prepare(
+      'INSERT INTO pool_cursor (pool, newest_hash, newest_block, oldest_block, backfill_done, resume_hash, floor_block, visited_at, txs_per_hour) VALUES (?,?,?,?,?,?,?,?,?)',
+    ).run(BAD, 'b-top', 66_200_000, 65_000_000, 1, 'b-resume', 66_100_000, t - 2 * 3_600_000, 10)
+    const env = { DB: db as never, NIM_RPCS: 'https://rpc.test', POLYGON_RPCS: '', RELAYER_ADDRESS: '', RELAYER: null as never }
+    t += 5 * 60_000
+    const r = await runIndexerTick(env, { maxPages: 3, maxMs: 25_000, rpcTokens: 40 }, { now: () => t, sleep: async () => {} })
+    expect(r.pages).toBeGreaterThan(0)
+    // the failing pool keeps its back-off; two failed lookups only end the lookups
+    expect(db.query<{ value: string }>('SELECT value FROM meta WHERE key = ?', `scan_error:${BAD}`)[0]?.value).toMatch(/HTTP 400/)
+    expect(lookups).toBe(6)
+    expect(db.query<{ value: string }>("SELECT value FROM meta WHERE key = 'indexer_last_error'")[0]!.value).toMatch(/staker/)
+    // Garuda's pages were folded anyway (their payouts count as unverified)
+    expect(db.query<{ n: number }>('SELECT COUNT(*) n FROM pool_hour WHERE pool = ?', POOL)[0]!.n).toBeGreaterThan(0)
+  })
+})
+
+describe('the tick says when it synced pool metadata, and the cron sizes its verdict work by it', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('reports synced on the hourly metadata tick only', async () => {
+    const db = new FakeD1()
+    const chain = new FakeChain(POOL, garuda.txs, top - 20_000)
+    const state = { rpcDown: false, fetches: 0, validator: 'ok' as const }
+    vi.stubGlobal('fetch', routes(chain, state as never))
+    const env = { DB: db as never, NIM_RPCS: 'https://rpc.test', POLYGON_RPCS: '', RELAYER_ADDRESS: '', RELAYER: null as never }
+    let t = Date.UTC(2026, 10, 7, 12)
+    const tick = () => {
+      t += 5 * 60_000
+      return runIndexerTick(env, { maxPages: 3, maxMs: 25_000 }, { now: () => t, sleep: async () => {} })
+    }
+    expect((await tick()).synced).toBe(true)
+    expect((await tick()).synced).toBe(false)
+  })
+
+  it('verdictBudget: none or one after a sync tick (the validators JSON already cost CPU), else fewer the more pages were folded', () => {
+    expect(verdictBudget({ synced: true, pages: 0 })).toBe(1)
+    expect(verdictBudget({ synced: true, pages: 1 })).toBe(0)
+    expect(verdictBudget({ synced: false, pages: 0 })).toBe(3)
+    expect(verdictBudget({ synced: false, pages: 1 })).toBe(2)
+    expect(verdictBudget({ synced: false, pages: 2 })).toBe(1)
+    expect(verdictBudget({ synced: false, pages: 3 })).toBe(1)
   })
 })
