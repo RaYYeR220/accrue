@@ -211,3 +211,61 @@ describe('live-like streams keep their windows (review r2)', () => {
     }
   }, 120_000)
 })
+
+// Review r3: constant-pace distributions with even stakes (the reviewer's rr3-eq generator). Every
+// inner hour of such a distribution pays the same multiple of its earnings, which must not pass for
+// a stream: an honest pool reads about its true 95 %, a pool paying 85 % is never PAID.
+function evenPool(seed: number, cycleH: number, spreadH: number, pays: number) {
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648)
+  let n = 0
+  const start = START + 5 * H
+  const tx = (block: number, from: string, to: string, value: number, data = '', toType = 0) =>
+    ({ hash: `e${n++}`, blockNumber: block, timestamp: block * 1000, from, to, fromType: 0, toType, value, fee: 0, senderData: '', recipientData: data, relatedAddresses: [] }) as NimTx
+  const stakers = Array.from({ length: 600 }, (_, i) => (i + 4096).toString(16).padStart(4, '0').repeat(10))
+  const txs: NimTx[] = []
+  for (let b = start; b < END; b += 60) txs.push(tx(b, COINBASE_ADDRESS, REWARD, 1_000_000))
+  const offset = Math.floor(rnd() * cycleH * H)
+  const dists: [number, number][] = []
+  for (let T = start + offset; T < END; T += cycleH * H) {
+    const owed = ((cycleH * H) / 60) * 1_000_000 * pays
+    const order = [...stakers].sort(() => rnd() - 0.5)
+    const step = (spreadH * H) / order.length
+    order.forEach((hex, k) => txs.push(tx(T + Math.floor(k * step) + 7, REWARD, STAKING, Math.floor(owed / order.length), `06${hex}`, 3)))
+    dists.push([T + 7, T + Math.floor((order.length - 1) * step) + 7])
+  }
+  return { txs: txs.sort((a, b) => a.blockNumber - b.blockNumber), dists }
+}
+
+describe('cut sweep: even stakes at a constant pace (review r3)', () => {
+  const configs = [[24, 9], [24, 8], [24, 7], [24, 6], [12, 8], [12, 7], [12, 6], [12, 5]] as const
+  for (const [cycleH, spreadH] of configs) {
+    it(`${cycleH} h over ${spreadH} h: honest 95 % reads ~95 %, never SHORT; 85 % is never PAID and SHORT after every complete cycle`, () => {
+      const cfg: Cfg = { fee: 0.05, payoutType: 'restake', scheduleMs: cycleH * HOUR_MS }
+      for (const seed of [5, 9]) {
+        const honest = evenPool(seed, cycleH, spreadH, 0.95)
+        const atH = cutter(honest.txs, REWARD)
+        for (let cut = END - cycleH * H; cut < END; cut += 600) {
+          const { v } = verdictAt(atH(cut), cfg)
+          expect(v.verdict, `honest seed ${seed} cut ${cut}`).not.toBe('SHORT')
+          if (v.ratio !== null) {
+            expect(v.ratio, `honest seed ${seed} cut ${cut}`).toBeGreaterThan(0.94)
+            expect(v.ratio, `honest seed ${seed} cut ${cut}`).toBeLessThan(0.97)
+          }
+        }
+        const short = evenPool(seed, cycleH, spreadH, 0.85)
+        const atS = cutter(short.txs, REWARD)
+        let complete = 0
+        for (let cut = END - cycleH * H; cut < END; cut += 600) {
+          const { v } = verdictAt(atS(cut), cfg)
+          expect(v.verdict, `85 % seed ${seed} cut ${cut} ratio ${v.ratio}`).not.toBe('PAID_AS_PROMISED')
+          const afterDist = short.dists.some(([, e], k) => cut >= e + (cycleH * H) / 4 && cut < (short.dists[k + 1]?.[0] ?? Infinity))
+          if (afterDist) {
+            expect(v.verdict, `85 % seed ${seed} cut ${cut} ratio ${v.ratio}`).toBe('SHORT')
+            complete++
+          }
+        }
+        expect(complete).toBeGreaterThan(3)
+      }
+    }, 120_000)
+  }
+})

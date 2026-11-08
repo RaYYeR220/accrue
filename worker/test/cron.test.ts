@@ -220,3 +220,52 @@ describe('runIndexerTick', () => {
     expect(sums().paid + sums().other).toBe(e.out)
   })
 })
+
+describe('a wedged pool cannot starve the others (review r3)', () => {
+  const WEDGE = 'NQ24 8V0E L24U TGQ6 KAGA 0KGY SR4F GVV1 SXNA'
+  const vals = [validators[0], { ...validators[0], address: WEDGE, name: 'Wedge Pool' }]
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('an open descent whose RPC keeps answering [] is backed off and the other pools keep moving', async () => {
+    const db = new FakeD1()
+    const chain = new FakeChain(POOL, garuda.txs, top - 20_000)
+    const calls = { wedge: 0 }
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input) === VALIDATORS_API) return new Response(JSON.stringify(vals))
+        const { method, params } = JSON.parse(String(init!.body)) as { method: string; params: unknown[] }
+        const ok = (data: unknown) => new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { data } }))
+        if (method === 'getValidatorByAddress') return ok({ address: params[0], rewardAddress: params[0] })
+        if (method === 'getStakerByAddress') return ok({ address: params[0], delegation: POOL, balance: 1 })
+        if (params[0] === WEDGE) {
+          calls.wedge++
+          return ok([])
+        }
+        return ok(chain.page(params[0] as string, params[2] as string | null))
+      }),
+    )
+    let t = Date.UTC(2026, 10, 7, 12)
+    // a catch-up descent the RPC will never serve
+    db.db.prepare(
+      'INSERT INTO pool_cursor (pool, newest_hash, newest_block, oldest_block, backfill_done, resume_hash, floor_block, visited_at, txs_per_hour) VALUES (?,?,?,?,?,?,?,?,?)',
+    ).run(WEDGE, 'w-top', 66_200_000, 65_000_000, 1, 'w-resume', 66_100_000, t - 2 * 3_600_000, 10)
+    const env = { DB: db as never, NIM_RPCS: 'https://rpc.test', POLYGON_RPCS: '', RELAYER_ADDRESS: '', RELAYER: null as never }
+    const garudaCursor = () => db.query<Record<string, number | string | null>>('SELECT newest_block, resume_hash, backfill_done FROM pool_cursor WHERE pool = ?', POOL)[0]
+    const progress: unknown[] = []
+    for (let i = 0; i < 4; i++) {
+      t += 5 * 60_000
+      await runIndexerTick(env, { maxPages: 3, maxMs: 25_000 }, { now: () => t, sleep: async () => {} })
+      progress.push(garudaCursor() && JSON.stringify(garudaCursor()))
+    }
+    // the wedged pool was tried once, then left alone for the back-off; Garuda kept being scanned
+    expect(calls.wedge).toBe(1)
+    expect(new Set(progress).size).toBe(4)
+    const err = db.query<{ value: string }>("SELECT value FROM meta WHERE key = ?", `scan_error:${WEDGE}`)[0]
+    expect(err?.value).toMatch(/empty page/)
+    // after the back-off it is tried again, still without stopping the rest
+    t += 31 * 60_000
+    await runIndexerTick(env, { maxPages: 3, maxMs: 25_000 }, { now: () => t, sleep: async () => {} })
+    expect(calls.wedge).toBe(2)
+  })
+})

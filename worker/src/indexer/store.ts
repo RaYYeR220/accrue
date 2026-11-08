@@ -112,6 +112,10 @@ export function metaSet(key: string, value: string, at: number): Stmt {
   }
 }
 
+export function metaDelete(key: string): Stmt {
+  return { sql: 'DELETE FROM meta WHERE key = ?', params: [key] }
+}
+
 export function bind(db: D1Database, stmts: Stmt[]): D1PreparedStatement[] {
   return stmts.map((s) => db.prepare(s.sql).bind(...s.params))
 }

@@ -164,6 +164,8 @@ export interface ScanStep {
   /** this step started at the head (as opposed to continuing an open descent) */
   fromHead: boolean
   error: string | null
+  /** 'rpc': the RPC failed (stop using it this tick); 'data': it answered something inconsistent for this pool */
+  errorKind: 'rpc' | 'data' | null
 }
 
 // Albatross produces a block per second; used only to date a macro block with no tx of ours in it.
@@ -191,12 +193,14 @@ export async function scanPool(
   let reachTs: number | null = null
   let lastFetchedTs: number | null = null
   let pages = 0
-  // history at or below the boundary is known to exist: an incremental step or a catch-up after
-  // the backfill must reach it, so a short page that stops above it is an RPC fault
-  const historyBelow = c.backfillDone && c.newestBlock !== null
+  // History at or below the boundary is known to exist only once a tx was folded at or below it
+  // (newestHash), or for a catch-up opened that way (backfillDone stays set). Then a short page that
+  // stops above the boundary is an RPC fault; without that evidence it is just the start of history.
+  const historyBelow = c.backfillDone && (fromHead ? c.newestHash !== null : true)
   let reached = false
   let askedAgain = false
   let error: string | null = null
+  let errorKind: 'rpc' | 'data' | null = null
 
   while (pages < opts.maxPages && opts.canFetch()) {
     let page: NimTx[]
@@ -204,13 +208,16 @@ export async function scanPool(
       page = await src.txPage(rewardAddress, startAt)
     } catch (e) {
       // running out of budget mid-retry is a normal stop, not an RPC failure
-      if (!(e instanceof BudgetExhausted)) error = msg(e)
+      if (!(e instanceof BudgetExhausted)) {
+        error = msg(e)
+        errorKind = 'rpc'
+      }
       break
     }
     if (page.length === 0) {
       if (fromHead && pages === 0 && c.newestBlock === null) {
         // nothing on this address yet: note the visit, fold nothing, keep the cursor where it is
-        return { txs, cursor: { ...c, visitedAt: opts.now }, pages: 1, fromHead, error }
+        return { txs, cursor: { ...c, visitedAt: opts.now }, pages: 1, fromHead, error, errorKind }
       }
       // The RPC returns full pages while more history exists, so after a full page (in this
       // call or the one that left this resume point) an empty one is a fault, not the end. Only a
@@ -224,6 +231,7 @@ export async function scanPool(
         break
       }
       error = fromHead && pages === 0 ? 'empty head page from RPC' : 'empty page from RPC after a full page'
+      errorKind = 'data'
       break
     }
     pages++
@@ -254,13 +262,15 @@ export async function scanPool(
     lastFetchedTs = page[page.length - 1]!.timestamp
     if (reached) break
     if (page.length < PAGE_SIZE) {
-      if (historyBelow) error = 'short page from RPC above indexed history'
-      else reached = true
+      if (historyBelow) {
+        error = 'short page from RPC above indexed history'
+        errorKind = 'data'
+      } else reached = true
       break
     }
   }
 
-  if (pages === 0) return { txs, cursor: c, pages, fromHead, error }
+  if (pages === 0) return { txs, cursor: c, pages, fromHead, error, errorKind }
 
   const lowest = txs.length ? txs[txs.length - 1]! : null
   const lower = (b: number | null) => {
@@ -285,6 +295,9 @@ export async function scanPool(
       c.floorBlock = boundary
       c.holeFromTs = isNew ? 0 : c.reachTs
       c.holeToTs = holeTop
+      // no tx folded yet at or below the floor: this catch-up may run into the start of history,
+      // like a backfill (closing it sets backfillDone again)
+      if (c.newestHash === null) c.backfillDone = false
       if (rate !== null) c.txsPerHour = Math.max(c.txsPerHour ?? 0, rate)
     }
     if (txs.length) c.newestHash = txs[0]!.hash
@@ -304,5 +317,5 @@ export async function scanPool(
     c.resumeHash = startAt
     if (holeTop !== null) c.holeToTs = holeTop
   }
-  return { txs, cursor: c, pages, fromHead, error }
+  return { txs, cursor: c, pages, fromHead, error, errorKind }
 }

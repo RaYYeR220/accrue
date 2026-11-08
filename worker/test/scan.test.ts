@@ -283,6 +283,36 @@ describe('scanPool paging edge cases (review r1)', () => {
     expect(all.length).toBe(txs.filter((t) => t.blockNumber > 79_000 && t.blockNumber <= lastMacro(head.head)).length)
   })
 
+  it('reviewer r3 probe: a first visit that only saw unfinalised txs does not wedge the cursor', async () => {
+    // the whole history is above the last macro block at the first visit, so nothing is folded and
+    // there is no tx at or below newestBlock; a later short page is then the plain end of history
+    const ADDR3 = 'NQ38 VK34 DRBL S3CN M9KM 8UJN 9JY2 2KFN VQQH'
+    const tx3 = (i: number, block: number) => ({ ...mk(i, block), to: ADDR3 }) as NimTx
+    const chain3 = new FakeChain(ADDR3, [tx3(3, 1_000_160), tx3(2, 1_000_100), tx3(1, 1_000_030)], 1_000_040)
+    let c: Cursor | null = null
+    const folded: string[] = []
+    for (const head of [1_000_040, 1_000_200, 1_000_300, 1_000_400, 1_000_500]) {
+      chain3.head = head
+      const st = await scanPool(chain3.source(), ADDR3, c, { maxPages: 3, now: head * 1000, canFetch: () => true, backfillBlocks: 50_000 })
+      expect(st.error, `head ${head}`).toBeNull()
+      folded.push(...st.txs.map((t) => t.hash))
+      c = st.cursor
+    }
+    expect(folded.sort()).toEqual(['h1', 'h2', 'h3'])
+    expect(c!.resumeHash).toBeNull()
+  })
+
+  it('tells an RPC fault from a data inconsistency', async () => {
+    const txs = [...Array.from({ length: 900 }, (_, i) => mk(i, 90_000 + i * 2)), ...Array.from({ length: 30 }, (_, i) => mk(5000 + i, 88_000 + i))]
+    const src = synth(txs, { head: 92_000 }, [2])
+    const s1 = await run(src, existing(89_000), 3)
+    expect(s1.errorKind).toBe('data')
+    const down = { ...src, txPage: async () => { throw new Error('HTTP 503') } }
+    const s2 = await run(down as never, existing(89_000), 3)
+    expect(s2.errorKind).toBe('rpc')
+    expect((await run(src, s1.cursor, 3)).errorKind).toBeNull()
+  })
+
   it('a short page is the end of history: no extra fetch', async () => {
     const txs = Array.from({ length: 700 }, (_, i) => mk(i, 40_000 + i * 3))
     const src = synth(txs, { head: 42_200 })

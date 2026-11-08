@@ -3,7 +3,7 @@ import type { Env } from '../env'
 import { DAY_MS, HOUR_MS, aggregate, canonicalAddress, dayOf, delegationOracle, payoutRecipients } from './aggregate'
 import { cursorResetStatement, fetchValidators, poolStatements, rewardMissStatement, rewardStatement, scannable, type PoolRow } from './pools'
 import { Budget, BudgetExhausted, PAGE_TOKENS, rpcSource, scanPool, type Cursor, type NimSource } from './scan'
-import { bind, cursorWrite, delegationUpsert, hourUpsert, metaSet, stakerDayUpsert, type Guard, type Stmt } from './store'
+import { bind, cursorWrite, delegationUpsert, hourUpsert, metaDelete, metaSet, stakerDayUpsert, type Guard, type Stmt } from './store'
 
 export const SUBREQUEST_BUDGET = 25
 // the public RPC grants 20 tokens per 10 s per IP and a tick runs inside one window; keep slack
@@ -20,6 +20,10 @@ const NOT_STAKER_TTL_MS = DAY_MS
 // a known reward address is dropped only after this many "No validator" answers in a row, an hour apart
 const REWARD_MISSES_TO_DROP = 2
 const REWARD_MISS_RECHECK_MS = HOUR_MS
+// a pool whose data the RPC answers inconsistently is left alone this long, so it cannot hold the
+// top priority (and the tick) forever; meta `scan_error:<pool>` records it
+const SCAN_ERROR_BACKOFF_MS = 30 * 60_000
+const scanErrorKey = (pool: string) => `scan_error:${pool}`
 
 export interface CursorRow {
   pool: string
@@ -56,7 +60,8 @@ export const cursorFromRow = (r: CursorRow): Cursor => ({
  * >= 1 means the pool is due. Open descents and first visits sit at fixed levels, so a long
  * catch-up cannot starve pools whose backlog keeps growing.
  */
-export function visitPriority(c: Cursor | null, now: number): number {
+export function visitPriority(c: Cursor | null, now: number, erroredAt: number | null = null): number {
+  if (erroredAt !== null && now - erroredAt < SCAN_ERROR_BACKOFF_MS) return 0
   if (!c) return 1.2
   if (c.resumeHash) return 1.5
   const age = now - (c.visitedAt ?? 0)
@@ -133,7 +138,7 @@ export async function runIndexerTick(
 
   try {
     b.charge()
-    const [poolRes, cursorRes, metaRes] = await env.DB.batch([
+    const [poolRes, cursorRes, metaRes, scanErrRes] = await env.DB.batch([
       env.DB.prepare(
         'SELECT address, name, reward_address, fee, payout_type, schedule, listed, reward_checked_at, reward_misses, logo IS NULL AS no_logo FROM pools',
       ),
@@ -141,11 +146,13 @@ export async function runIndexerTick(
         'SELECT pool, newest_hash, newest_block, oldest_block, backfill_done, resume_hash, floor_block, last_payout_block, visited_at, txs_per_hour, reach_ts, hole_from_ts, hole_to_ts FROM pool_cursor',
       ),
       env.DB.prepare("SELECT updated_at FROM meta WHERE key = 'pools_synced_at'"),
+      env.DB.prepare("SELECT key, updated_at FROM meta WHERE key LIKE 'scan_error:%'"),
     ])
     const poolRows = rows<PoolRow & { no_logo: number }>(poolRes)
     for (const p of poolRows) pools.set(p.address, p)
     for (const r of rows<CursorRow>(cursorRes)) cursors.set(r.pool, cursorFromRow(r))
     const syncedAt = rows<{ updated_at: number }>(metaRes)[0]?.updated_at ?? 0
+    const scanErrors = new Map(rows<{ key: string; updated_at: number }>(scanErrRes).map((r) => [r.key, r.updated_at]))
 
     // Pool metadata, hourly. The API inlines logos (up to ~360 kB each), so they are written once a
     // day or when missing, in their own batch; a sync tick also scans a single page to keep CPU low.
@@ -210,7 +217,7 @@ export async function runIndexerTick(
       .filter(scannable)
       .filter((p) => !skip.has(p.address))
       .map((p) => ({ p, c: cursors.get(p.address) ?? null }))
-      .map((x) => ({ ...x, prio: visitPriority(x.c, now) }))
+      .map((x) => ({ ...x, prio: visitPriority(x.c, now, scanErrors.get(scanErrorKey(x.p.address)) ?? null) }))
       .filter((x) => x.prio >= 1)
       .sort((x, y) => y.prio - x.prio || (x.c?.visitedAt ?? 0) - (y.c?.visitedAt ?? 0))
 
@@ -222,10 +229,16 @@ export async function runIndexerTick(
       v.txs.push(...s.txs)
       v.cursor = s.cursor
       v.fromHead ||= s.fromHead && s.pages > 0
+      const key = scanErrorKey(v.pool.address)
       if (s.error) {
         v.error = s.error
-        rpcDown = true
         errors.push(`${v.pool.name}: ${s.error}`)
+        // an RPC that is down stops the tick; one pool's inconsistent answer only backs that pool off
+        if (s.errorKind === 'rpc') rpcDown = true
+        else writes.push(metaSet(key, s.error.slice(0, 200), now))
+      } else if (s.pages > 0 && scanErrors.has(key)) {
+        writes.push(metaDelete(key))
+        scanErrors.delete(key)
       }
     }
     // one page per due pool first, then leftover pages to descents still open

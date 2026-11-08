@@ -233,11 +233,16 @@ export const hourFromDb = (r: PoolHourDb): HourAgg => ({
 
 // RUN_GAP_BLOCKS in time (one block per second)
 export const RUN_GAP_MS = RUN_GAP_BLOCKS * 1000
-// A stream is a run of at least this many full payout hours that each pay within STREAM_TRACK of the
-// run's typical paid/earned, with the running difference never more than one hour's payouts: a pool
-// paying (about) every batch. A slow distribution of a long cycle fails one of the two.
+// A stream is a pool paying (about) every batch: a run of at least STREAM_MIN_HOURS consecutive full
+// payout hours whose typical paid/earned is anchored to earnings (STREAM_RATIO), every hour within
+// STREAM_TRACK of it, the running difference never above one hour's payouts. Anchoring is what rules
+// out a slow distribution of a long cycle: it pays a steady multiple of the hour's earnings too, but
+// a separate run spans at most 3/4 of its cycle (the run gap is a quarter cycle), so it pays at least
+// 4/3 of the payout rate per hour, above 1.1 for any honest rate over 83 %. Live streams sit at
+// 0.97-1.03 (one minus the fee, paid within minutes).
 const STREAM_MIN_HOURS = 3
 const STREAM_TRACK = 0.1
+const STREAM_RATIO = { min: 0.5, max: 1.1 }
 
 export interface WindowRange {
   fromTs: number
@@ -371,13 +376,16 @@ export function poolWindowFromAggregates(
 function streamHours(hs: readonly HourRow[]): HourRow[] {
   const inner = hs.slice(1, -1)
   if (inner.length < STREAM_MIN_HOURS) return []
+  // a run that skips hours (the gap allows it) pays in bursts, not every batch
+  for (let k = 1; k < hs.length; k++) if (hs[k]!.hour !== hs[k - 1]!.hour + 1) return []
   const ratios: number[] = []
   for (const h of inner) {
     if (h.earned <= 0n) return []
     ratios.push(Number(h.paidRestake + h.paidDirect) / Number(h.earned))
   }
   const typical = [...ratios].sort((a, b) => a - b)[ratios.length >> 1]!
-  if (!(typical > 0) || ratios.some((r) => Math.abs(r - typical) > STREAM_TRACK * typical)) return []
+  if (!(typical >= STREAM_RATIO.min && typical <= STREAM_RATIO.max)) return []
+  if (ratios.some((r) => Math.abs(r - typical) > STREAM_TRACK * typical)) return []
   // the running difference may never exceed one average hour's payouts
   let carry = 0
   let earned = 0
