@@ -1,0 +1,346 @@
+{
+  "source": "pools",
+  "url": "https://accrue.pages.dev/api/pools",
+  "fetchedAt": "2026-11-08T05:10:07.383Z",
+  "asOf": 1794114337633,
+  "windowDays": 7,
+  "pools": [
+    {
+      "name": "NimiqHub Staking",
+      "address": "NQ05 U1RF QJNH JCS1 RDQX 4M3Y 60KR K6CN 5LKC",
+      "fee": 0.05,
+      "payoutType": "restake",
+      "schedule": "Every minute",
+      "stakers": 415,
+      "verdict": null,
+      "ratio": null,
+      "expectedRatio": 0.95,
+      "lastPayoutTs": null,
+      "reachTs": null,
+      "reasons": [
+        "Payout Check has not looked at this pool yet."
+      ]
+    },
+    {
+      "name": "$NIM_pool",
+      "address": "NQ29 FBVT B4GM S27H UBP4 1MTC GNKQ VPBT 099M",
+      "fee": 0,
+      "payoutType": "restake",
+      "schedule": "Every 4 hours",
+      "stakers": 332,
+      "verdict": null,
+      "ratio": null,
+      "expectedRatio": 1,
+      "lastPayoutTs": null,
+      "reachTs": null,
+      "reasons": [
+        "Payout Check has not looked at this pool yet."
+      ]
+    },
+    {
+      "name": "ObsidianStake",
+      "address": "NQ15 5JNS U7CE RAH5 3T02 F8A9 JCT6 QMG9 7TSV",
+      "fee": 0.05,
+      "payoutType": "direct",
+      "schedule": "Every 12 hours",
+      "stakers": 154,
+      "verdict": null,
+      "ratio": null,
+      "expectedRatio": 0.95,
+      "lastPayoutTs": null,
+      "reachTs": null,
+      "reasons": [
+        "Payout Check has not looked at this pool yet."
+      ]
+    },
+    {
+      "name": "Mint Pool",
+      "address": "NQ53 M1NT S3JD TAGM CBTK 01PX YD3U B1DE GYHB",
+      "fee": 0.05,
+      "payoutType": "restake",
+      "schedule": "Every 3 hours",
+      "stakers": 217,
+      "verdict": null,
+      "ratio": null,
+      "expectedRatio": 0.95,
+      "lastPayoutTs": null,
+      "reachTs": null,
+      "reasons": [
+        "Payout Check has not looked at this pool yet."
+      ]
+    },
+    {
+      "name": "Siam Pool",
+      "address": "NQ38 VK34 DRBL S3CN M9KM 8UJN 9JY2 2KFN VQQH",
+      "fee": 0.03,
+      "payoutType": "restake",
+      "schedule": "Every 3 hours",
+      "stakers": 104,
+      "verdict": null,
+      "ratio": null,
+      "expectedRatio": 0.97,
+      "lastPayoutTs": null,
+      "reachTs": null,
+      "reasons": [
+        "Payout Check has not looked at this pool yet."
+      ]
+    },
+    {
+      "name": "NimiqPocket",
+      "address": "NQ02 31N6 3KM5 T6G5 22TN EPF5 5XPY RLHK RMB3",
+      "fee": 0.01,
+      "payoutType": "restake",
+      "schedule": "Payouts over 10 NIM are instant when NimiqPocket is elected .",
+      "stakers": 195,
+      "verdict": null,
+      "ratio": null,
+      "expectedRatio": 0.99,
+      "lastPayoutTs": null,
+      "reachTs": null,
+      "reasons": [
+        "Payout Check has not looked at this pool yet."
+      ]
+    },
+    {
+      "name": "Private Whalidator",
+      "address": "NQ60 GH2T VEA2 CUR5 SXAD QU9B 7ELD YMG5 5T7U",
+      "fee": null,
+      "payoutType": "none",
+      "schedule": "",
+      "stakers": 33,
+      "verdict": "NO_PAYOUTS_BY_DESIGN",
+      "ratio": null,
+      "expectedRatio": null,
+      "lastPayoutTs": null,
+      "reachTs": null,
+      "reasons": [
+        "Pool does not pay out; rewards are not distributed to stakers."
+      ]
+    },
+    {
+      "name": "nim.re Staking Pool",
+      "address": "NQ44 V95C ABVY RARR SBMC V8VE M6UH EJP0 RXYQ",
+      "fee": 0.0333,
+      "payoutType": "restake",
+      "schedule": "Every 12 hours",
+      "stakers": 283,
+      "verdict": null,
+      "ratio": null,
+      "expectedRatio": 0.9667,
+      "lastPayoutTs": null,
+      "reachTs": null,
+      "reasons": [
+        "Payout Check has not looked at this pool yet."
+      ]
+    },
+    {
+      "name": "NimiqCafe Staking",
+      "address": "NQ83 4MVH 53Q4 AL3B Q097 55GJ LUQ3 GSF0 85B7",
+      "fee": 0.03,
+      "payoutType": "restake",
+      "schedule": "Every 1 minute",
+      "stakers": 64,
+      "verdict": null,
+      "ratio": null,
+      "expectedRatio": 0.97,
+      "lastPayoutTs": null,
+      "reachTs": null,
+      "reasons": [
+        "Payout Check has not looked at this pool yet."
+      ]
+    },
+    {
+      "name": "Ritvars Staking",
+      "address": "NQ08 LMAK 00XK YYN9 CDXV ADVG CL0U HUBM J670",
+      "fee": 0.02,
+      "payoutType": "restake",
+      "schedule": "Every 12 hours",
+      "stakers": 172,
+      "verdict": null,
+      "ratio": null,
+      "expectedRatio": 0.98,
+      "lastPayoutTs": null,
+      "reachTs": null,
+      "reasons": [
+        "Payout Check has not looked at this pool yet."
+      ]
+    },
+    {
+      "name": "Garuda Pool",
+      "address": "NQ15 HNAH YRVH DFVM YHAG BSXG 0QHK KA0Q XDR7",
+      "fee": 0.05,
+      "payoutType": "restake",
+      "schedule": "Every 12 hours",
+      "stakers": 256,
+      "verdict": "PAID_AS_PROMISED",
+      "ratio": 0.950018,
+      "expectedRatio": 0.95,
+      "lastPayoutTs": 1794098640175,
+      "reachTs": 1794114326699,
+      "reasons": [
+        "Paid 95.0% of earnings against 95.0% promised.",
+        "The indexer is still catching up on recent transactions of this pool; the window uses the part it has."
+      ]
+    },
+    {
+      "name": "Nimiq Marketing Pool",
+      "address": "NQ08 RS08 LTKL 62QL B954 S9YP 0G3R XVKM RU2Y",
+      "fee": 0,
+      "payoutType": "restake",
+      "schedule": "0 * * * *",
+      "stakers": 72,
+      "verdict": null,
+      "ratio": null,
+      "expectedRatio": 1,
+      "lastPayoutTs": null,
+      "reachTs": null,
+      "reasons": [
+        "Payout Check has not looked at this pool yet."
+      ]
+    },
+    {
+      "name": "Keyring Staking",
+      "address": "NQ96 X97C 94M1 6MV3 KJ0G JA5U 6VB4 6Y63 EUH4",
+      "fee": 0.05,
+      "payoutType": "restake",
+      "schedule": "Every 12 hours",
+      "stakers": 112,
+      "verdict": null,
+      "ratio": null,
+      "expectedRatio": 0.95,
+      "lastPayoutTs": null,
+      "reachTs": null,
+      "reasons": [
+        "Payout Check has not looked at this pool yet."
+      ]
+    },
+    {
+      "name": "Nimiq.Fun",
+      "address": "NQ32 1U9X 7P3X B2H5 XA00 5LC2 5KFE VBQE X3BU",
+      "fee": 0.025,
+      "payoutType": "direct",
+      "schedule": "Every 12 hours",
+      "stakers": 44,
+      "verdict": null,
+      "ratio": null,
+      "expectedRatio": 0.975,
+      "lastPayoutTs": null,
+      "reachTs": null,
+      "reasons": [
+        "Payout Check has not looked at this pool yet."
+      ]
+    },
+    {
+      "name": "Nimiq Base Staking",
+      "address": "NQ49 N8MB XYCR XBUP 404C KXKK L49M A7BT F082",
+      "fee": 0,
+      "payoutType": "restake",
+      "schedule": "",
+      "stakers": 15,
+      "verdict": null,
+      "ratio": null,
+      "expectedRatio": 1,
+      "lastPayoutTs": null,
+      "reachTs": null,
+      "reasons": [
+        "Payout Check has not looked at this pool yet."
+      ]
+    },
+    {
+      "name": "ImpactZero stake",
+      "address": "NQ08 ACT8 T0FE PTG8 P5RL H2S3 QGXH V15R NVXY",
+      "fee": 0,
+      "payoutType": "restake",
+      "schedule": "",
+      "stakers": 24,
+      "verdict": null,
+      "ratio": null,
+      "expectedRatio": 1,
+      "lastPayoutTs": null,
+      "reachTs": null,
+      "reasons": [
+        "Payout Check has not looked at this pool yet."
+      ]
+    },
+    {
+      "name": "Nimiq Surf",
+      "address": "NQ51 SURF MCTM AQXM 15PA K9FX 8EEX 29BE VGH8",
+      "fee": 0,
+      "payoutType": "none",
+      "schedule": "",
+      "stakers": 6,
+      "verdict": "NO_PAYOUTS_BY_DESIGN",
+      "ratio": null,
+      "expectedRatio": 1,
+      "lastPayoutTs": null,
+      "reachTs": null,
+      "reasons": [
+        "Pool does not pay out; rewards are not distributed to stakers."
+      ]
+    },
+    {
+      "name": "Synapse LN - Nimiq",
+      "address": "NQ24 8V0E L24U TGQ6 KAGA 0KGY SR4F GVV1 SXNA",
+      "fee": 0.01,
+      "payoutType": "restake",
+      "schedule": "",
+      "stakers": 11,
+      "verdict": null,
+      "ratio": null,
+      "expectedRatio": 0.99,
+      "lastPayoutTs": null,
+      "reachTs": null,
+      "reasons": [
+        "Payout Check has not looked at this pool yet."
+      ]
+    },
+    {
+      "name": "NODENIMIQ1.NIMIQ-JU.FR by @Ju",
+      "address": "NQ40 FC4D HAT6 9N1H P52H P4FX QL8P CE6Y 10VT",
+      "fee": 0.01,
+      "payoutType": "restake",
+      "schedule": "",
+      "stakers": 12,
+      "verdict": null,
+      "ratio": null,
+      "expectedRatio": 0.99,
+      "lastPayoutTs": null,
+      "reachTs": null,
+      "reasons": [
+        "Payout Check has not looked at this pool yet."
+      ]
+    },
+    {
+      "name": "NODENIMIQ2.NIMIQ-JU.FR by @Ju",
+      "address": "NQ51 7BS3 0HVH 9R5M TUDH C5PG 490G S7XT KD4D",
+      "fee": 0.01,
+      "payoutType": "restake",
+      "schedule": "",
+      "stakers": 11,
+      "verdict": null,
+      "ratio": null,
+      "expectedRatio": 0.99,
+      "lastPayoutTs": null,
+      "reachTs": null,
+      "reasons": [
+        "Payout Check has not looked at this pool yet."
+      ]
+    },
+    {
+      "name": "CHIPMUNK POOL",
+      "address": "NQ32 V144 LJDN FJND NLCQ PKBU HTPF KD8G J664",
+      "fee": 0.05,
+      "payoutType": "direct",
+      "schedule": "0 */6 * * *",
+      "stakers": 4,
+      "verdict": null,
+      "ratio": null,
+      "expectedRatio": 0.95,
+      "lastPayoutTs": null,
+      "reachTs": null,
+      "reasons": [
+        "Payout Check has not looked at this pool yet."
+      ]
+    }
+  ]
+}

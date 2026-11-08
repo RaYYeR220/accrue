@@ -1,0 +1,205 @@
+{
+  "description": "Staking transactions sent on Nimiq testnet on 2026-11-07 to pin down the protocol rules the NIM screen checks before it opens a dialog. Each entry records how the network answered: included and succeeded, included but failed, or never included.",
+  "network": "Nimiq testnet (network id 5)",
+  "rpc": "https://rpc.testnet.nimiqwatch.com",
+  "explorer": "https://test.nimiq.watch/#",
+  "sentOn": "2026-11-07",
+  "fee": 0,
+  "stakers": {
+    "A": "NQ09 NMEX 1FAS 6BKD JDG1 GC0F XGM3 Q49B VL90",
+    "B": "NQ66 C3X6 BV1F 0R6U 8QJT XV0U QHEV EKLJ 0DSN",
+    "C": "NQ22 11TS NJ8N BMD0 UVUM E0KL 2RPU NHM1 2RS8"
+  },
+  "pools": {
+    "V1": {
+      "name": "Siam Testnet Pool",
+      "address": "NQ35 YFBF ES7X R9PS 36R4 11FG 3HQF YL9Q NL2S"
+    },
+    "V2": {
+      "name": "Kiddie Pool",
+      "address": "NQ57 UQJL 5A3H N45M 1FHS 2454 C7L5 BTE6 KEU1"
+    }
+  },
+  "steps": [
+    {
+      "id": "A1",
+      "staker": "A",
+      "kind": "createStaker",
+      "action": "New staker delegated to pool V1 with 200 NIM",
+      "hash": "ecb23f8b07b6eefc14630883509c150b66f369a6fe01d97667fee87fc7236aa3",
+      "block": 16172341,
+      "executionResult": true,
+      "shows": "Creating a delegated stake works."
+    },
+    {
+      "id": "A2",
+      "staker": "A",
+      "kind": "update",
+      "action": "Change pool to V2 while 200 NIM is active",
+      "hash": "2ecdb88d1490557d385dd7a3d6eb0b76b24a5506daed234a154060a632ad0e57",
+      "block": 16172345,
+      "executionResult": false,
+      "shows": "A delegated staker cannot change pool while stake is active: included, but failed."
+    },
+    {
+      "id": "A3",
+      "staker": "A",
+      "kind": "setActive",
+      "action": "Deactivate all 200 NIM",
+      "hash": "a6d2a6d2dedb7d98ca4fc2736366696a8022b2260f40f9d79dbeed992db6707f",
+      "block": 16172349,
+      "executionResult": true,
+      "shows": "Deactivating sets inactiveFrom to the next election block (16208010)."
+    },
+    {
+      "id": "A4",
+      "staker": "A",
+      "kind": "update",
+      "action": "Change pool to V2 while the inactive 200 NIM is still locked",
+      "hash": "39b33c04dcdc7f4b93222bd208bcd1f980e5e97fcf2df62cf0944f438cc72a36",
+      "block": 16172352,
+      "executionResult": false,
+      "shows": "A pool change also fails while the deactivated stake is still locked."
+    },
+    {
+      "id": "A5",
+      "staker": "A",
+      "kind": "retire",
+      "action": "Retire 200 NIM while still locked",
+      "hash": "49cd73d2417f4b0ea98d975a3d71be2f91929809eafa8bc5ea7f7e6d1da6e3c8",
+      "block": 16172356,
+      "executionResult": false,
+      "shows": "Retiring is refused before the lock-up ends."
+    },
+    {
+      "id": "B1",
+      "staker": "B",
+      "kind": "createStaker",
+      "action": "New staker delegated to pool V1 with 250 NIM",
+      "hash": "a04fb35c50002deec0aad228f918cc844f19859ffb71dd00de9f627ebf2367f0",
+      "block": 16172360,
+      "executionResult": true,
+      "shows": "Creating a delegated stake works."
+    },
+    {
+      "id": "B2",
+      "staker": "B",
+      "kind": "setActive",
+      "action": "Deactivate all 250 NIM",
+      "hash": "582114d8d8c8f901e30a474721110874304cfdf3db3766673641c88009359936",
+      "block": 16172364,
+      "executionResult": true,
+      "shows": "Same inactiveFrom (16208010) as A3: the lock runs from the election block, not from the tap."
+    },
+    {
+      "id": "B3",
+      "staker": "B",
+      "kind": "retire",
+      "action": "Retire 250 NIM while still locked",
+      "hash": "e254a2e454e44dc8d701ac29768cf1fd863b69f5667e1e749a3ec18da61c1348",
+      "block": 16172367,
+      "executionResult": false,
+      "shows": "Retiring is refused before the lock-up ends."
+    },
+    {
+      "id": "C0",
+      "staker": "C",
+      "kind": "createStaker",
+      "action": "New staker with 50 NIM",
+      "hash": "b6589edb4ad020c2311be29b199cd142184637c41bb0a07144e73f508a46696f",
+      "block": null,
+      "executionResult": null,
+      "shows": "A new stake below the 100 NIM minimum is never included."
+    },
+    {
+      "id": "C1",
+      "staker": "C",
+      "kind": "createStaker",
+      "action": "New staker with 250 NIM and no pool",
+      "hash": "5bed3396535582f1bded0dcbd295b228a638467fc69be0a9c1eefe968e4ee5bf",
+      "block": 16172560,
+      "executionResult": true,
+      "shows": "A stake without a pool can be created."
+    },
+    {
+      "id": "C2",
+      "staker": "C",
+      "kind": "setActive",
+      "action": "Deactivate all 250 NIM (no pool)",
+      "hash": "e9c343942176879d40171d6f9baad1573c5ef1fec38e6b0f9d12473ee2ee18ef",
+      "block": 16172564,
+      "executionResult": true,
+      "shows": "Deactivating without a pool sets the same inactiveFrom."
+    },
+    {
+      "id": "C3",
+      "staker": "C",
+      "kind": "retire",
+      "action": "Retire 200 of 250 NIM, leaving 50",
+      "hash": "70a282c066550f00283f01be6d95c8c8341e44cc839ae45e231dc0a4d4a879b6",
+      "block": 16172568,
+      "executionResult": false,
+      "shows": "A retire that would leave between 0 and 100 NIM inactive fails."
+    },
+    {
+      "id": "C4",
+      "staker": "C",
+      "kind": "retire",
+      "action": "Retire 150 of 250 NIM, leaving 100",
+      "hash": "cbcd871b5e11f47846673c3fb08338f613ca180521bf41d435297cabd6967201",
+      "block": 16172571,
+      "executionResult": true,
+      "shows": "Leaving exactly 100 NIM is allowed; without a pool there is no lock-up."
+    },
+    {
+      "id": "C5",
+      "staker": "C",
+      "kind": "remove",
+      "action": "Remove 100 of the 150 retired NIM",
+      "hash": "0171281696c667b07c4d6676740a9a6e4f15be110f923b1dbd9fb7fadf199ea5",
+      "block": null,
+      "executionResult": null,
+      "shows": "A partial remove is never included."
+    },
+    {
+      "id": "C6",
+      "staker": "C",
+      "kind": "remove",
+      "action": "Remove all 150 retired NIM right after retiring",
+      "hash": "86ff99b99646ee0d033fa21f405a2b5dad714437e42ed8a0218bc42a73cc12fa",
+      "block": 16172763,
+      "executionResult": true,
+      "shows": "Removing the whole retired balance works immediately."
+    },
+    {
+      "id": "C7",
+      "staker": "C",
+      "kind": "update",
+      "action": "Pick pool V1 for the stake without a pool, reactivating it",
+      "hash": "ae1b559950343ee86c83353a3d9149a2b1027d5b02c7128ed094a8e5f1729a61",
+      "block": 16172767,
+      "executionResult": true,
+      "shows": "A staker without a pool can pick one at once."
+    },
+    {
+      "id": "C8",
+      "staker": "C",
+      "kind": "addStake",
+      "action": "Add 10 NIM to a 100 NIM stake",
+      "hash": "5e6703e7d7678022a4e92b07d0f7e554382e1374ada5a350b9d779607f6ca21f",
+      "block": 16172808,
+      "executionResult": true,
+      "shows": "Adding less than 100 NIM to an existing stake of at least 100 NIM works."
+    },
+    {
+      "id": "C9",
+      "staker": "C",
+      "kind": "setActive",
+      "action": "Deactivate 55 of 110 NIM",
+      "hash": "6f8f8a1d1f8799be60d0676fb6c6eaaac33147e6d3beef6a1d23a39a6d804084",
+      "block": 16172830,
+      "executionResult": true,
+      "shows": "A partial deactivation works and also stamps inactiveFrom 16208010."
+    }
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "source": "forge",
+  "tool": "forge 1.8.3",
+  "command": "cd contracts && forge test --json",
+  "ranAt": "2026-11-08T04:59:12.285Z",
+  "commit": "104620e1e26069f23432cccca6428164d0fdd2de",
+  "testedCodeMatchesCommit": true,
+  "forkBlock": 96900000,
+  "wallMs": 194772,
+  "ok": true,
+  "suites": [
+    {
+      "suite": "test/AccrueRouter.fork.t.sol:AccrueRouterForkTest",
+      "tests": 22,
+      "passed": 22,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "suite": "test/AccrueRouter.invariant.t.sol:AccrueRouterInvariantTest",
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "suite": "test/Deploy.t.sol:DeployScriptTest",
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    }
+  ],
+  "tests": 26,
+  "passed": 26,
+  "failed": 0,
+  "skipped": 0,
+  "fuzz": [
+    {
+      "test": "testFuzz_supplyAmount",
+      "runs": 256
+    },
+    {
+      "test": "testFuzz_withdrawAmount",
+      "runs": 256
+    }
+  ],
+  "invariant": [
+    {
+      "test": "invariant_ownersOnlyReceive",
+      "runs": 64,
+      "calls": 1280,
+      "reverts": 0
+    }
+  ]
+}
