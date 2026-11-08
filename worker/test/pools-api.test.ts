@@ -58,6 +58,7 @@ async function storedWindows(db: FakeD1, pool: string, fee: number, schedule: st
 }
 
 describe('verdict cache and GET /api/pools', () => {
+  afterEach(() => vi.useRealTimers())
   let db: FakeD1
   const now = Date.UTC(2026, 10, 15, 6)
 
@@ -93,6 +94,9 @@ describe('verdict cache and GET /api/pools', () => {
 
   it('answers 21 pools from the cache with one D1 round trip, sorted by stake, no logo bytes inline', async () => {
     await refreshVerdicts(env(db), { now, maxPools: 5 })
+    const g = await storedWindows(db, GARUDA, 0.05, 'Every 12 hours')
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(g.reach + HOUR_MS)
     const c = counted(db)
     const { status, headers, body } = await getJson('/api/pools', env(c.db))
     expect(status).toBe(200)
@@ -107,11 +111,11 @@ describe('verdict cache and GET /api/pools', () => {
     expect([...balances].sort((a, b) => (a > b ? -1 : a < b ? 1 : 0))).toEqual(balances)
 
     const garudaRow = body.pools.find((p: any) => p.address === GARUDA)
-    const g = await storedWindows(db, GARUDA, 0.05, 'Every 12 hours')
     expect(garudaRow).toEqual({
       address: GARUDA, name: 'Garuda Pool', fee: 0.05, payoutType: 'restake', schedule: 'Every 12 hours',
       balanceLuna: '25798184421741', stakers: 256, accent: '#c08e2f', logo: '/api/pools/NQ15HNAHYRVHDFVMYHAGBSXG0QHKKA0QXDR7/logo',
       verdict: g.verdict.verdict, ratio: g.verdict.ratio, expectedRatio: 0.95, lastPayoutTs: g.window.lastPayoutTs, reasons: g.verdict.reasons,
+      reachTs: g.reach,
     })
     const by = (name: string) => body.pools.find((p: any) => p.name === name)
     // no payouts by design needs no data; a pool without a published fee has no promise to hold
@@ -131,6 +135,30 @@ describe('verdict cache and GET /api/pools', () => {
     await refreshVerdicts(env(db), { now, maxPools: 5 })
     const { body } = await getJson('/api/pools', env(db))
     expect(body.pools.find((p: any) => p.address === GARUDA).reasons.join(' ')).toMatch(/catching up/)
+  })
+
+  it('a pool whose data stopped well behind the clock keeps its verdict and says how old the data is', async () => {
+    await refreshVerdicts(env(db), { now, maxPools: 5 })
+    vi.useFakeTimers({ toFake: ['Date'] })
+    const row = async (pool: string) => (await getJson('/api/pools', env(db))).body.pools.find((p: any) => p.address === pool)
+    const iso = (t: number) => new Date(t).toISOString().replace(/\.\d{3}Z$/, 'Z')
+    // Garuda publishes "Every 12 hours": behind once its data is more than 2 x 12 h old
+    const g = await storedWindows(db, GARUDA, 0.05, 'Every 12 hours')
+    vi.setSystemTime(g.reach + 23 * HOUR_MS)
+    expect((await row(GARUDA)).reasons.join(' ')).not.toMatch(/indexing is behind/)
+    vi.setSystemTime(g.reach + 25 * HOUR_MS)
+    const late = await row(GARUDA)
+    expect(late.verdict).toBe(g.verdict.verdict)
+    expect(late.reachTs).toBe(g.reach)
+    expect(late.reasons).toEqual([...g.verdict.reasons, `Data as of ${iso(g.reach)}; indexing is behind`])
+    // Siam publishes "Every 3 hours": the 3 h floor does not apply, 2 x 3 h = 6 h does
+    const s = await storedWindows(db, SIAM, 0.03, 'Every 3 hours')
+    vi.setSystemTime(s.reach + 5 * HOUR_MS)
+    expect((await row(SIAM)).reasons.join(' ')).not.toMatch(/indexing is behind/)
+    vi.setSystemTime(s.reach + 7 * HOUR_MS)
+    expect((await row(SIAM)).reasons).toContain(`Data as of ${iso(s.reach)}; indexing is behind`)
+    // a pool that pays nothing by design has no data to be behind on
+    expect((await row('NQ51 SURF MCTM AQXM 15PA K9FX 8EEX 29BE VGH8')).reasons.join(' ')).not.toMatch(/indexing is behind/)
   })
 
   it('a verdict is recomputed when the pool changes its fee, not on every run', async () => {
@@ -208,7 +236,7 @@ describe('GET /api/pools/:address/logo', () => {
       const res = await logo(a)
       expect(res.status).toBe(200)
       expect(res.headers.get('content-type')).toBe('image/svg+xml')
-      expect(res.headers.get('content-security-policy')).toBe("default-src 'none'; style-src 'unsafe-inline'")
+      expect(res.headers.get('content-security-policy')).toBe("default-src 'none'; style-src 'unsafe-inline'; form-action 'none'; sandbox")
       expect(res.headers.get('x-content-type-options')).toBe('nosniff')
       expect(await res.text()).toBe(SVG)
     }
@@ -224,6 +252,25 @@ describe('GET /api/pools/:address/logo', () => {
     }
     expect((await logo('NQ00 0000 0000 0000 0000 0000 0000 0000 0000')).status).toBe(400)
     expect((await logo('nope')).status).toBe(400)
+  })
+
+  it('checks an SVG in linear time: comments before a tag that is not <svg> are refused at once', async () => {
+    const svgDb = new FakeD1()
+    const prolog = [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<!-- made by hand -->',
+      '<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">',
+      '<!-- b --><svg xmlns="http://www.w3.org/2000/svg"/>',
+    ].join(String.fromCharCode(10))
+    const inputs = ['<!---->'.repeat(26) + 'X', '<!---->'.repeat(585) + 'X', '<!-- never closed <svg>', prolog]
+    seedPools(svgDb, Date.UTC(2026, 10, 8), Object.fromEntries(inputs.map((x, i) => [POOLS[i]![0], `data:image/svg+xml;base64,${btoa(x)}`])))
+    for (const [i, want] of [[0, 404], [1, 404], [2, 404], [3, 200]] as const) {
+      const t = performance.now()
+      const res = await app.request(`/api/pools/${normalizeAddress(POOLS[i]![0])}/logo`, {}, env(svgDb))
+      // the old pattern backtracked exponentially: 22 empty comments took ~30 ms, each one more doubled it
+      expect(performance.now() - t, `input ${i}`).toBeLessThan(50)
+      expect(res.status, `input ${i}`).toBe(want)
+    }
   })
 })
 
@@ -363,7 +410,6 @@ describe('GET /api/check/:nimAddress', () => {
     const b = compact.body
     expect(b.staker).toEqual({ activeLuna: String(stake), inactiveLuna: '0', inactiveFrom: null, retiredLuna: '0', delegation: SIAM })
     expect(b.pool).toMatchObject({ address: SIAM, name: 'Siam Pool', verdict: 'PAID_AS_PROMISED', expectedRatio: 0.97 })
-    expect(b.windowDays).toBe(7)
     expect(b.expectedLuna).toMatch(/^\d+$/)
     expect(b.receivedLuna).toMatch(/^\d+$/)
 
@@ -372,6 +418,10 @@ describe('GET /api/check/:nimAddress', () => {
       .query<{ day: number; payouts: number; received: number }>('SELECT day, payouts, received FROM staker_day WHERE pool = ? AND staker = ?', SIAM, STAKER)
       .map((d) => ({ ...d, received: BigInt(d.received) }))
     const u = userWindowFromAggregates(s.hours, userDays, { ...s.range, cycleMs: s.cycleMs })!
+    // the amounts cover the staker window, so its real length goes with them (the app divides by it)
+    expect(b.windowDays).toBe((u.toTs - u.fromTs) / DAY_MS)
+    expect(b.windowDays).toBeLessThan(7)
+    expect([b.fromTs, b.toTs]).toEqual([u.fromTs, u.toTs])
     expect(b.receivedLuna).toBe(String(u.received))
     expect(b.expectedLuna).toBe(String(userExpected({ userActiveStake: BigInt(stake), poolStake: 46639086111650n, poolEarned: u.earned, fee: 0.03 })))
     expect(b.pct).toBeGreaterThan(0.98)

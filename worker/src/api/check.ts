@@ -3,7 +3,7 @@ import { userExpected, userVerdict, type Verdict } from '@accrue/shared'
 import type { Env } from '../env'
 import { errorBody } from '../relayer/errors'
 import { nimRpc, RpcUnavailable } from '../rpc/nimiq'
-import { canonicalAddress, hourFromDb, userWindowFromAggregates, type PoolHourDb } from '../indexer/aggregate'
+import { DAY_MS, canonicalAddress, hourFromDb, userWindowFromAggregates, type PoolHourDb } from '../indexer/aggregate'
 import { payoutTypeOf, scheduleMsOf } from '../indexer/pools'
 import { VERDICTS_KEY, currentEntry, parseVerdictCache, windowRange, type CursorReachRow } from '../indexer/verdicts'
 import { cacheGet, cachePut } from './cache'
@@ -36,7 +36,11 @@ export interface CheckBody {
   receivedLuna?: string
   verdict?: Verdict
   pct?: number | null
+  /** 7 (the pool window) without amounts; with them, the staker window they cover, in days */
   windowDays: number
+  /** the staker window's first and last midnight (ms), when amounts are given */
+  fromTs?: number
+  toTs?: number
 }
 
 const luna = (v: unknown, missing: string | null): string | null =>
@@ -90,7 +94,7 @@ async function checkBody(env: Env, address: string, staker: StakerView): Promise
   const row = poolRes?.results?.[0] as PoolDbRow | undefined
   if (!row) return base
   const cache = parseVerdictCache((metaRes?.results?.[0] as { value?: string } | undefined)?.value)
-  const out: CheckBody = { ...base, pool: poolView(row, cache) }
+  const out: CheckBody = { ...base, pool: poolView(row, cache, Date.now()) }
   if (payoutTypeOf(row.payout_type) === 'none') return { ...out, verdict: 'NO_PAYOUTS_BY_DESIGN', pct: null }
   const entry = currentEntry(row, cache)
   const cursor = cursorRes?.results?.[0] as CursorReachRow | undefined
@@ -104,7 +108,17 @@ async function checkBody(env: Env, address: string, staker: StakerView): Promise
   if (!u) return { ...out, verdict: stakerVerdict('NOT_ENOUGH_DATA', entry.verdict), pct: null }
   const expected = userExpected({ userActiveStake: BigInt(staker.activeLuna), poolStake: BigInt(Math.round(row.balance ?? 0)), poolEarned: u.earned, fee: row.fee })
   const uv = userVerdict({ expected, received: u.received, cycles: u.payouts })
-  return { ...out, expectedLuna: String(expected), receivedLuna: String(u.received), verdict: stakerVerdict(uv.verdict, entry.verdict), pct: uv.pct }
+  return {
+    ...out,
+    expectedLuna: String(expected),
+    receivedLuna: String(u.received),
+    verdict: stakerVerdict(uv.verdict, entry.verdict),
+    pct: uv.pct,
+    // the amounts cover whole days between two clean midnights (usually 6, can be fewer), not 7
+    windowDays: (u.toTs - u.fromTs) / DAY_MS,
+    fromTs: u.fromTs,
+    toTs: u.toTs,
+  }
 }
 
 export const check = new Hono<{ Bindings: Env }>()

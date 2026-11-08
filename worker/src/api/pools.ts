@@ -3,7 +3,7 @@ import { Hono } from 'hono'
 import type { Verdict } from '@accrue/shared'
 import type { Env } from '../env'
 import { errorBody } from '../relayer/errors'
-import { payoutTypeOf, type PayoutType } from '../indexer/pools'
+import { payoutTypeOf, scheduleMsOf, type PayoutType } from '../indexer/pools'
 import { NOT_CHECKED, VERDICTS_KEY, currentEntry, parseVerdictCache, type PoolMetaRow, type VerdictCache } from '../indexer/verdicts'
 import { compactNim, parseNimAddress } from './nim'
 
@@ -33,14 +33,29 @@ export interface PoolView {
   expectedRatio: number | null
   lastPayoutTs: number | null
   reasons: string[]
+  /** how far the data behind the verdict reaches (ms), null when nothing is indexed */
+  reachTs: number | null
 }
 
 export const POOL_COLUMNS = 'address, name, fee, payout_type, schedule, reward_address, listed, balance, stakers, accent, logo IS NOT NULL AS has_logo, updated_at'
 
 const ACCENT = /^#[0-9a-fA-F]{6}$/
 
-export function poolView(r: PoolDbRow, cache: VerdictCache | null): PoolView {
+const HOUR_MS = 3_600_000
+const STALE_FLOOR_MS = 3 * HOUR_MS
+const iso = (t: number) => new Date(t).toISOString().replace(/\.\d{3}Z$/, 'Z')
+
+/**
+ * A pool's row with its cached verdict. A verdict whose data stopped more than max(2 x the published
+ * interval, 3 h) before `now` stays, with a reason saying how old its data is.
+ */
+export function poolView(r: PoolDbRow, cache: VerdictCache | null, now: number): PoolView {
   const e = currentEntry(r, cache)
+  const reachTs = e?.reachTs ?? null
+  const reasons = e?.reasons ?? [NOT_CHECKED]
+  const behind =
+    e?.verdict != null && e.verdict !== 'NO_PAYOUTS_BY_DESIGN' && reachTs !== null &&
+    now - reachTs > Math.max(2 * (scheduleMsOf(r.schedule) ?? 0), STALE_FLOOR_MS)
   return {
     address: r.address,
     name: r.name,
@@ -55,7 +70,8 @@ export function poolView(r: PoolDbRow, cache: VerdictCache | null): PoolView {
     ratio: e?.ratio ?? null,
     expectedRatio: e ? e.expectedRatio : r.fee === null ? null : 1 - r.fee,
     lastPayoutTs: e?.lastPayoutTs ?? null,
-    reasons: e?.reasons ?? [NOT_CHECKED],
+    reasons: behind ? [...reasons, `Data as of ${iso(reachTs)}; indexing is behind`] : reasons,
+    reachTs,
   }
 }
 
@@ -81,20 +97,57 @@ pools.get('/', async (c) => {
   } catch {
     return c.json(errorBody('INTERNAL', { reason: 'db_error' }), 500)
   }
-  const list = rows.map((r) => poolView(r, cache)).sort(byStake)
+  const now = Date.now()
+  const list = rows.map((r) => poolView(r, cache, now)).sort(byStake)
   const asOf = cache?.at ?? Math.max(0, ...rows.map((r) => r.updated_at ?? 0))
   c.header('cache-control', 'public, max-age=60')
   return c.json({ asOf, windowDays: WINDOW_DAYS, pools: list })
 })
 
+/**
+ * Whether a document starts like an SVG: optional BOM, XML declaration, comments and DOCTYPE, then
+ * `<svg`. One pass with indexOf, so it stays linear on any input (a backtracking pattern over a run
+ * of comments took exponential time on third-party data).
+ */
+export function looksLikeSvg(text: string): boolean {
+  let i = text.charCodeAt(0) === 0xfeff ? 1 : 0
+  const skipSpace = () => {
+    while (i < text.length && /\s/.test(text[i]!)) i++
+  }
+  const skipPast = (end: string) => {
+    const at = text.indexOf(end, i)
+    if (at < 0) return false
+    i = at + end.length
+    return true
+  }
+  skipSpace()
+  if (text.startsWith('<?xml', i) && !skipPast('?>')) return false
+  let doctype = false
+  for (;;) {
+    skipSpace()
+    if (text.startsWith('<!--', i)) {
+      i += 4
+      if (!skipPast('-->')) return false
+    } else if (!doctype && text.slice(i, i + 9).toUpperCase() === '<!DOCTYPE') {
+      doctype = true
+      if (!skipPast('>')) return false
+    } else break
+  }
+  return /^<svg[\s>/]/i.test(text.slice(i, i + 5))
+}
+
 const LOGO_TYPES = {
   'image/png': (b: Uint8Array) => b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47,
   'image/jpeg': (b: Uint8Array) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff,
   'image/webp': (b: Uint8Array) => ascii(b, 0, 4) === 'RIFF' && ascii(b, 8, 12) === 'WEBP',
-  'image/svg+xml': (b: Uint8Array) => /^\s*(<\?xml[^>]*>\s*)?(<!--[\s\S]*?-->\s*)*(<!DOCTYPE[^>]*>\s*)?<svg[\s>]/i.test(new TextDecoder().decode(b.subarray(0, 4096))),
+  'image/svg+xml': (b: Uint8Array) => looksLikeSvg(new TextDecoder().decode(b.subarray(0, 4096))),
 } as const
 const ascii = (b: Uint8Array, from: number, to: number) => String.fromCharCode(...b.subarray(from, to))
 const DATA_URI = /^data:(image\/(?:png|jpeg|webp|svg\+xml));base64,([A-Za-z0-9+/=\s]+)$/
+
+// form-action does not fall back to default-src: without it a scriptless SVG opened directly could
+// still post a form from our origin; sandbox drops the origin altogether
+const LOGO_CSP = "default-src 'none'; style-src 'unsafe-inline'; form-action 'none'; sandbox"
 
 const notFound = () => errorBody('INTERNAL', { reason: 'not_found' })
 
@@ -120,7 +173,7 @@ pools.get('/:address/logo', async (c) => {
       'content-type': type,
       'cache-control': 'public, max-age=86400, stale-while-revalidate=604800',
       'x-content-type-options': 'nosniff',
-      'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'",
+      'content-security-policy': LOGO_CSP,
     },
   })
 })
