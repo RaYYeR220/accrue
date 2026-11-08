@@ -58,9 +58,11 @@ const DATA_KIND: Record<string, NimKind> = { '05': 'stake', '06': 'add', '07': '
 
 const same = (a: string, b: string) => normalizeAddress(a) === normalizeAddress(b)
 
-export function classifyNimTx(tx: NimTx, wallet: string): NimKind | null {
-  if (same(tx.to, STAKING_CONTRACT) && same(tx.from, wallet)) return DATA_KIND[tx.recipientData.slice(0, 2).toLowerCase()] ?? null
-  if (same(tx.from, STAKING_CONTRACT) && same(tx.to, wallet)) return 'remove'
+// own: the wallet, and the HTLC account a staking transaction may be funded from
+export function classifyNimTx(tx: NimTx, own: string | readonly string[]): NimKind | null {
+  const mine = (a: string) => (typeof own === 'string' ? [own] : own).some(o => same(a, o))
+  if (same(tx.to, STAKING_CONTRACT) && mine(tx.from)) return DATA_KIND[tx.recipientData.slice(0, 2).toLowerCase()] ?? null
+  if (same(tx.from, STAKING_CONTRACT) && mine(tx.to)) return 'remove'
   return null
 }
 
@@ -86,7 +88,7 @@ function nimRow(e: { hash: string; kind: NimKind; luna: bigint | null; at: numbe
 // Set-active and update-staker carry no value; their amount is not what moved.
 const valued = (k: NimKind) => k === 'stake' || k === 'add' || k === 'retire' || k === 'remove'
 
-export function buildActivity(args: { jobs: LocalJob[]; nimLog: NimLogEntry[]; nimChain: ChainTx[]; wallet: string | null; network: Network }): ActivityRow[] {
+export function buildActivity(args: { jobs: LocalJob[]; nimLog: NimLogEntry[]; nimChain: ChainTx[]; wallet: string | readonly string[] | null; network: Network }): ActivityRow[] {
   const { jobs, nimLog, nimChain, wallet, network } = args
   const rows = jobs.map(jobRow)
   const seen = new Set<string>()
@@ -135,15 +137,26 @@ function readLog(): NimLogEntry[] {
 
 const subs = new Set<() => void>()
 let cache: NimLogEntry[] | null = null
+// one stable array per wallet until the log changes (useSyncExternalStore snapshots)
+const views = new Map<string, NimLogEntry[]>()
+const NONE: NimLogEntry[] = []
 
 export function nimLog(wallet: string | null): NimLogEntry[] {
-  cache ??= readLog()
-  return wallet ? cache.filter(e => same(e.wallet, wallet)) : []
+  if (!wallet) return NONE
+  const k = normalizeAddress(wallet)
+  let v = views.get(k)
+  if (!v) {
+    cache ??= readLog()
+    v = cache.filter(e => same(e.wallet, wallet))
+    views.set(k, v)
+  }
+  return v
 }
 
 export function recordNimTx(entry: NimLogEntry): void {
   const next = [entry, ...readLog().filter(e => e.hash !== entry.hash)].slice(0, MAX_ENTRIES)
   cache = next
+  views.clear()
   try {
     localStorage.setItem(NIM_LOG_KEY, JSON.stringify(next))
   } catch {

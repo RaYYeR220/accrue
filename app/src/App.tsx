@@ -4,7 +4,11 @@ import { t } from './i18n'
 
 // Two separate chunks: the wallet side (SDK, viem, providers) for Nimiq Pay, and the landing
 // for ordinary browsers. Neither ever downloads the other.
-export const loadMiniApp = () => import('./MiniApp')
+export const loadMiniApp = () =>
+  import('./MiniApp').then(async m => {
+    await m.ready()
+    return m
+  })
 export const loadLanding = () =>
   import('./landing/Landing').then(async m => {
     await m.ready()
