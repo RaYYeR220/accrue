@@ -50,8 +50,14 @@ test.describe('Home', () => {
 
   test('a stale price says how old it is, next to the NIM value and in the source line', async ({ page }) => {
     await start(page, 'happy', '&rates=stale')
-    await expect(page.getByText(/^1 NIM = \$0\.000300, price as of \d\d:\d\d( [AP]M)?; the price sources are not answering right now\./)).toBeVisible()
+    // the source line also names where the price came from
+    await expect(page.getByText(/^1 NIM = \$0\.000300 \(mock\), price as of \d\d:\d\d( [AP]M)?; the price sources are not answering right now\./)).toBeVisible()
     await expect(page.getByText(/^≈ \$0\.30 · price as of \d\d:\d\d/).first()).toBeVisible()
+  })
+
+  test('the source line names where the NIM price came from', async ({ page }) => {
+    await start(page, 'happy')
+    await expect(page.getByText(/^1 NIM = \$0\.000300 \(mock\), rates as of \d\d:\d\d/)).toBeVisible()
   })
 
   test('with no rate at all the app stays quiet: values in USD, nothing on the console', async ({ page }) => {

@@ -85,6 +85,40 @@ describe('stale rates', () => {
   })
 })
 
+describe('each part of the rates on its own', () => {
+  const hhmm = (ts: number) => new Intl.DateTimeFormat('en', { hour: '2-digit', minute: '2-digit' }).format(ts)
+  const priceAt = Date.UTC(2026, 10, 8, 6, 30)
+  const fxAt = Date.UTC(2026, 10, 8, 5, 12)
+  const body = { ...rates, asOf: fxAt, priceAsOf: priceAt, fxAsOf: fxAt, stale: true, fxStale: true, source: ['CoinGecko', 'open.er-api.com'] }
+
+  it('reads priceAsOf, fxAsOf and which part is stale', () => {
+    expect(parseRates(body)).toMatchObject({ priceAsOf: priceAt, fxAsOf: fxAt, fxStale: true })
+    expect(parseRates(body).priceStale).toBeUndefined()
+    // an answer with only `stale` and `asOf` reads as a stale price as of `asOf`
+    expect(makeFiat('USD', parseRates({ ...rates, asOf: fxAt, stale: true }), false, 'en', priceAt).note).toBe(`price as of ${hhmm(fxAt)}`)
+  })
+
+  it('a stale exchange rate beside a fresh price only matters away from USD', () => {
+    const usd = makeFiat('USD', parseRates(body), false, 'en', priceAt + 60_000)
+    expect(usd.stale).toBe(false)
+    expect(usd.note).toBe('')
+    const eur = makeFiat('EUR', parseRates(body), false, 'en', priceAt + 60_000)
+    expect(eur.stale).toBe(true)
+    expect(eur.note).toBe(`exchange rate as of ${hhmm(fxAt)}`)
+  })
+
+  it('a stale price says the price time, whatever the fiat', () => {
+    const r = parseRates({ ...body, priceStale: true, fxStale: undefined })
+    expect(makeFiat('USD', r, false, 'en', priceAt + 60_000).note).toBe(`price as of ${hhmm(priceAt)}`)
+  })
+
+  it('names where the NIM price came from, the exchange pair as a thin market', () => {
+    expect(makeFiat('USD', parseRates(body), false, 'en').priceSource).toBe('CoinGecko')
+    expect(makeFiat('USD', parseRates({ ...body, source: ['Gate.io+Kraken', 'open.er-api.com'] }), false, 'en').priceSource).toBe('Gate.io + Kraken, a thin market')
+    expect(makeFiat('USD', null, false, 'en').priceSource).toBe('')
+  })
+})
+
 describe('retryRates', () => {
   it('a 503 means no rate exists right now: no retry, so nothing more goes to the console', () => {
     expect(retryRates(0, new HttpError(503, { error: 'RPC_UNAVAILABLE' }))).toBe(false)

@@ -7,14 +7,18 @@ import { HttpError } from '../providers/errors'
 
 export const FIATS = ['USD', 'EUR', 'CRC', 'GMD'] as const satisfies readonly Fiat[]
 
-// GET /api/rates: USD-based FX plus the NIM price, with where they came from. `stale`: the
-// sources did not answer and this is the last good copy, as old as `asOf` says.
+// GET /api/rates: USD-based FX plus the NIM price, with where they came from. A part marked stale is
+// the last good copy (its sources did not answer), as old as its own asOf says.
 export interface Rates {
   asOf: number
+  priceAsOf?: number
+  fxAsOf?: number
   nimUsd: number
   fx: Partial<Record<Fiat, number>>
   source: string[]
   stale?: true
+  priceStale?: true
+  fxStale?: true
 }
 
 export interface FiatApi {
@@ -24,9 +28,12 @@ export interface FiatApi {
   format(n: number, decimals?: number): string
   asOf: number | null
   source: string[]
+  /** a part the shown values depend on is a stale copy (the FX only away from USD) */
   stale: boolean
-  /** "price as of 05:12" while the rates are a stale copy, else '' */
+  /** "price as of 05:12" / "exchange rate as of 05:12" while `stale`, else '' */
   note: string
+  /** where the NIM price came from, for the source line ("CoinGecko"), '' before the rates arrive */
+  priceSource: string
   /** the API has no rate at all right now (it answered 503): USD values, no NIM fiat */
   unavailable: boolean
 }
@@ -51,14 +58,29 @@ export function parseRates(body: unknown): Rates {
     fx[k] = v
   }
   const source = Array.isArray(b.source) ? b.source.filter((s): s is string => typeof s === 'string') : []
-  return { asOf: b.asOf, nimUsd: b.nimUsd, fx, source, ...(b.stale === true ? { stale: true as const } : {}) }
+  return {
+    asOf: b.asOf,
+    ...(finite(b.priceAsOf) ? { priceAsOf: b.priceAsOf } : {}),
+    ...(finite(b.fxAsOf) ? { fxAsOf: b.fxAsOf } : {}),
+    nimUsd: b.nimUsd,
+    fx,
+    source,
+    ...(b.stale === true ? { stale: true as const } : {}),
+    ...(b.priceStale === true ? { priceStale: true as const } : {}),
+    ...(b.fxStale === true ? { fxStale: true as const } : {}),
+  }
 }
 
-// "05:12" today, "Nov 7, 05:12" for an earlier day (a stale copy can be up to a day old)
-function asOfText(ts: number, now: number, locale: string): string {
+// the NIM price source as people should read it; an exchange pair is a thin market
+const PRICE_SOURCE_NAMES: Record<string, string> = { 'Gate.io+Kraken': 'fiat.source.gateKraken' }
+const priceSourceName = (s: string | undefined) => (!s ? '' : PRICE_SOURCE_NAMES[s] ? t(PRICE_SOURCE_NAMES[s]) : s)
+
+// "price as of 05:12" today, "price as of Nov 7, 05:12" for an earlier day (a stale copy can be up
+// to a day old); languages word the two differently
+function asOfNote(key: 'fiat.asOf' | 'fiat.fxAsOf', ts: number, now: number, locale: string): string {
   const sameDay = new Date(ts).toDateString() === new Date(now).toDateString()
-  const opts: Intl.DateTimeFormatOptions = sameDay ? { hour: '2-digit', minute: '2-digit' } : { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }
-  return new Intl.DateTimeFormat(locale, opts).format(ts)
+  if (sameDay) return t(key, { time: new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' }).format(ts) })
+  return t(`${key}Day`, { date: new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(ts) })
 }
 
 // Unknown is NaN (rendered as a dash), never a wrong number. When the rate source
@@ -69,7 +91,17 @@ export function makeFiat(host: Fiat, rates: Rates | null, failed: boolean, local
   const fiat: Fiat = usable || (!rates && !failed) ? host : 'USD'
   const factor = usable ? rate : fiat === 'USD' ? 1 : NaN
   const nimUsd = rates?.nimUsd ?? NaN
-  const stale = rates?.stale === true
+  // an answer without per-part times is all as old as asOf, and when stale it is a stale price
+  const perPart = rates?.priceAsOf !== undefined
+  const priceStale = rates?.priceStale === true || (!perPart && rates?.stale === true)
+  const fxStale = rates?.fxStale === true && fiat !== 'USD'
+  const note = !rates
+    ? ''
+    : priceStale
+      ? asOfNote('fiat.asOf', rates.priceAsOf ?? rates.asOf, now, locale)
+      : fxStale
+        ? asOfNote('fiat.fxAsOf', rates.fxAsOf ?? rates.asOf, now, locale)
+        : ''
   return {
     fiat,
     toFiat: usd => usd * factor,
@@ -77,9 +109,10 @@ export function makeFiat(host: Fiat, rates: Rates | null, failed: boolean, local
     format: (n, decimals) => (Number.isFinite(n) ? formatFiat(n, fiat, locale, decimals) : '—'),
     asOf: rates?.asOf ?? null,
     source: rates?.source ?? [],
-    stale,
+    stale: priceStale || fxStale,
     unavailable: failed && !rates,
-    note: stale && rates ? t('fiat.asOf', { time: asOfText(rates.asOf, now, locale) }) : '',
+    note,
+    priceSource: priceSourceName(rates?.source[0]),
   }
 }
 

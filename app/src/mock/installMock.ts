@@ -450,7 +450,8 @@ export function installMock(search: string, w: Window = window): MockHandle {
       const r = q.get('rates')
       if (r === 'down') return json(503, { error: 'RPC_UNAVAILABLE', detail: { reason: 'price_unavailable' } })
       // the sources stopped answering 40 minutes ago: the API serves its last good copy
-      return json(200, r === 'stale' ? { ...MOCK_RATES, asOf: Date.now() - 40 * 60_000, stale: true } : { ...MOCK_RATES, asOf: Date.now() })
+      const at = Date.now() - (r === 'stale' ? 40 * 60_000 : 0)
+      return json(200, { ...MOCK_RATES, asOf: at, priceAsOf: at, fxAsOf: at, ...(r === 'stale' ? { stale: true, priceStale: true, fxStale: true } : {}) })
     }
     if (path === '/api/aave') {
       const illiquid = sc.relay.withdraw.kind === 'error' && sc.relay.withdraw.error === 'AAVE_LIQUIDITY'

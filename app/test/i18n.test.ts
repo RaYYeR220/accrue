@@ -161,3 +161,15 @@ describe('extendDicts', () => {
     }
   })
 })
+
+describe('age notes', () => {
+  it('a note for an earlier day has its own wording, with the date in it', () => {
+    for (const lang of LANGS) {
+      for (const k of ['fiat.asOfDay', 'fiat.fxAsOfDay']) {
+        expect(dicts[lang][k], `${lang}:${k}`).toContain('{date}')
+        // "de las" / "das" belong to a clock time, not to a date
+        expect(dicts[lang][k], `${lang}:${k}`).not.toMatch(/ de las | das /)
+      }
+    }
+  })
+})
