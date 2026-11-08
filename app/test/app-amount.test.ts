@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { checkDeposit, checkWithdraw, maxDeposit, parseAmount } from '../src/model/amount'
+import { checkDeposit, checkWithdraw, maxDeposit, parseAmount, plainUnits } from '../src/model/amount'
 
 const USD = 1_000_000n
 
@@ -36,11 +36,26 @@ describe('parseAmount: what a person may type', () => {
     expect(parseAmount('1.000000', 6)).toEqual({ ok: true, units: USD })
   })
 
-  it('a decimal comma counts only where the language writes one', () => {
+  it('each language has exactly one decimal mark, and the other one is refused', () => {
+    // decimal-comma languages (de, es, fr, pt): "1.000" is a thousand there, so it is never read as 1
     expect(parseAmount('1,5', 6, { comma: true })).toEqual({ ok: true, units: 1_500_000n })
+    expect(parseAmount('1.000', 6, { comma: true })).toEqual({ ok: false, error: 'FORMAT' })
+    expect(parseAmount('1.5', 6, { comma: true })).toEqual({ ok: false, error: 'FORMAT' })
+    // English: "1,500" is fifteen hundred, so it is refused rather than read as 1.5
+    expect(parseAmount('1.5', 6)).toEqual({ ok: true, units: 1_500_000n })
     expect(parseAmount('1,5', 6)).toEqual({ ok: false, error: 'FORMAT' })
-    // in English "1,500" is fifteen hundred, so it is refused rather than read as 1.5
     expect(parseAmount('1,500', 6)).toEqual({ ok: false, error: 'FORMAT' })
+  })
+
+  it('what Max and All type in parses back to the same units, in both kinds of language', () => {
+    for (const comma of [false, true]) {
+      for (const units of [0n, 1n, 25_123_456n, 10_000_000_000n, 999_999n]) {
+        expect(parseAmount(plainUnits(units, 6, comma), 6, { comma })).toEqual({ ok: true, units })
+      }
+      expect(parseAmount(plainUnits(123_456_789n, 5, comma), 5, { comma })).toEqual({ ok: true, units: 123_456_789n })
+    }
+    expect(plainUnits(25_120_000n, 6, true)).toBe('25,12')
+    expect(plainUnits(25_000_000n, 6, false)).toBe('25')
   })
 
   it('NIM amounts have 5 decimals', () => {
@@ -78,10 +93,11 @@ describe('deposit limits: min $1, max $10,000, never more than the balance', () 
 })
 
 describe('withdraw limits', () => {
-  it('more than zero, at most the position and $10,000', () => {
+  it('more than zero and at most the position; no cap, so leaving is never limited', () => {
     expect(checkWithdraw(1n, 100n * USD)).toEqual({ ok: true })
     expect(checkWithdraw(0n, 100n * USD)).toEqual({ ok: false, reason: 'ZERO', limit: 0n })
     expect(checkWithdraw(101n * USD, 100n * USD)).toEqual({ ok: false, reason: 'BALANCE', limit: 100n * USD })
-    expect(checkWithdraw(10_001n * USD, 20_000n * USD)).toEqual({ ok: false, reason: 'MAX', limit: 10_000n * USD })
+    // a typed amount behaves like "All": the relay has no withdraw cap
+    expect(checkWithdraw(15_000n * USD, 20_000n * USD)).toEqual({ ok: true })
   })
 })

@@ -19,19 +19,57 @@ export const pct = (fraction: number, decimals = 2) => nf(`p${decimals}`, { styl
 // What people call the token. USDT0 is Tether's USDT on Polygon.
 export const SYMBOL: Record<AssetKey, string> = { USDT0: 'USDT', USDC: 'USDC' }
 
-// 6-decimal token units: two decimals, more only when the amount is tiny.
+const decimalMark = () => nf('mark', { minimumFractionDigits: 1 }).formatToParts(1.5).find(p => p.type === 'decimal')?.value ?? '.'
+
+// `digits` decimals of a fixed-point amount, cut off (never rounded), built from the integer so
+// nothing is lost on the way through a float.
+function fixed(units: bigint, scale: number, digits: number): string {
+  const neg = units < 0n
+  const abs = neg ? -units : units
+  const base = 10n ** BigInt(scale)
+  const whole = num(Number(abs / base), 0, 0)
+  const frac = (abs % base).toString().padStart(scale, '0').slice(0, digits)
+  return `${neg ? '-' : ''}${whole}${digits ? decimalMark() + frac : ''}`
+}
+
+// Decimals needed to show every unit, never fewer than `min`.
+function exactDigits(units: bigint, scale: number, min: number): number {
+  const frac = ((units < 0n ? -units : units) % 10n ** BigInt(scale)).toString().padStart(scale, '0').replace(/0+$/, '')
+  return Math.max(min, frac.length)
+}
+
+// Balances (6-decimal token units): two decimals, floored so a balance never reads as more than it
+// is; more digits only when the amount is tiny.
 export function tokens(units: bigint, asset?: AssetKey, decimals?: number): string {
-  const v = Number(units) / 1e6
-  const d = decimals ?? (v !== 0 && Math.abs(v) < 0.01 ? 6 : 2)
-  const s = num(v, d, d)
+  const abs = units < 0n ? -units : units
+  const s = fixed(units, 6, decimals ?? (abs !== 0n && abs < 10_000n ? 6 : 2))
   return asset ? `${s} ${SYMBOL[asset]}` : s
 }
 
-// Luna to NIM: whole NIM for big amounts, up to 5 decimals below 1,000.
+// Amounts that are signed or sent: every unit, trailing zeros trimmed to two decimals.
+export function exactTokens(units: bigint, asset?: AssetKey): string {
+  const s = fixed(units, 6, exactDigits(units, 6, 2))
+  return asset ? `${s} ${SYMBOL[asset]}` : s
+}
+
+// NIM balances: floored to at most two decimals from 1,000 NIM up, every luna below that.
 export function nimAmount(luna: bigint, withUnit = true): string {
-  const v = Number(luna) / 1e5
-  const s = Math.abs(v) >= 1000 ? num(v, 0, 2) : num(v, 0, 5)
+  const big = (luna < 0n ? -luna : luna) >= 100_000_000n
+  const digits = exactDigits(luna, 5, 0)
+  const s = fixed(luna, 5, big ? Math.min(2, digits) : digits)
   return withUnit ? `${s} NIM` : s
+}
+
+// NIM that is signed or sent: every luna.
+export function nimExact(luna: bigint, withUnit = true): string {
+  const s = fixed(luna, 5, exactDigits(luna, 5, 0))
+  return withUnit ? `${s} NIM` : s
+}
+
+// "Up to X POL": rounded up to 4 decimals, so the bound is never below the real one.
+export function polUpTo(wei: bigint): string {
+  const tenThousandths = (wei + 10n ** 14n - 1n) / 10n ** 14n
+  return fixed(tenThousandths, 4, exactDigits(tenThousandths, 4, 2))
 }
 
 // A signed change, for "since your last visit".
