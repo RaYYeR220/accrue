@@ -74,8 +74,8 @@ export function windowRange(c: CursorReachRow, scheduleMs: number | null) {
 }
 
 const CATCHING_UP = 'The indexer is still catching up on recent transactions of this pool; the window uses the part it has.'
-const NOT_INDEXED = "This pool's payouts have not been indexed yet."
-const NO_FEE = 'The pool does not publish a fee, so there is no promised share to check its payouts against.'
+export const NOT_INDEXED = "This pool's payouts have not been indexed yet."
+export const NO_FEE = 'The pool does not publish a fee, so there is no promised share to check its payouts against.'
 
 export const metaKey = (p: PoolMetaRow) => JSON.stringify([LOGIC_VERSION, p.fee, payoutTypeOf(p.payout_type), p.schedule ?? '', p.reward_address])
 

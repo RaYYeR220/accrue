@@ -22,22 +22,26 @@ test.describe('Payout Check', () => {
   test('the scoreboard shows every verdict code in neutral words, with its reasons on tap', async ({ page }) => {
     await start(page, 'happy')
     await tab(page, 'Payouts')
-    const board = page.getByRole('region', { name: 'All 7 pools' })
+    const board = page.getByRole('region', { name: 'All 8 pools' })
     for (const label of LABELS) await expect(board.getByText(label, { exact: true }).first()).toBeVisible()
     await board.getByRole('button', { name: /Kestrel Pool/ }).click()
     await expect(board.getByText('Paid 81.0% of earnings against 95.0% promised over 6 cycles.')).toBeVisible()
     await board.getByRole('button', { name: /Fjord Pool/ }).click()
     // the API's own "has not looked yet" and the app's line would contradict each other: one neutral line
-    await expect(board.getByText('Not checked yet — the first check runs within the hour')).toBeVisible()
+    await expect(board.getByText('Not checked yet', { exact: true })).toBeVisible()
     await expect(board.getByText('Payout Check has not looked at this pool yet.')).toHaveCount(0)
-    await expect(board.getByText(/not enough payouts/)).toHaveCount(0)
+    await expect(board.getByText(/not enough payouts|within the hour/)).toHaveCount(0)
+    // a pool with no published fee shows the API's own reason and no app line next to it
+    await board.getByRole('button', { name: /Birch Pool/ }).click()
+    await expect(board.getByText('The pool does not publish a fee, so there is no promised share to check its payouts against.')).toBeVisible()
+    await expect(board.getByText('Not checked yet', { exact: true })).toHaveCount(1)
     await expect(board.getByRole('link', { name: 'How Payout Check decides' })).toBeVisible()
   })
 
   test('a pool that publishes no fee is on the board and says so', async ({ page }) => {
     await start(page, 'happy')
     await tab(page, 'Payouts')
-    const board = page.getByRole('region', { name: 'All 7 pools' })
+    const board = page.getByRole('region', { name: 'All 8 pools' })
     const quarry = board.getByRole('listitem').filter({ has: page.getByRole('button', { name: /Quarry Pool/ }) })
     await expect(quarry).toContainText('fee not listed')
     await quarry.getByRole('button', { name: /Quarry Pool/ }).click()

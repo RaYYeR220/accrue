@@ -28,10 +28,10 @@ interface Pool {
   dists: [number, number][]
 }
 
-// The reviewer's generator (rr-slowrun.mts), same LCG and the same draw order, so trial k of a
-// configuration is the very pool the review found SHORT. 120 stakers with Pareto-like stakes, paid
-// in a new random order every cycle at a constant pace over `spreadH` hours.
-function reviewerPools(pays: number): Map<string, Pool> {
+// A seeded generator (fixed LCG and draw order), so trial k of a configuration is always the same
+// pool. 120 stakers with Pareto-like stakes, paid in a new random order every cycle at a constant
+// pace over `spreadH` hours.
+function slowPayerPools(pays: number): Map<string, Pool> {
   let seed = 1
   const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648)
   let n = 0
@@ -108,7 +108,7 @@ const verdictAt = (at: ReturnType<ReturnType<typeof cutter>>, cfg: Cfg) => {
 }
 
 describe('cut sweep: honest slow payers are never SHORT', () => {
-  const pools = reviewerPools(0.95)
+  const pools = slowPayerPools(0.95)
   const cases = [
     ...[7, 8, 9].map((s) => [24, s] as const),
     [12, 2.5] as const,
@@ -133,7 +133,7 @@ describe('cut sweep: honest slow payers are never SHORT', () => {
 })
 
 describe('cut sweep: a pool paying 80 % stays SHORT', () => {
-  const pools = reviewerPools(0.8)
+  const pools = slowPayerPools(0.8)
   for (const [cycleH, spreadH] of [[12, 2.5], [24, 7], [24, 9]] as const) {
     it(`${cycleH} h cycle over ${spreadH} h at 80 %: SHORT at every cut after a complete cycle`, () => {
       for (let trial = 0; trial < 4; trial++) {
@@ -217,9 +217,9 @@ describe('live-like streams keep their windows', () => {
   }, 120_000)
 })
 
-// Constant-pace distributions with even stakes. Every
-// inner hour of such a distribution pays the same multiple of its earnings, which must not pass for
-// a stream: an honest pool reads about its true 95 %, a pool paying 85 % is never PAID.
+// Constant-pace distributions with even stakes. Every inner hour of such a distribution pays the
+// same multiple of its earnings, which must not pass for a stream: an honest pool reads about its
+// true 95 %, a pool paying 85 % is never PAID.
 function evenPool(seed: number, cycleH: number, spreadH: number, pays: number) {
   const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648)
   let n = 0

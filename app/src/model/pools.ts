@@ -13,10 +13,17 @@ const RANK: Record<Verdict | 'none', number> = {
   NO_PAYOUTS_BY_DESIGN: 6,
 }
 
-/** What the API says about a pool its Payout Check has not visited yet. The app shows its own line for that. */
-export const NOT_CHECKED_REASON = 'Payout Check has not looked at this pool yet.'
-
-export const shownReasons = (p: Pick<PoolRow, 'verdict' | 'reasons'>): string[] => (p.verdict ? p.reasons : p.reasons.filter(r => r !== NOT_CHECKED_REASON))
+/**
+ * What to show about a pool's verdict, from the API's `state` rather than its wording: a pool the
+ * check has not reached gets the app's own line (and not the API's reason beside it); a pool with no
+ * fee or nothing indexed gets the API's reason alone. Without a state (an older answer) the reasons
+ * stand and the neutral line only fills an empty list.
+ */
+export function noVerdictView(p: Pick<PoolRow, 'verdict' | 'reasons' | 'state'>): { reasons: string[]; unchecked: boolean } {
+  if (p.state === 'unchecked') return { reasons: [], unchecked: true }
+  if (p.state === undefined && p.verdict === null && p.reasons.length === 0) return { reasons: [], unchecked: true }
+  return { reasons: p.reasons, unchecked: false }
+}
 
 // A pool that lists no payouts passes nothing on to its stakers, whatever the verdict says.
 const rankOf = (p: PoolRow) => (p.payoutType === 'none' ? RANK.NO_PAYOUTS_BY_DESIGN : RANK[p.verdict ?? 'none'])

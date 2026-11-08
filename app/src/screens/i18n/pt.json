@@ -287,7 +287,7 @@
   "check.boardSrc": "Últimos {days} dias, às {time}. Toque em um pool para ver o porquê.",
   "check.boardSrc.one": "Último dia, às {time}. Toque em um pool para ver o porquê.",
   "check.boardTestnet": "Pools da testnet pela API de validadores da testnet da Nimiq. Sem histórico de pagamentos.",
-  "check.noVerdict": "Ainda não verificado — a primeira verificação acontece dentro de uma hora",
+  "check.noVerdict": "Ainda não verificado",
   "check.testnetBadge": "Sem verificação na testnet",
   "check.noVerdictTestnet": "Pools da testnet não têm verificação de pagamentos, então não há resultado.",
 

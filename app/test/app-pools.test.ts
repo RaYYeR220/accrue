@@ -2,7 +2,7 @@ import type { Verdict } from '@accrue/shared'
 import { describe, expect, it } from 'vitest'
 import type { PoolRow } from '../src/features/nim/api'
 import { RAY } from '../src/features/dollars/accrual'
-import { dayEstimate, NOT_CHECKED_REASON, nextPayout, rankPools, shownReasons } from '../src/model/pools'
+import { dayEstimate, nextPayout, noVerdictView, rankPools } from '../src/model/pools'
 
 const H = 3_600_000
 const NOW = 1_762_500_000_000
@@ -111,14 +111,24 @@ describe('dayEstimate: the "last 24 h" fallback from chain data', () => {
   })
 })
 
-describe('shownReasons: the API says a pool has not been checked, the app says it once', () => {
-  it('drops the "has not looked yet" reason when there is no verdict', () => {
-    expect(shownReasons({ verdict: null, reasons: [NOT_CHECKED_REASON] })).toEqual([])
-    expect(shownReasons({ verdict: null, reasons: [NOT_CHECKED_REASON, 'Other.'] })).toEqual(['Other.'])
+describe('noVerdictView: what to say about a pool by the API state, not by its wording', () => {
+  const reason = ["The API's own words."]
+  it('unchecked: the app line only, never the API reason beside it', () => {
+    expect(noVerdictView({ verdict: null, state: 'unchecked', reasons: reason })).toEqual({ reasons: [], unchecked: true })
   })
 
-  it('keeps every reason of a pool that has a verdict, including not enough data', () => {
-    expect(shownReasons({ verdict: 'NOT_ENOUGH_DATA', reasons: ['Only 2 complete payout cycle(s).'] })).toEqual(['Only 2 complete payout cycle(s).'])
-    expect(shownReasons({ verdict: 'SHORT', reasons: ['Paid 81.0%.'] })).toEqual(['Paid 81.0%.'])
+  it('no fee and not indexed: the API reason alone, no app line', () => {
+    expect(noVerdictView({ verdict: null, state: 'no_fee', reasons: reason })).toEqual({ reasons: reason, unchecked: false })
+    expect(noVerdictView({ verdict: null, state: 'not_indexed', reasons: reason })).toEqual({ reasons: reason, unchecked: false })
+  })
+
+  it('checked: every reason, including not enough data', () => {
+    expect(noVerdictView({ verdict: 'NOT_ENOUGH_DATA', state: 'checked', reasons: reason })).toEqual({ reasons: reason, unchecked: false })
+  })
+
+  it('an answer without state reads as before: reasons as given, the neutral line only when there is nothing else', () => {
+    expect(noVerdictView({ verdict: null, reasons: reason })).toEqual({ reasons: reason, unchecked: false })
+    expect(noVerdictView({ verdict: null, reasons: [] })).toEqual({ reasons: [], unchecked: true })
+    expect(noVerdictView({ verdict: 'SHORT', reasons: reason })).toEqual({ reasons: reason, unchecked: false })
   })
 })

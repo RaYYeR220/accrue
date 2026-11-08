@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { t } from '../i18n'
 import type { PoolRow } from '../features/nim/api'
-import { shownReasons } from '../model/pools'
+import { noVerdictView } from '../model/pools'
 import { Card } from '../ui/components'
 import { Facts } from '../ui/components/Fields'
 import { useApp } from './context'
@@ -57,9 +57,9 @@ function Mine() {
         ]}
       />
       {c.verdict && <p className="vc-desc">{t(`verdict.${c.verdict}.desc`)}</p>}
-      {shownReasons(pool).length > 0 && (
+      {noVerdictView(pool).reasons.length > 0 && (
         <ul className="reasons" aria-label={t('check.reasons')}>
-          {shownReasons(pool).map((r, i) => (
+          {noVerdictView(pool).reasons.map((r, i) => (
             <li key={i}>{r}</li>
           ))}
         </ul>
@@ -88,12 +88,12 @@ function Row({ p }: { p: PoolRow }) {
       </p>
       {open && (
         <ul className="reasons" id={id}>
-          {shownReasons(p).map((r, i) => (
+          {noVerdictView(p).reasons.map((r, i) => (
             <li key={i}>{r}</li>
           ))}
           {p.ratio !== null && p.expectedRatio !== null && <li>{t('pool.ratio', { ratio: pct(p.ratio, 1), expected: pct(p.expectedRatio, 1) })}</li>}
           {p.lastPayoutTs !== null && <li>{t('pool.lastAt', { when: when(p.lastPayoutTs) })}</li>}
-          {p.verdict ? <li>{t(`verdict.${p.verdict}.desc`)}</li> : <li>{t(app.network === 'testnet' ? 'check.noVerdictTestnet' : 'check.noVerdict')}</li>}
+          {p.verdict ? <li>{t(`verdict.${p.verdict}.desc`)}</li> : app.network === 'testnet' ? <li>{t('check.noVerdictTestnet')}</li> : noVerdictView(p).unchecked && <li>{t('check.noVerdict')}</li>}
         </ul>
       )}
     </li>

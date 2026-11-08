@@ -287,7 +287,7 @@
   "check.boardSrc": "Last {days} days, as of {time}. Tap a pool to see why.",
   "check.boardSrc.one": "Last day, as of {time}. Tap a pool to see why.",
   "check.boardTestnet": "Testnet pools from the Nimiq testnet validators API. No payout record.",
-  "check.noVerdict": "Not checked yet — the first check runs within the hour",
+  "check.noVerdict": "Not checked yet",
   "check.testnetBadge": "Not checked on testnet",
   "check.noVerdictTestnet": "Testnet pools have no Payout Check, so there is no verdict.",
 

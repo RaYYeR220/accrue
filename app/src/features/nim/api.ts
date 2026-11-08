@@ -22,7 +22,12 @@ export interface PoolRow {
   expectedRatio: number | null
   lastPayoutTs: number | null
   reasons: string[]
+  // why there is no verdict, when the API says; an older answer has none
+  state?: PoolState
 }
+
+export type PoolState = 'unchecked' | 'no_fee' | 'not_indexed' | 'checked'
+const STATES: readonly unknown[] = ['unchecked', 'no_fee', 'not_indexed', 'checked']
 
 export interface PoolsResponse {
   asOf: number
@@ -81,6 +86,7 @@ function parsePoolRow(r: unknown): PoolRow | null {
     expectedRatio: finite(r.expectedRatio) ? r.expectedRatio : r.fee === null ? null : 1 - r.fee,
     lastPayoutTs: finite(r.lastPayoutTs) ? r.lastPayoutTs : null,
     reasons: Array.isArray(r.reasons) ? r.reasons.filter((x): x is string => typeof x === 'string') : [],
+    ...(STATES.includes(r.state) ? { state: r.state as PoolState } : {}),
   }
 }
 

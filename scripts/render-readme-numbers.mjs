@@ -10,6 +10,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { workerFacts } from './lib/worker-facts.mjs'
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)))
 const DOCS = ['README.md', 'JUDGES.md', 'CLAIMS.md', 'METHODOLOGY.md', 'SECURITY.md', 'PROOF.md', 'MOCKS.md']
@@ -21,6 +22,7 @@ const deployments = load('packages/shared/src/deployments.json') ?? { router: nu
 const polygonRecord = load('contracts/deployments/polygon.json')
 const testnet = load('evidence/nimiq-testnet-staking.json')
 
+const FACTS = workerFacts(ROOT)
 const ROUTER = deployments.router
 const APP = 'https://accrue.pages.dev'
 const n = (x) => Number(x).toLocaleString('en-US')
@@ -142,7 +144,7 @@ const blocks = {
       '  subgraph cf["Cloudflare, same origin as the app"]',
       '    api["/api read API"]',
       '    relay["Relayer (Durable Object)"]',
-      '    idx["Indexer (cron, every 5 min)"]',
+      `    idx["Indexer (cron, ${FACTS.everyShort}${FACTS.oneJob ? ', one job per run' : ''})"]`,
       '    db[("D1")]',
       '  end',
       '  subgraph nimiq["Nimiq chain"]',
@@ -153,7 +155,7 @@ const blocks = {
       '    router["AccrueRouter"]',
       '    aave["Aave v3 pool and aTokens"]',
       '  end',
-      '  fx["CoinGecko, open.er-api.com"]',
+      `  fx["${[...FACTS.prices, FACTS.fx].join(', ')}"]`,
       '  app -->|"staking transactions"| nimprov --> staking',
       `  app ${e('EIP-712 permit signature')} evmprov`,
       `  app ${e('signed permit')} relay`,
@@ -314,6 +316,20 @@ for (const doc of DOCS) {
     }
   } else {
     console.log(`${doc}: up to date`)
+  }
+}
+// statements in the prose that must match the worker's config and code
+const must = [
+  ['README.md', `A cron job runs ${FACTS.every}`],
+  ['README.md', `indexer schedule \`${FACTS.cron}\``],
+  ['METHODOLOGY.md', `cron job that runs ${FACTS.every}`],
+  ['MOCKS.md', FACTS.prices.join(', then ')],
+]
+for (const [doc, text] of must) {
+  const body = existsSync(join(ROOT, doc)) ? readFileSync(join(ROOT, doc), 'utf8') : ''
+  if (!body.includes(text)) {
+    console.error(`${doc}: no longer says "${text}" (the worker config and code say so)`)
+    process.exitCode = 1
   }
 }
 for (const u of unknown) console.error(`unknown block ${u}`)

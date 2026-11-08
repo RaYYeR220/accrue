@@ -4,7 +4,7 @@ import type { Verdict } from '@accrue/shared'
 import type { Env } from '../env'
 import { errorBody } from '../relayer/errors'
 import { payoutTypeOf, scheduleMsOf, type PayoutType } from '../indexer/pools'
-import { NOT_CHECKED, VERDICTS_KEY, currentEntry, parseVerdictCache, type PoolMetaRow, type VerdictCache } from '../indexer/verdicts'
+import { NOT_CHECKED, NOT_INDEXED, NO_FEE, VERDICTS_KEY, currentEntry, parseVerdictCache, type PoolMetaRow, type VerdictCache } from '../indexer/verdicts'
 import { compactNim, parseNimAddress } from './nim'
 
 export const WINDOW_DAYS = 7
@@ -17,6 +17,9 @@ export interface PoolDbRow extends PoolMetaRow {
   has_logo: number
   updated_at: number | null
 }
+
+/** Why a pool has (or has not) a verdict: the cron has not reached it, it lists no fee, nothing is indexed, or it is checked. */
+export type PoolState = 'unchecked' | 'no_fee' | 'not_indexed' | 'checked'
 
 export interface PoolView {
   address: string
@@ -33,6 +36,7 @@ export interface PoolView {
   expectedRatio: number | null
   lastPayoutTs: number | null
   reasons: string[]
+  state: PoolState
   /** how far the data behind the verdict reaches (ms), null when nothing is indexed */
   reachTs: number | null
 }
@@ -53,6 +57,7 @@ export function poolView(r: PoolDbRow, cache: VerdictCache | null, now: number):
   const e = currentEntry(r, cache)
   const reachTs = e?.reachTs ?? null
   const reasons = e?.reasons ?? [NOT_CHECKED]
+  const state: PoolState = !e ? 'unchecked' : e.reasons.includes(NO_FEE) ? 'no_fee' : e.reasons.includes(NOT_INDEXED) ? 'not_indexed' : 'checked'
   const behind =
     e?.verdict != null && e.verdict !== 'NO_PAYOUTS_BY_DESIGN' && reachTs !== null &&
     now - reachTs > Math.max(2 * (scheduleMsOf(r.schedule) ?? 0), STALE_FLOOR_MS)
@@ -71,6 +76,7 @@ export function poolView(r: PoolDbRow, cache: VerdictCache | null, now: number):
     expectedRatio: e ? e.expectedRatio : r.fee === null ? null : 1 - r.fee,
     lastPayoutTs: e?.lastPayoutTs ?? null,
     reasons: behind ? [...reasons, `Data as of ${iso(reachTs)}; indexing is behind`] : reasons,
+    state,
     reachTs,
   }
 }

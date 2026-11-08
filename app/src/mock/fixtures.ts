@@ -1,6 +1,5 @@
 // Read-API answers for the dev mock. Pool names other than Siam (the mock staker's real pool) are
 // made up, so no real pool is shown with a verdict it never got.
-import { NOT_CHECKED_REASON } from '../model/pools'
 
 const HOUR = 3_600_000
 const DAY = 24 * HOUR
@@ -28,6 +27,7 @@ const row = (now: number, o: MockPool): MockPool => ({
   expectedRatio: 0.95,
   lastPayoutTs: now - 3 * HOUR,
   reasons: [],
+  state: 'checked',
   ...o,
 })
 
@@ -43,7 +43,8 @@ export function mockPools(now: number) {
       row(now, { address: 'NQ86 QUAR RY00 QUAR RY00 QUAR RY00 QUAR RY00', name: 'Quarry Pool', fee: null, payoutType: 'none', schedule: null, balanceLuna: '41433020900000', stakers: 33, accent: '#3896a6', verdict: 'NO_PAYOUTS_BY_DESIGN', expectedRatio: null, lastPayoutTs: null, reasons: ['Pool does not pay out; rewards are not distributed to stakers.'] }),
       row(now, { address: 'NQ60 KEST REL0 KEST REL0 KEST REL0 KEST REL0', name: 'Kestrel Pool', balanceLuna: '25795603000000', stakers: 256, accent: '#c08e2f', verdict: 'SHORT', ratio: 0.81, reasons: ['Paid 81.0% of earnings against 95.0% promised over 6 cycles.'] }),
       row(now, { address: 'NQ05 0RCH ARD0 0RCH ARD0 0RCH ARD0 0RCH ARD0', name: 'Orchard Staking', fee: 0.09, payoutType: 'direct', schedule: 'Every day', balanceLuna: '15621953300000', stakers: 112, accent: '#60b3f9', verdict: 'BEHIND_SCHEDULE', expectedRatio: 0.91, lastPayoutTs: now - 52 * HOUR, reasons: ['The last payout is more than twice the advertised interval ago.'] }),
-      row(now, { address: 'NQ72 FJ0R D000 FJ0R D000 FJ0R D000 FJ0R D000', name: 'Fjord Pool', fee: 0.06, schedule: 'Every 6 hours', balanceLuna: '3120000000000', stakers: 14, accent: '#7b9a52', lastPayoutTs: now - 2 * HOUR, reasons: [NOT_CHECKED_REASON] }),
+      row(now, { address: 'NQ72 FJ0R D000 FJ0R D000 FJ0R D000 FJ0R D000', name: 'Fjord Pool', fee: 0.06, schedule: 'Every 6 hours', balanceLuna: '3120000000000', stakers: 14, accent: '#7b9a52', lastPayoutTs: now - 2 * HOUR, state: 'unchecked', reasons: ['Payout Check has not looked at this pool yet.'] }),
+      row(now, { address: 'NQ11 B1RC H000 B1RC H000 B1RC H000 B1RC H000', name: 'Birch Pool', fee: null, schedule: 'Every 12 hours', balanceLuna: '1840000000000', stakers: 9, accent: '#9a7b52', expectedRatio: null, lastPayoutTs: null, state: 'no_fee', reasons: ['The pool does not publish a fee, so there is no promised share to check its payouts against.'] }),
     ],
   }
 }

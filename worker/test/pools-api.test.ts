@@ -6,6 +6,7 @@ import { DAY_MS, HOUR_MS, hourFromDb, poolWindowsFromAggregates, userWindowFromA
 import { scheduleMsOf } from '../src/indexer/pools'
 import { refreshVerdicts, VERDICTS_KEY } from '../src/indexer/verdicts'
 import { clearMemoryCache } from '../src/api/cache'
+import { poolView } from '../src/api/pools'
 import { load } from './chain'
 import { FakeD1 } from './d1'
 import { GARUDA, POOLS, SIAM, seedHistory, seedPools, tile } from './seed'
@@ -115,7 +116,7 @@ describe('verdict cache and GET /api/pools', () => {
       address: GARUDA, name: 'Garuda Pool', fee: 0.05, payoutType: 'restake', schedule: 'Every 12 hours',
       balanceLuna: '25798184421741', stakers: 256, accent: '#c08e2f', logo: '/api/pools/NQ15HNAHYRVHDFVMYHAGBSXG0QHKKA0QXDR7/logo',
       verdict: g.verdict.verdict, ratio: g.verdict.ratio, expectedRatio: 0.95, lastPayoutTs: g.window.lastPayoutTs, reasons: g.verdict.reasons,
-      reachTs: g.reach,
+      reachTs: g.reach, state: 'checked',
     })
     const by = (name: string) => body.pools.find((p: any) => p.name === name)
     // no payouts by design needs no data; a pool without a published fee has no promise to hold
@@ -124,10 +125,25 @@ describe('verdict cache and GET /api/pools', () => {
     // listed and paying but not indexed yet: no verdict, never a guessed one
     expect(by('Mint Pool')).toMatchObject({ verdict: null, ratio: null, lastPayoutTs: null, expectedRatio: 0.95 })
     expect(by('Mint Pool').reasons.join(' ')).toMatch(/not been indexed/)
+    expect(by('Mint Pool').state).toBe('not_indexed')
+    expect(by('Nimiq Surf').state).toBe('checked')
     for (const p of body.pools) {
       expect(p.reasons.every((r: unknown) => typeof r === 'string')).toBe(true)
       expect(p.accent === null || /^#[0-9a-fA-F]{6}$/.test(p.accent)).toBe(true)
     }
+  })
+
+  it('says in `state` why a pool has no verdict: not looked at yet, no fee, not indexed, or checked', () => {
+    const row = { address: 'NQ00 TEST', name: 'T', fee: 0.05, payout_type: 'restake', schedule: 'Every 12 hours', reward_address: 'NQ11 REWARD', listed: 1, balance: 1, stakers: 1, accent: null, has_logo: 0, updated_at: 1 } as never
+    // a pool the cron has not reached: no cache entry at all
+    expect(poolView(row, null, now)).toMatchObject({ verdict: null, state: 'unchecked' })
+    // no published fee: nothing to check against
+    expect(poolView({ ...(row as object), fee: null } as never, null, now)).toMatchObject({ verdict: null, state: 'no_fee' })
+    // listed and paying, but nothing indexed
+    const cursorless = poolView({ ...(row as object), reward_address: null } as never, null, now)
+    expect(cursorless.state).toBe('unchecked')
+    // a pool that pays nothing by design has its (quick) verdict
+    expect(poolView({ ...(row as object), payout_type: 'none' } as never, null, now)).toMatchObject({ verdict: 'NO_PAYOUTS_BY_DESIGN', state: 'checked' })
   })
 
   it('a pool still catching up on a hole says so', async () => {

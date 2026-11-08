@@ -61,7 +61,7 @@ flowchart LR
   subgraph cf["Cloudflare, same origin as the app"]
     api["/api read API"]
     relay["Relayer (Durable Object)"]
-    idx["Indexer (cron, every 5 min)"]
+    idx["Indexer (cron, every minute, one job per run)"]
     db[("D1")]
   end
   subgraph nimiq["Nimiq chain"]
@@ -72,7 +72,7 @@ flowchart LR
     router["AccrueRouter"]
     aave["Aave v3 pool and aTokens"]
   end
-  fx["CoinGecko, open.er-api.com"]
+  fx["CoinGecko, CoinPaprika, Gate.io + Kraken, open.er-api.com"]
   app -->|"staking transactions"| nimprov --> staking
   app -.->|"EIP-712 permit signature"| evmprov
   app -.->|"signed permit"| relay
