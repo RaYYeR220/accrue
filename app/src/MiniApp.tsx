@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { lazy, Suspense, useEffect, useRef } from 'react'
 import { flowConfig } from './features/dollars/flow'
 import { currentLang, t } from './i18n'
 import { Activity } from './screens/Activity'
@@ -12,6 +12,9 @@ import { PayoutCheck } from './screens/PayoutCheck'
 import { loadAppStrings } from './screens/strings'
 import './screens/app.css'
 
+// About is rarely opened, so it loads on demand.
+const About = lazy(() => import('./screens/About').then(m => ({ default: m.About })))
+
 // The dev mock stands in for the router until one is deployed (compiled out of production).
 if (import.meta.env.DEV && window.__accrueMock && !flowConfig.router) flowConfig.router = window.__accrueMock.router
 
@@ -23,7 +26,6 @@ const TABS: Exclude<Route, 'about'>[] = ['home', 'dollars', 'nim', 'payouts', 'a
 
 function Screen({ route }: { route: Route }) {
   switch (route) {
-    case 'about':
     case 'home':
       return <Home />
     case 'dollars':
@@ -34,6 +36,12 @@ function Screen({ route }: { route: Route }) {
       return <PayoutCheck />
     case 'activity':
       return <Activity />
+    case 'about':
+      return (
+        <Suspense fallback={<p className="boot-hint">{t('status.loading')}</p>}>
+          <About />
+        </Suspense>
+      )
   }
 }
 
