@@ -8,8 +8,8 @@
 // first cron sync (they exceed D1's 100 kB statement limit when inlined).
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { buildPoolWindow, poolVerdict } from '@accrue/shared'
-import { HOUR_MS, aggregate, canonicalAddress, delegationOracle, payoutRecipients, poolWindowFromAggregates } from '../src/indexer/aggregate.ts'
+import { buildPoolWindows, poolVerdict } from '@accrue/shared'
+import { HOUR_MS, aggregate, canonicalAddress, delegationOracle, payoutRecipients, poolWindowsFromAggregates } from '../src/indexer/aggregate.ts'
 import { fetchValidators, payoutTypeOf, poolStatements, rewardStatement, scheduleMsOf } from '../src/indexer/pools.ts'
 import { BACKFILL_BLOCKS, Budget, rpcSource, scanPool } from '../src/indexer/scan.ts'
 import { cursorWrite, delegationUpsert, hourUpsert, metaSet, stakerDayUpsert, toSql } from '../src/indexer/store.ts'
@@ -219,20 +219,20 @@ async function main() {
     counts.pool_cursor++
 
     // windows end where the data reaches, never at the wall clock
-    const range = { fromTs: reachTs - WINDOW_MS, toTs: reachTs }
-    const w = poolWindowFromAggregates(agg.hours, agg.stakerDays, range)
-    const verdict = poolVerdict(w, cfg, reachTs)
+    const range = { fromTs: reachTs - WINDOW_MS, toTs: reachTs, scheduleMs }
+    const { window: w, earlier } = poolWindowsFromAggregates(agg.hours, agg.stakerDays, range)
+    const verdict = poolVerdict(w, cfg, reachTs, { earlier })
     // tx-level cross-check with shared buildPoolWindow; its oracle has no leg, so use the leg the
     // address was paid through
     const restaked = payoutRecipients(s.txs.filter((t) => t.toType === 3), s.reward)
     const inWindow = s.txs.filter((t) => t.timestamp >= range.fromTs && t.timestamp <= range.toTs)
-    const exact = buildPoolWindow(
+    const { window: exact, earlier: exactEarlier } = buildPoolWindows(
       inWindow,
       { rewardAddress: s.reward },
       (addr) => oracle(addr, restaked.has(canonicalAddress(addr)) ? 'restake' : 'direct'),
-      { reachBlock: s.cursor.newestBlock },
+      { reachBlock: s.cursor.newestBlock, scheduleMs },
     )
-    const exactVerdict = poolVerdict(exact, cfg, reachTs)
+    const exactVerdict = poolVerdict(exact, cfg, reachTs, { earlier: exactEarlier })
     const sum = (k) => agg.hours.filter((h) => h.hour * HOUR_MS >= range.fromTs).reduce((a, h) => a + h[k], 0n)
     table.push({
       ...row,

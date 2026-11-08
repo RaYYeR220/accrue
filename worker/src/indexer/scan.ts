@@ -191,6 +191,9 @@ export async function scanPool(
   let reachTs: number | null = null
   let lastFetchedTs: number | null = null
   let pages = 0
+  // history at or below the boundary is known to exist: an incremental step or a catch-up after
+  // the backfill must reach it, so a short page that stops above it is an RPC fault
+  const historyBelow = c.backfillDone && c.newestBlock !== null
   let reached = false
   let askedAgain = false
   let error: string | null = null
@@ -251,7 +254,8 @@ export async function scanPool(
     lastFetchedTs = page[page.length - 1]!.timestamp
     if (reached) break
     if (page.length < PAGE_SIZE) {
-      reached = true
+      if (historyBelow) error = 'short page from RPC above indexed history'
+      else reached = true
       break
     }
   }

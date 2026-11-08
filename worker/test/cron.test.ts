@@ -135,7 +135,7 @@ describe('runIndexerTick', () => {
     chain.head = top
     for (let i = 0; i < 30 && cursor()?.backfill_done !== 1; i++) await tick()
     const rows = db.query<PoolHourDb>('SELECT hour, earned, paid_restake, paid_direct, paid_unverified, other_out, payout_batches, first_payout_ts, last_payout_ts FROM pool_hour WHERE pool = ?', POOL)
-    const days = db.query<{ staker: string; day: number; payouts: number }>('SELECT staker, day, payouts FROM staker_day WHERE pool = ?', POOL)
+    const days = db.query<{ staker: string; day: number; payouts: number; received: number }>('SELECT staker, day, payouts, received FROM staker_day WHERE pool = ?', POOL).map((d) => ({ ...d, received: BigInt(d.received) }))
     const range = { fromTs: Math.min(...garuda.txs.map((x) => x.timestamp)), toTs: t }
     const stored = poolWindowFromAggregates(rows.map(hourFromDb), days, range)
     const txs = garuda.txs.filter((x) => x.blockNumber <= lastMacro(top))

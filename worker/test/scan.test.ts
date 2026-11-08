@@ -265,6 +265,24 @@ describe('scanPool paging edge cases (review r1)', () => {
     expect(s2.txs).toHaveLength(0)
   })
 
+  it('a short page that never reaches indexed history is an RPC fault: error, resume kept (review r2 M1)', async () => {
+    const txs = [...Array.from({ length: 900 }, (_, i) => mk(i, 80_000 + i * 2)), ...Array.from({ length: 30 }, (_, i) => mk(5000 + i, 78_000 + i))]
+    const head = { head: 81_900 }
+    const src = synth(txs, head)
+    const truncating = { ...src, txPage: async (a: string, st: string | null) => (await src.txPage(a, st)).slice(0, 200) }
+    const s1 = await run(truncating as never, existing(79_000), 3)
+    expect(s1.error).toMatch(/short page/)
+    expect(s1.cursor.resumeHash).toBe(s1.txs[s1.txs.length - 1]!.hash)
+    expect(s1.cursor.floorBlock).toBe(79_000)
+    // the RPC behaves again: the descent picks up where it stopped, nothing lost or doubled
+    const s2 = await run(src, s1.cursor, 5)
+    expect(s2.error).toBeNull()
+    expect(s2.cursor.resumeHash).toBeNull()
+    const all = [...s1.txs, ...s2.txs].map((t) => t.hash)
+    expect(new Set(all).size).toBe(all.length)
+    expect(all.length).toBe(txs.filter((t) => t.blockNumber > 79_000 && t.blockNumber <= lastMacro(head.head)).length)
+  })
+
   it('a short page is the end of history: no extra fetch', async () => {
     const txs = Array.from({ length: 700 }, (_, i) => mk(i, 40_000 + i * 3))
     const src = synth(txs, { head: 42_200 })

@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { COINBASE_ADDRESS, RUN_GAP_BLOCKS, addressFromBytesHex, buildPoolWindow, poolVerdict, type NimTx } from '@accrue/shared'
+import { COINBASE_ADDRESS, RUN_GAP_BLOCKS, addressFromBytesHex, buildPoolWindow, poolVerdict, runGapBlocks, type NimTx } from '@accrue/shared'
 import { aggregate, canonicalAddress, delegationOracle, payoutRecipients, poolWindowFromAggregates, stakerFromHex } from '../src/indexer/aggregate'
 
 const load = (f: string) =>
@@ -237,8 +237,9 @@ describe('poolWindowFromAggregates: complete runs only (review r1)', () => {
   const windowAt = (cutBlock: number) => {
     const cut = sorted.filter((t) => t.blockNumber <= cutBlock)
     const agg = aggregate(cut, { rewardAddress: garuda.address }, () => true)
-    // the data reaches the cut block (coinbase lands every batch, so the newest tx is the reach)
-    const toTs = cut[cut.length - 1]!.timestamp + 1
+    // the data reaches the cut block, dated from the newest tx at or below it (one block a second)
+    const ref = cut[cut.length - 1]!
+    const toTs = ref.timestamp + (cutBlock - ref.blockNumber) * 1000 + 1
     return poolWindowFromAggregates(agg.hours, agg.stakerDays, { fromTs: cut[0]!.timestamp, toTs })
   }
 
@@ -262,12 +263,12 @@ describe('poolWindowFromAggregates: complete runs only (review r1)', () => {
     }
   })
 
-  it('the last run counts once the data reaches RUN_GAP past it', () => {
+  it('the last run counts once the data reaches the run gap (a quarter of the 12 h cycle) past it', () => {
     const end = lastRun[lastRun.length - 1]!
-    const early = windowAt(end.blockNumber + RUN_GAP_BLOCKS - 61)
-    expect(early.windowEndTs).toBeLessThanOrEqual(prevRunEnd)
-    const late = windowAt(end.blockNumber + RUN_GAP_BLOCKS + 60)
-    expect(late.windowEndTs).toBe(end.timestamp)
+    const gap = runGapBlocks(12 * HOUR)
+    expect(windowAt(end.blockNumber + RUN_GAP_BLOCKS + 60).windowEndTs).toBeLessThanOrEqual(prevRunEnd)
+    expect(windowAt(end.blockNumber + gap - 120).windowEndTs).toBeLessThanOrEqual(prevRunEnd)
+    expect(windowAt(end.blockNumber + gap + 120).windowEndTs).toBe(end.timestamp)
   })
 
   // synthetic pools: 1 block per second, a coinbase every 60 blocks
