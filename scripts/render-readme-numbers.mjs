@@ -125,7 +125,7 @@ const blocks = {
   'router-status': () =>
     ROUTER
       ? `Deployed at ${polygonscanAddr(ROUTER)} ([Sourcify](https://repo.sourcify.dev/137/${ROUTER})).`
-      : 'Not deployed yet. `packages/shared/src/deployments.json` holds `"router": null` until it is, and the app then says plainly that dollar deposits are not open yet.',
+      : 'Not deployed yet: `packages/shared/src/deployments.json` holds `"router": null`, and until it names the router the app says plainly that dollar deposits are not open yet.',
 
   architecture: () => {
     const live = Boolean(ROUTER)
@@ -182,7 +182,8 @@ const blocks = {
     const order = (x) => (x.verdict ? Object.keys(VERDICT_WORDS).indexOf(x.verdict) : 99)
     for (const x of [...p.pools].sort((a, b) => order(a) - order(b) || a.name.localeCompare(b.name))) {
       const pays = x.payoutType === 'restake' ? 'restakes' : x.payoutType === 'direct' ? 'to wallet' : x.payoutType === 'none' ? 'no payouts' : '–'
-      out.push(`| ${x.name.replace(/\|/g, '\\|')} | ${pays} | ${x.fee === null ? 'not listed' : fee(x.fee)} | ${x.verdict ? VERDICT_WORDS[x.verdict] ?? x.verdict : 'no verdict yet'} | ${pct(x.ratio, 2)} | ${pct(x.expectedRatio, 2)} |`)
+      // pool names are third-party text: keep table pipes literal and an "@" from reading as a mention
+      out.push(`| ${x.name.replace(/\|/g, '\\|').replace(/@/g, '&#64;')} | ${pays} | ${x.fee === null ? 'not listed' : fee(x.fee)} | ${x.verdict ? VERDICT_WORDS[x.verdict] ?? x.verdict : 'no verdict yet'} | ${pct(x.ratio, 2)} | ${pct(x.expectedRatio, 2)} |`)
     }
     const none = p.pools.filter((x) => !x.verdict)
     if (none.length) {

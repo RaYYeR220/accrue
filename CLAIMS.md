@@ -59,7 +59,7 @@ These rows switch tier by themselves once the router is deployed and its transac
 
 | Claim | Tier | Proof | Reproduce |
 |---|---|---|---|
-| Every listed pool gets a verdict from its own transactions on the Nimiq chain. | VERIFIED-LIVE | <!-- numbers:pools-summary -->21 listed pools as of 2026-11-08 05:10 UTC: 1 paid as promised, 2 no payouts by design, 18 without a verdict yet<!-- /numbers:pools-summary -->; [table in PROOF.md](PROOF.md#payout-check-scoreboard) | `node scripts/verify-onchain.mjs`; [accrue.pages.dev/api/pools](https://accrue.pages.dev/api/pools) |
+| Every listed pool is checked from its own transactions on the Nimiq chain, and the verdicts are public. | VERIFIED-LIVE | <!-- numbers:pools-summary -->21 listed pools as of 2026-11-08 05:46 UTC: 7 paid as promised, 2 not enough data, 2 no payouts by design, 10 without a verdict yet<!-- /numbers:pools-summary -->; [table in PROOF.md](PROOF.md#payout-check-scoreboard) | `node scripts/verify-onchain.mjs`; [accrue.pages.dev/api/pools](https://accrue.pages.dev/api/pools) |
 | A pool is never called short with fewer than 3 cycles or with 5 % or more other outflow, and only if every confirmation window agrees. | REPRODUCIBLE | `packages/shared/test/payout.test.ts` ("poolVerdict rules") | `pnpm --filter @accrue/shared test` |
 | A pool paying 80 % of its promise is flagged short (negative control). | REPRODUCIBLE | `payout.test.ts` "negative control"; `worker/test/cutsweep.test.ts` | `pnpm --filter @accrue/shared test`, `pnpm --filter @accrue/worker test` |
 | Where the data stops never makes an honest pool read short. | REPRODUCIBLE | `worker/test/cutsweep.test.ts`: honest payers cut at every macro block, 0 short | `pnpm --filter @accrue/worker test` |

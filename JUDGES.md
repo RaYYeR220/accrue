@@ -37,33 +37,33 @@ current):
 
 <!-- numbers:pools -->
 
-From [`accrue.pages.dev/api/pools`](https://accrue.pages.dev/api/pools), fetched 2026-11-08 05:10 UTC; pool data as of 2026-11-08 05:05 UTC, 7-day window. The app shows the same rows, live.
+From [`accrue.pages.dev/api/pools`](https://accrue.pages.dev/api/pools), fetched 2026-11-08 05:46 UTC; pool data as of 2026-11-08 05:45 UTC, 7-day window. The app shows the same rows, live.
 
 | Pool | Pays | Fee | Verdict | Paid of earnings | Promised |
 |---|---|---:|---|---:|---:|
 | Garuda Pool | restakes | 5 % | Paid as promised | 95.00 % | 95.00 % |
+| Keyring Staking | restakes | 5 % | Paid as promised | 100.01 % | 95.00 % |
+| Mint Pool | restakes | 5 % | Paid as promised | 94.96 % | 95.00 % |
+| Nimiq.Fun | to wallet | 2.5 % | Paid as promised | 95.77 % | 97.50 % |
+| ObsidianStake | to wallet | 5 % | Paid as promised | 221.55 % | 95.00 % |
+| Ritvars Staking | restakes | 2 % | Paid as promised | 97.90 % | 98.00 % |
+| Siam Pool | restakes | 3 % | Paid as promised | 97.49 % | 97.00 % |
+| CHIPMUNK POOL | to wallet | 5 % | Not enough data | – | 95.00 % |
+| nim.re Staking Pool | restakes | 3.33 % | Not enough data | 87.01 % | 96.67 % |
 | Nimiq Surf | no payouts | 0 % | No payouts by design | – | 100.00 % |
 | Private Whalidator | no payouts | not listed | No payouts by design | – | – |
 | $NIM_pool | restakes | 0 % | no verdict yet | – | 100.00 % |
-| CHIPMUNK POOL | to wallet | 5 % | no verdict yet | – | 95.00 % |
 | ImpactZero stake | restakes | 0 % | no verdict yet | – | 100.00 % |
-| Keyring Staking | restakes | 5 % | no verdict yet | – | 95.00 % |
-| Mint Pool | restakes | 5 % | no verdict yet | – | 95.00 % |
-| nim.re Staking Pool | restakes | 3.33 % | no verdict yet | – | 96.67 % |
 | Nimiq Base Staking | restakes | 0 % | no verdict yet | – | 100.00 % |
 | Nimiq Marketing Pool | restakes | 0 % | no verdict yet | – | 100.00 % |
-| Nimiq.Fun | to wallet | 2.5 % | no verdict yet | – | 97.50 % |
 | NimiqCafe Staking | restakes | 3 % | no verdict yet | – | 97.00 % |
 | NimiqHub Staking | restakes | 5 % | no verdict yet | – | 95.00 % |
 | NimiqPocket | restakes | 1 % | no verdict yet | – | 99.00 % |
-| NODENIMIQ1.NIMIQ-JU.FR by @Ju | restakes | 1 % | no verdict yet | – | 99.00 % |
-| NODENIMIQ2.NIMIQ-JU.FR by @Ju | restakes | 1 % | no verdict yet | – | 99.00 % |
-| ObsidianStake | to wallet | 5 % | no verdict yet | – | 95.00 % |
-| Ritvars Staking | restakes | 2 % | no verdict yet | – | 98.00 % |
-| Siam Pool | restakes | 3 % | no verdict yet | – | 97.00 % |
+| NODENIMIQ1.NIMIQ-JU.FR by &#64;Ju | restakes | 1 % | no verdict yet | – | 99.00 % |
+| NODENIMIQ2.NIMIQ-JU.FR by &#64;Ju | restakes | 1 % | no verdict yet | – | 99.00 % |
 | Synapse LN - Nimiq | restakes | 1 % | no verdict yet | – | 99.00 % |
 
-18 of 21 pools had no verdict yet when this was fetched; the API's reason: "Payout Check has not looked at this pool yet."
+10 of 21 pools had no verdict yet when this was fetched; the API's reason: "Payout Check has not looked at this pool yet."
 
 <!-- /numbers:pools -->
 

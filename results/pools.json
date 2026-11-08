@@ -1,8 +1,8 @@
 {
   "source": "pools",
   "url": "https://accrue.pages.dev/api/pools",
-  "fetchedAt": "2026-11-08T05:10:07.383Z",
-  "asOf": 1794114337633,
+  "fetchedAt": "2026-11-08T05:46:15.897Z",
+  "asOf": 1794116735792,
   "windowDays": 7,
   "pools": [
     {
@@ -44,13 +44,14 @@
       "payoutType": "direct",
       "schedule": "Every 12 hours",
       "stakers": 154,
-      "verdict": null,
-      "ratio": null,
+      "verdict": "PAID_AS_PROMISED",
+      "ratio": 2.215536,
       "expectedRatio": 0.95,
-      "lastPayoutTs": null,
-      "reachTs": null,
+      "lastPayoutTs": 1794096006922,
+      "reachTs": 1794115223958,
       "reasons": [
-        "Payout Check has not looked at this pool yet."
+        "Paid 221.6% of earnings against 95.0% promised.",
+        "Paid more than earned in this window (includes a one-off transfer)"
       ]
     },
     {
@@ -60,13 +61,14 @@
       "payoutType": "restake",
       "schedule": "Every 3 hours",
       "stakers": 217,
-      "verdict": null,
-      "ratio": null,
+      "verdict": "PAID_AS_PROMISED",
+      "ratio": 0.949635,
       "expectedRatio": 0.95,
-      "lastPayoutTs": null,
-      "reachTs": null,
+      "lastPayoutTs": 1794109379835,
+      "reachTs": 1794115223958,
       "reasons": [
-        "Payout Check has not looked at this pool yet."
+        "Paid 95.0% of earnings against 95.0% promised.",
+        "The indexer is still catching up on recent transactions of this pool; the window uses the part it has."
       ]
     },
     {
@@ -76,13 +78,14 @@
       "payoutType": "restake",
       "schedule": "Every 3 hours",
       "stakers": 104,
-      "verdict": null,
-      "ratio": null,
+      "verdict": "PAID_AS_PROMISED",
+      "ratio": 0.974867,
       "expectedRatio": 0.97,
-      "lastPayoutTs": null,
-      "reachTs": null,
+      "lastPayoutTs": 1794114905855,
+      "reachTs": 1794114923958,
       "reasons": [
-        "Payout Check has not looked at this pool yet."
+        "Paid 97.5% of earnings against 97.0% promised.",
+        "The indexer is still catching up on recent transactions of this pool; the window uses the part it has."
       ]
     },
     {
@@ -124,13 +127,14 @@
       "payoutType": "restake",
       "schedule": "Every 12 hours",
       "stakers": 283,
-      "verdict": null,
-      "ratio": null,
+      "verdict": "NOT_ENOUGH_DATA",
+      "ratio": 0.870088,
       "expectedRatio": 0.9667,
-      "lastPayoutTs": null,
-      "reachTs": null,
+      "lastPayoutTs": 1794098716229,
+      "reachTs": 1794114626699,
       "reasons": [
-        "Payout Check has not looked at this pool yet."
+        "Other outflows too large to conclude.",
+        "The indexer is still catching up on recent transactions of this pool; the window uses the part it has."
       ]
     },
     {
@@ -156,13 +160,13 @@
       "payoutType": "restake",
       "schedule": "Every 12 hours",
       "stakers": 172,
-      "verdict": null,
-      "ratio": null,
+      "verdict": "PAID_AS_PROMISED",
+      "ratio": 0.978969,
       "expectedRatio": 0.98,
-      "lastPayoutTs": null,
-      "reachTs": null,
+      "lastPayoutTs": 1794098926441,
+      "reachTs": 1794114923958,
       "reasons": [
-        "Payout Check has not looked at this pool yet."
+        "Paid 97.9% of earnings against 98.0% promised."
       ]
     },
     {
@@ -205,13 +209,13 @@
       "payoutType": "restake",
       "schedule": "Every 12 hours",
       "stakers": 112,
-      "verdict": null,
-      "ratio": null,
+      "verdict": "PAID_AS_PROMISED",
+      "ratio": 1.000065,
       "expectedRatio": 0.95,
-      "lastPayoutTs": null,
-      "reachTs": null,
+      "lastPayoutTs": 1794098874442,
+      "reachTs": 1794114626699,
       "reasons": [
-        "Payout Check has not looked at this pool yet."
+        "Paid 100.0% of earnings against 95.0% promised."
       ]
     },
     {
@@ -221,13 +225,13 @@
       "payoutType": "direct",
       "schedule": "Every 12 hours",
       "stakers": 44,
-      "verdict": null,
-      "ratio": null,
+      "verdict": "PAID_AS_PROMISED",
+      "ratio": 0.957698,
       "expectedRatio": 0.975,
-      "lastPayoutTs": null,
-      "reachTs": null,
+      "lastPayoutTs": 1794098983476,
+      "reachTs": 1794114626699,
       "reasons": [
-        "Payout Check has not looked at this pool yet."
+        "Paid 95.8% of earnings against 97.5% promised."
       ]
     },
     {
@@ -333,13 +337,13 @@
       "payoutType": "direct",
       "schedule": "0 */6 * * *",
       "stakers": 4,
-      "verdict": null,
+      "verdict": "NOT_ENOUGH_DATA",
       "ratio": null,
       "expectedRatio": 0.95,
       "lastPayoutTs": null,
-      "reachTs": null,
+      "reachTs": 1794114923622,
       "reasons": [
-        "Payout Check has not looked at this pool yet."
+        "Only 0 complete payout cycle(s) with 0 luna earned in the window; need at least 3."
       ]
     }
   ]
