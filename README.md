@@ -61,7 +61,7 @@ flowchart LR
   subgraph cf["Cloudflare, same origin as the app"]
     api["/api read API"]
     relay["Relayer (Durable Object)"]
-    idx["Indexer (cron, every 5 min)"]
+    idx["Indexer (cron, every minute)"]
     db[("D1")]
   end
   subgraph nimiq["Nimiq chain"]
@@ -72,7 +72,7 @@ flowchart LR
     router["AccrueRouter"]
     aave["Aave v3 pool and aTokens"]
   end
-  fx["CoinGecko, open.er-api.com"]
+  fx["CoinGecko, CoinPaprika, Gate.io + Kraken, open.er-api.com"]
   app -->|"staking transactions"| nimprov --> staking
   app -.->|"EIP-712 permit signature"| evmprov
   app -.->|"signed permit"| relay
@@ -108,7 +108,7 @@ If the relayer is down, out of gas or out of its daily budget, the sheet says so
 POL, offers to send the same signed permit as an ordinary transaction from the wallet, fee paid by the user.
 Withdrawals never depend on Accrue: the aTokens sit in the owner's wallet and can be redeemed on Aave directly.
 
-**Payout Check.** A cron job runs every 5 minutes, reads the listed pools' reward addresses from the Nimiq chain
+**Payout Check.** A cron job runs every minute, one small job per run, and reads the listed pools' reward addresses from the Nimiq chain
 (the pools with the most new transactions first) and keeps hourly and daily totals of what came in from the
 network and what went out to stakers. Over the last
 7 days of data it compares what a pool passed on with what it promised (`1 − fee`), and checks how long ago it
@@ -166,7 +166,7 @@ Requirements: Node 24 and pnpm 9. The contract suites need Foundry and an archiv
 | `RELAYER_KEY` | Worker secret (`.dev.vars` locally) | The relayer's hot key. It pays gas and cannot move user funds anywhere but back to their owner. |
 | `ROUTER_ADDRESS` | `worker/wrangler.toml`, optional | Overrides the router in `packages/shared/src/deployments.json`. |
 | `ROUTER_DEPLOY_BLOCK` | `worker/wrangler.toml`, optional | Deploy block of an overriding router, where its event scan starts. |
-| `DB`, `RELAYER`, cron | `worker/wrangler.toml` | D1 database, relayer Durable Object, indexer schedule `*/5 * * * *`. |
+| `DB`, `RELAYER`, cron | `worker/wrangler.toml` | D1 database, relayer Durable Object, indexer schedule `* * * * *`, plus the `CRON_*` variables (cadence and job sizes, see the comments in the file). |
 | `CORE` | `app/wrangler.toml` | Service binding from the Pages project to the Worker; `app/functions/api/[[path]].ts` forwards `/api/*`. |
 | `POLYGON_RPC` | shell | Polygon RPC. `forge test` needs it set to an archive endpoint (the fork is pinned to a block); `collect-results.mjs` passes `https://polygon.drpc.org` to forge when it is unset. Both scripts read Polygon from it when set, otherwise from publicnode, drpc and 1rpc in turn (`scripts/lib/deployment.mjs`). |
 | `ACCRUE_ORIGIN` | shell | Origin the scripts read `/api/*` from. Default `https://accrue.pages.dev`. |

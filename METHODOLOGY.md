@@ -15,7 +15,7 @@ added in `worker/src/api/pools.ts`. Every threshold below is in that code.
 ## 1. What is read
 
 For every pool listed by the Nimiq validators API (`validators-api-main.je-cf9.workers.dev/api/v1/validators`:
-name, fee, payout type, schedule), a cron job that runs every 5 minutes reads the transactions of the pool's
+name, fee, payout type, schedule), a cron job that runs every minute (one small job per run, sizes set by the `CRON_*` variables in `worker/wrangler.toml`) reads the transactions of the pool's
 reward address with `getTransactionsByAddress`. A pool is due for a visit once about 400 new transactions are
 waiting or 90 minutes have passed, whichever comes first. Only transactions at or below the last macro block are
 used, so nothing that could still be reverted is counted. The first visit reads 7 days and 6 hours back.

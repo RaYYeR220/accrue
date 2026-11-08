@@ -13,7 +13,7 @@ every one of them.
 | Pools, verdicts, staker checks | Accrue's indexer, reading the Nimiq chain (`/api/pools`, `/api/check`) |
 | Aave rates and positions | The Aave v3 pool on Polygon (`/api/aave`, `/api/position`) |
 | Deposits and withdrawals | Accrue's relayer and `AccrueRouter` on Polygon (`/api/relay`) |
-| Exchange rates | CoinGecko and open.er-api.com (`/api/rates`) |
+| Exchange rates | NIM price from CoinGecko, then CoinPaprika, then the Gate.io and Kraken mid price, in that order; a source that refuses is skipped for 15 minutes, and the last good copy is kept for 24 hours. Currency rates from open.er-api.com (`/api/rates`) |
 
 Two fallbacks are real data shown with their age, not simulations:
 
