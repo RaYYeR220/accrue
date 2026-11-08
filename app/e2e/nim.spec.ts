@@ -58,7 +58,20 @@ test.describe('NIM staking', () => {
     await d.getByRole('radio', { name: /Harbor Pool/ }).check()
     await expect(plan.nth(2)).toHaveText(/Move everything to Harbor Pool/)
     await expect(d.getByRole('radio', { name: /Siam Pool/ })).toHaveCount(0)
-    await expect(d.getByRole('button', { name: 'Stop staking 1,000 NIM' })).toBeEnabled()
+    await d.getByRole('button', { name: 'Stop staking 1,000 NIM' }).click()
+    await expect(d.getByText('1,000 NIM stopped earning; the wait has started')).toBeVisible()
+    await d.getByRole('button', { name: 'Done' }).click()
+
+    // the chosen pool outlives the wait: the screen shows the switch, and the sheet still has it picked
+    const switching = page.getByRole('region', { name: 'Switching to Harbor Pool' })
+    await expect(switching.getByRole('listitem')).toHaveText([/Stop staking all 1,000 NIM/, /Ready in about \d+ h/, /Move everything to Harbor Pool/])
+    await expect(switching.getByRole('button', { name: 'Unstake instead' })).toBeVisible()
+    await expect(page.getByRole('region', { name: /^Unstaking/ })).toHaveCount(0)
+    await page.reload()
+    await page.getByRole('button', { name: 'Show my NIM' }).first().click()
+    await expect(page.getByRole('region', { name: 'Switching to Harbor Pool' })).toBeVisible()
+    await page.getByRole('button', { name: 'Switch pool' }).click()
+    await expect(sheet(page, 'Switch pool').getByRole('radio', { name: /Harbor Pool/ })).toBeChecked()
   })
 
   test('testnet: a Testnet badge on NIM screens, pools from the testnet validators API, dollars said to stay on mainnet', async ({ page }) => {
@@ -68,9 +81,15 @@ test.describe('NIM staking', () => {
     await expect(page.getByRole('main').getByText('Testnet', { exact: true })).toBeVisible()
     await expect(page.getByText('Nimiq Pay is on testnet', { exact: false })).toBeVisible()
     await expect(page.getByText('Puddle Testnet Pool')).toBeVisible()
+    // testnet has no Payout Check: no "not enough data" claims about it
+    await expect(page.getByText('Not checked on testnet')).toBeVisible()
+    await expect(page.getByText('Not enough data yet')).toHaveCount(0)
     await tab(page, 'Payouts')
     await expect(page.getByText('Testnet pools from the Nimiq testnet validators API.', { exact: false })).toBeVisible()
     await expect(page.getByText('Shallows Testnet Pool')).toBeVisible()
+    await page.getByRole('button', { name: /Shallows Testnet Pool/ }).click()
+    await expect(page.getByText('Testnet pools have no Payout Check, so there is no verdict.')).toBeVisible()
+    await expect(page.getByText('not enough payouts in the window', { exact: false })).toHaveCount(0)
     await tab(page, 'Dollars')
     await expect(page.getByText('Dollars always run on Polygon mainnet, also while Nimiq Pay is on testnet.')).toBeVisible()
     await expect(nav(page)).toBeVisible()

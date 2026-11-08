@@ -4,7 +4,7 @@ const PORT = 4317
 const MOCK_PORT = 4319
 
 const phone = { deviceScaleFactor: 2, isMobile: true, hasTouch: true }
-const APP_SPECS = /(dollars|nim|payout|activity|app-global)\.spec\.ts/
+const APP_SPECS = /(home|dollars|nim|payout|activity|app-global)\.spec\.ts/
 
 // The landing runs against the production build (`vite preview`); /api/* is answered per test
 // with page.route, so no worker is needed. The in-app screens run against the mock build

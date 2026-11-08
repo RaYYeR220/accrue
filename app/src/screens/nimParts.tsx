@@ -2,9 +2,9 @@ import { parseSchedule, type Staker } from '@accrue/shared'
 import { t } from '../i18n'
 import type { PoolRow } from '../features/nim/api'
 import type { UnstakeStep } from '../features/nim/unstake'
-import { VerdictBadge } from '../ui/components'
 import type { StepItem } from '../ui/components/Fields'
 import { about, ago, every, nimAmount, pct } from './format'
+import { PoolVerdict } from './parts'
 
 // 3 %, 9.5 %: one decimal only when the fee has one
 export const feePct = (fee: number) => pct(fee, Math.round(fee * 1000) % 10 === 0 ? 0 : 1)
@@ -20,7 +20,7 @@ export function payoutLine(p: PoolRow): string {
 export function PoolFacts({ p }: { p: PoolRow }) {
   return (
     <span className="pool-facts">
-      <VerdictBadge verdict={p.verdict} />
+      <PoolVerdict verdict={p.verdict} />
       <span className="pool-line">
         {t('pool.fee', { pct: feePct(p.fee) })} · {payoutLine(p)}
       </span>

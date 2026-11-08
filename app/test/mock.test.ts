@@ -73,6 +73,11 @@ describe('installMock', () => {
     expect(m.calls).toHaveLength(0)
   })
 
+  it('rates=down makes /api/rates fail, so screens can be seen without a price', async () => {
+    installMock('?mock=happy&delay=0&rates=down', window)
+    expect((await fetch('/api/rates')).status).toBe(503)
+  })
+
   it('answers /api/rates', async () => {
     installMock('?mock=happy&delay=0', window)
     const r = await (await fetch('/api/rates')).json()

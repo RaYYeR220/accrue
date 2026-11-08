@@ -1,7 +1,8 @@
 import { useState, type ReactNode } from 'react'
 import { t } from '../i18n'
 import type { UiError } from '../providers/errors'
-import { Button } from '../ui/components'
+import type { Verdict } from '@accrue/shared'
+import { Button, VerdictBadge } from '../ui/components'
 import { Spinner } from '../ui/components/Fields'
 import { useApp } from './context'
 
@@ -62,4 +63,11 @@ export function ConnectNim() {
 export function TestnetBadge() {
   const app = useApp()
   return app.network === 'testnet' ? <span className="badge">{t('status.testnet')}</span> : null
+}
+
+// Testnet has no Payout Check, so a pool there is "not checked", not "not enough data yet".
+export function PoolVerdict({ verdict, size }: { verdict: Verdict | null; size?: 'md' | 'lg' }) {
+  const app = useApp()
+  const label = app.network === 'testnet' && !verdict ? t('check.testnetBadge') : undefined
+  return <VerdictBadge verdict={verdict} {...(size ? { size } : {})} {...(label ? { label } : {})} />
 }

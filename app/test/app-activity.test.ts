@@ -2,7 +2,7 @@ import { STAKING_CONTRACT, type NimTx } from '@accrue/shared'
 import { maxUint256, type Address, type Hex } from 'viem'
 import { describe, expect, it } from 'vitest'
 import type { LocalJob } from '../src/actions/jobs'
-import { buildActivity, classifyNimTx, jobRow, nimTxUrl, polygonTxUrl, type NimLogEntry } from '../src/model/activity'
+import { buildActivity, classifyNimTx, jobRow, NIM_PENDING_MAX_MS, nimTxUrl, polygonTxUrl, resolveNimEntry, settledAmount, type NimLogEntry } from '../src/model/activity'
 
 const OWNER = '0xa11ce00000000000000000000000000000000a11' as Address
 const WALLET = 'NQ68 L6GS 38D1 L6GS 38D1 L6GS 38D1 L6GS 38D1'
@@ -117,5 +117,39 @@ describe('buildActivity', () => {
   it('a staking transaction the chain lists as failed is shown failed', () => {
     const rows = buildActivity({ jobs: [], nimLog: [{ ...logged, status: 'failed' }], nimChain: [], wallet: WALLET, network: 'mainnet' })
     expect(rows[0]).toMatchObject({ status: 'failed', errorKey: 'nim.error.TX_FAILED' })
+  })
+})
+
+describe('a NIM transaction the chain list does not show still gets settled', () => {
+  const entry: NimLogEntry = { hash: 'cc'.repeat(32), wallet: WALLET, kind: 'stake', luna: '20000000', at: 10_000, status: 'pending' }
+  const MAX = NIM_PENDING_MAX_MS
+
+  it('asks the chain for the transaction itself', async () => {
+    expect(await resolveNimEntry(entry, async () => 'confirmed', 20_000)).toBe('confirmed')
+    expect(await resolveNimEntry(entry, async () => 'failed', 20_000)).toBe('failed')
+  })
+
+  it('not found yet: still pending within the bound, then unknown — check in your wallet', async () => {
+    expect(await resolveNimEntry(entry, async () => 'pending', entry.at + MAX - 1)).toBe('pending')
+    expect(await resolveNimEntry(entry, async () => 'pending', entry.at + MAX + 1)).toBe('unknown')
+    expect(await resolveNimEntry(entry, async () => Promise.reject(new Error('host refused')), entry.at + 1)).toBe('pending')
+    expect(await resolveNimEntry(entry, async () => Promise.reject(new Error('host refused')), entry.at + MAX + 1)).toBe('unknown')
+  })
+
+  it('an unknown entry says so, with what to do', () => {
+    const rows = buildActivity({ jobs: [], nimLog: [{ ...entry, status: 'unknown' }], nimChain: [], wallet: WALLET, network: 'mainnet' })
+    expect(rows[0]).toMatchObject({ status: 'unknown', errorKey: 'act.unknownNote' })
+  })
+})
+
+describe('what a finished sheet reports', () => {
+  it('the draft when the sheet started the action', () => {
+    expect(settledAmount({ kind: 'supply', asset: 'USDT0', amount: 1_000_000n }, undefined)).toEqual({ kind: 'supply', asset: 'USDT0', amount: 1_000_000n })
+  })
+
+  it('the job when the sheet only followed it ("Details" on a job already on its way)', () => {
+    expect(settledAmount(undefined, job({ amount: '2500000', asset: 'USDC' }))).toEqual({ kind: 'supply', asset: 'USDC', amount: 2_500_000n })
+    expect(settledAmount(undefined, job({ kind: 'withdraw', amount: maxUint256.toString() }))).toEqual({ kind: 'withdraw', asset: 'USDT0', amount: 'all' })
+    expect(settledAmount(undefined, undefined)).toBeNull()
   })
 })

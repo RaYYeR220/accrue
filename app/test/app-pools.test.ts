@@ -84,6 +84,11 @@ describe('dayEstimate: the "last 24 h" fallback from chain data', () => {
     expect(est.nimLuna).toBe(100_000n)
   })
 
+  it('a window shorter than a day gives no daily figure instead of dividing by zero', () => {
+    expect(dayEstimate({ balances: [], receivedLuna: 5n, windowDays: 0.3 })).toEqual({ dollarsUsd: 0, nimLuna: null })
+    expect(dayEstimate({ balances: [], receivedLuna: 5n, windowDays: Number.NaN })).toEqual({ dollarsUsd: 0, nimLuna: null })
+  })
+
   it('unknown inputs stay unknown', () => {
     expect(dayEstimate({ balances: null, receivedLuna: null, windowDays: 7 })).toEqual({ dollarsUsd: null, nimLuna: null })
     expect(dayEstimate({ balances: [], receivedLuna: 5n, windowDays: 0 })).toEqual({ dollarsUsd: 0, nimLuna: null })

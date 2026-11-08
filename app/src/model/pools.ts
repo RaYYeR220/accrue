@@ -48,8 +48,10 @@ export function dayEstimate(args: {
 }): { dollarsUsd: number | null; nimLuna: bigint | null } {
   const { balances, receivedLuna, windowDays } = args
   const units = balances ? balances.reduce((s, b) => s + (b.units * b.rateRay * DAY_SEC) / (RAY * YEAR_SEC), 0n) : null
+  // whole days only: a window under a day has no daily average to give
+  const days = Number.isFinite(windowDays) ? Math.round(windowDays) : 0
   return {
     dollarsUsd: units === null ? null : Number(units) / 1e6,
-    nimLuna: receivedLuna !== null && windowDays > 0 ? receivedLuna / BigInt(Math.round(windowDays)) : null,
+    nimLuna: receivedLuna !== null && days >= 1 ? receivedLuna / BigInt(days) : null,
   }
 }

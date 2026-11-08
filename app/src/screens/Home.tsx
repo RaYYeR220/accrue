@@ -1,15 +1,17 @@
-import { adaptiveDecimals, type AssetKey } from '@accrue/shared'
+import { adaptiveDecimals, LIMITS, MIN_STAKE_LUNA, type AssetKey } from '@accrue/shared'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { t } from '../i18n'
 import { baselineFrom, loadVisit, nextVisit, saveVisit, sinceView, type Snapshot } from '../model/visit'
+import { heroView, side } from '../model/hero'
+import { idleOffers } from '../model/idle'
 import { dayEstimate, nextPayout } from '../model/pools'
-import { Button, Card, VerdictBadge } from '../ui/components'
+import { Button, Card } from '../ui/components'
 import { Ticker } from '../ui/components/Ticker'
 import { Spinner } from '../ui/components/Fields'
 import { useApp } from './context'
-import { about, every, nimAmount, num, signed, SYMBOL, time, tokens, when } from './format'
+import { about, every, exactTokens, nimAmount, num, pct, signed, SYMBOL, time, tokens, when } from './format'
 import { ASSET_KEYS, useLiveDollars, useNow } from './live'
-import { ConnectEvm, ConnectNim } from './parts'
+import { ConnectEvm, ConnectNim, PoolVerdict } from './parts'
 
 // Since-last-visit is saved at most this often while Home is open.
 const SAVE_EVERY_MS = 30_000
@@ -17,26 +19,34 @@ const SAVE_EVERY_MS = 30_000
 function Hero() {
   const app = useApp()
   const live = useLiveDollars()
-  const staked = app.nim.staker?.activeLuna ?? null
-  const usd = live.total
-  const nimFiat = staked !== null ? app.fiat.nimToFiat(staked) : null
-  const total = (usd !== null ? app.fiat.toFiat(usd) : 0) + (nimFiat !== null && Number.isFinite(nimFiat) ? nimFiat : 0)
-  const anything = usd !== null || staked !== null
+  const { nim } = app
+  // a connected wallet without a staker has a known 0 staked
+  const staked = nim.staker === null ? 0n : (nim.staker?.activeLuna ?? null)
+  const dollars = side({ connected: app.owner !== null, value: live.total === null ? null : app.fiat.toFiat(live.total) })
+  const nimSide = side({ connected: nim.connected, value: staked === null ? null : app.fiat.nimToFiat(staked), priced: app.network !== 'testnet' })
+  const view = heroView(dollars, nimSide)
+  const ticking = dollars.state === 'known' && live.perSecond > 0
   // enough digits that the last one moves about once a second
-  const decimals = live.perSecond > 0 ? adaptiveDecimals(app.fiat.toFiat(live.perSecond)) : 2
+  const decimals = ticking ? adaptiveDecimals(app.fiat.toFiat(live.perSecond)) : 2
+  const gap = view.kind === 'total' ? null : view.missing[0]!
 
   return (
     <section className="hero-card" aria-labelledby="home-title">
       <h1 className="eyebrow" id="home-title" tabIndex={-1}>
         {t('home.title', { fiat: app.fiat.fiat })}
       </h1>
-      {anything ? <Ticker className="hero-num" text={app.fiat.format(total, decimals)} /> : <p className="hero-num hero-empty">{app.fiat.format(0, 2)}</p>}
+      {view.kind === 'none' ? <p className="hero-num hero-empty">—</p> : <Ticker className="hero-num" text={app.fiat.format(view.value, decimals)} />}
+      {view.kind === 'none' ? (
+        <p className="hero-partial">{view.missing.every(m => m.why === 'off') ? t('home.notYet') : t('status.loading')}</p>
+      ) : (
+        gap && <p className="hero-partial">{t(`home.partial.${gap.side}.${gap.why}`)}</p>
+      )}
       <p className="hero-sub">
-        {usd !== null && live.perSecond > 0
+        {ticking
           ? t('home.ticking', { rate: app.fiat.format(app.fiat.toFiat(live.perSecond * 86_400), 4) })
-          : staked !== null
-            ? t('home.nimOnly')
-            : t('home.notYet')}
+          : nimSide.state === 'known'
+            ? t('home.payoutsArrive')
+            : null}
       </p>
       <p className="src">
         {app.fiat.asOf !== null ? t('home.src', { price: app.fiat.format(app.fiat.nimToFiat(100_000n), 6), time: time(app.fiat.asOf) }) : t('home.srcPending')}
@@ -73,7 +83,7 @@ function Earning() {
             <div className="rc-line" key={k}>
               <Ticker className="rc-v" text={num(live.assets[k]!.value, decimals(k), decimals(k))} />
               <span className="rc-u">{SYMBOL[k]}</span>
-              {app.aave.data && <span className="rc-meta">{t('home.apy', { pct: (app.aave.data.reserves[k].supplyApy * 100).toFixed(2) })}</span>}
+              {app.aave.data && <span className="rc-meta">{t('home.apy', { pct: pct(app.aave.data.reserves[k].supplyApy) })}</span>}
             </div>
           ))
         )}
@@ -100,7 +110,7 @@ function Earning() {
             </div>
             {nim.myPool && (
               <button type="button" className="rc-verdict" onClick={() => app.go('payouts')}>
-                <VerdictBadge verdict={nim.check?.verdict ?? null} />
+                <PoolVerdict verdict={nim.check?.verdict ?? null} />
                 <span className="sr-only">{t('home.seeCheck', { pool: nim.myPool.name })}</span>
               </button>
             )}
@@ -173,30 +183,34 @@ function SinceVisit() {
 
 function Idle() {
   const app = useApp()
-  const rows: { key: string; text: string; cta: string; go: () => void }[] = []
-  for (const k of ASSET_KEYS) {
-    const b = app.wallet.data?.[k] ?? 0n
-    if (b > 0n) rows.push({ key: k, text: t('home.idle.token', { amount: tokens(b, k) }), cta: t('home.putToWork'), go: () => app.go('dollars', { deposit: k }) })
-  }
-  const nimIdle = app.nim.stakeable ?? 0n
-  if (nimIdle > 0n) rows.push({ key: 'nim', text: t('home.idle.nim', { amount: nimAmount(nimIdle) }), cta: t('home.stakeIt'), go: () => app.go('nim', { stake: true }) })
   if (!app.owner && !app.nim.connected) return null
+  const staking = app.nim.staker === undefined ? undefined : app.nim.staker !== null && app.nim.staker.activeLuna + app.nim.staker.inactiveLuna > 0n
+  const offers = idleOffers({ wallet: app.wallet.data, stakeable: app.nim.stakeable, staking })
 
   return (
     <section className="block" aria-labelledby="idle-h">
       <h2 className="block-h" id="idle-h">
         {t('home.idle.title')}
       </h2>
-      {rows.length === 0 ? (
+      {offers.length === 0 ? (
         <p className="muted">{t('home.idle.none')}</p>
       ) : (
         <ul className="list">
-          {rows.map(r => (
-            <li className="list-row" key={r.key}>
-              <span className="list-text">{r.text}</span>
-              <Button variant="ghost" className="btn-sm" onClick={r.go}>
-                {r.cta}
-              </Button>
+          {offers.map(o => (
+            <li className="list-row" key={o.key}>
+              <span className="list-text">
+                {o.key === 'nim' ? t('home.idle.nim', { amount: nimAmount(o.units) }) : t('home.idle.token', { amount: tokens(o.units, o.key) })}
+                {!o.ok && (
+                  <span className="list-why">
+                    {o.reason === 'MIN_DEPOSIT' ? t('home.idle.minDeposit', { min: exactTokens(LIMITS.minDepositUnits, o.key as AssetKey) }) : t('home.idle.minStake', { min: nimAmount(MIN_STAKE_LUNA) })}
+                  </span>
+                )}
+              </span>
+              {o.ok && (
+                <Button variant="ghost" className="btn-sm" onClick={() => (o.key === 'nim' ? app.go('nim', { stake: true }) : app.go('dollars', { deposit: o.key }))}>
+                  {o.key === 'nim' ? t('home.stakeIt') : t('home.putToWork')}
+                </Button>
+              )}
             </li>
           ))}
         </ul>
@@ -251,7 +265,7 @@ function DueNext() {
           <li className="list-row list-kv">
             <span className="list-k">{t('home.due.verdict')}</span>
             <button type="button" className="rc-verdict" onClick={() => app.go('payouts')}>
-              <VerdictBadge verdict={nim.check?.verdict ?? null} />
+              <PoolVerdict verdict={nim.check?.verdict ?? null} />
               <span className="sr-only">{t('home.seeCheck', { pool: pool.name })}</span>
             </button>
           </li>

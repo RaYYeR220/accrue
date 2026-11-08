@@ -6,7 +6,8 @@ import { isRecord } from '../lib/util'
 
 export type NimKind = 'stake' | 'add' | 'switch' | 'deactivate' | 'retire' | 'remove'
 export type ActivityKind = 'deposit' | 'withdraw' | NimKind
-export type ActivityStatus = 'confirmed' | 'pending' | 'checking' | 'failed'
+// unknown: a NIM transaction the chain never showed within the bound; the wallet has the answer
+export type ActivityStatus = 'confirmed' | 'pending' | 'checking' | 'failed' | 'unknown'
 
 export interface ActivityRow {
   id: string
@@ -74,7 +75,38 @@ export interface NimLogEntry {
   luna: string
   pool?: string
   at: number
-  status: 'pending' | 'confirmed' | 'failed'
+  status: 'pending' | 'confirmed' | 'failed' | 'unknown'
+}
+
+// How long a sent staking transaction may stay unseen before the app stops claiming it is on its way.
+export const NIM_PENDING_MAX_MS = 30 * 60_000
+
+// A pending entry, settled by looking the transaction up by hash (getTransactionByHash), for hosts
+// whose address history does not list it.
+export async function resolveNimEntry(
+  e: NimLogEntry,
+  lookup: (hash: string) => Promise<'confirmed' | 'failed' | 'pending'>,
+  now: number,
+): Promise<NimLogEntry['status']> {
+  let found: 'confirmed' | 'failed' | 'pending'
+  try {
+    found = await lookup(e.hash)
+  } catch {
+    found = 'pending'
+  }
+  if (found !== 'pending') return found
+  return now - e.at > NIM_PENDING_MAX_MS ? 'unknown' : 'pending'
+}
+
+// What a finished dollar sheet reports: its own draft, or the job it was following.
+export function settledAmount(
+  draft: { kind: 'supply' | 'withdraw'; asset: AssetKey; amount: bigint | 'all' } | undefined,
+  job: LocalJob | undefined,
+): { kind: 'supply' | 'withdraw'; asset: AssetKey; amount: bigint | 'all' } | null {
+  if (draft) return { kind: draft.kind, asset: draft.asset, amount: draft.amount }
+  if (!job) return null
+  const amount = BigInt(job.amount)
+  return { kind: job.kind, asset: job.asset, amount: amount === maxUint256 ? 'all' : amount }
 }
 
 export type ChainTx = NimTx & { executionResult?: boolean }
@@ -82,6 +114,7 @@ export type ChainTx = NimTx & { executionResult?: boolean }
 function nimRow(e: { hash: string; kind: NimKind; luna: bigint | null; at: number; status: ActivityStatus }, network: Network): ActivityRow {
   const row: ActivityRow = { id: e.hash, chain: 'nimiq', kind: e.kind, amount: e.luna, at: e.at, status: e.status, url: nimTxUrl(e.hash, network) }
   if (e.status === 'failed') row.errorKey = 'nim.error.TX_FAILED'
+  if (e.status === 'unknown') row.errorKey = 'act.unknownNote'
   return row
 }
 
@@ -128,7 +161,7 @@ function readLog(): NimLogEntry[] {
         typeof e.luna === 'string' &&
         /^\d+$/.test(e.luna) &&
         typeof e.at === 'number' &&
-        (e.status === 'pending' || e.status === 'confirmed' || e.status === 'failed'),
+        (e.status === 'pending' || e.status === 'confirmed' || e.status === 'failed' || e.status === 'unknown'),
     )
   } catch {
     return []
@@ -163,6 +196,11 @@ export function recordNimTx(entry: NimLogEntry): void {
     // the chain still lists it once the wallet is connected
   }
   for (const cb of [...subs]) cb()
+}
+
+export function updateNimTx(hash: string, status: NimLogEntry['status']): void {
+  const e = readLog().find(x => x.hash === hash)
+  if (e && e.status !== status) recordNimTx({ ...e, status })
 }
 
 export function subscribeNimLog(cb: () => void): () => void {

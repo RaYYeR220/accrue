@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { asset, callsBeforeFirstTap, connectPolygon, sheet, signDollars, SLOW, start, tab } from './app'
+import { asset, callsBeforeFirstTap, connectPolygon, open, sheet, signDollars, SLOW, start, tab } from './app'
 
 test.describe('dollars', () => {
   test('a $1 deposit ends Earning, with its Polygonscan transaction', async ({ page }) => {
@@ -81,6 +81,38 @@ test.describe('dollars', () => {
     await expect(d.getByRole('button', { name: 'Pay the network fee myself, up to 0.08 POL' })).toBeVisible()
   })
 
+  test('paying the fee yourself: the sheet says it is a transaction from your wallet and you pay up to the fee', async ({ page }) => {
+    test.setTimeout(90_000)
+    // slow wallet calls keep the confirm step on screen long enough to read
+    await start(page, 'relay-down', '&delay=700')
+    await tab(page, 'Dollars')
+    await connectPolygon(page)
+    const d = await signDollars(page, 'Deposit', '1')
+    await d.getByRole('button', { name: 'Pay the network fee myself, up to 0.08 POL' }).click(SLOW)
+    await expect(d.getByText('Confirm the transaction in Nimiq Pay')).toBeVisible()
+    await expect(d.getByText('What you send')).toBeVisible()
+    await expect(d.getByText("A transaction from your wallet to Accrue's router, carrying your permit for 1.00 USDT.")).toBeVisible()
+    await expect(d.getByText('Paid by you in POL: up to 0.08 POL.', { exact: false })).toBeVisible()
+    await expect(d.getByText('You need no POL.')).toHaveCount(0)
+    await expect(d.getByText('Earning', { exact: true })).toBeVisible(SLOW)
+  })
+
+  test('in German the decimal mark is a comma: "1.000" is refused, "1,5" is one and a half, exactly', async ({ page }) => {
+    await open(page, 'happy', '', '&lang=de')
+    await page.getByRole('button', { name: 'Start', exact: true }).click()
+    await page.getByRole('navigation', { name: 'Bereiche' }).getByRole('link', { name: 'Dollar', exact: true }).click()
+    await page.getByRole('button', { name: 'Polygon-Wallet verbinden' }).first().click()
+    await page.getByRole('region', { name: 'USDT', exact: true }).getByRole('button', { name: 'Einzahlen', exact: true }).click()
+    const d = sheet(page, 'USDT einzahlen')
+    const field = d.getByLabel('Betrag zum Einzahlen')
+    await field.fill('1.000')
+    await expect(d.getByText('Nur Ziffern und ein Dezimalkomma', { exact: false })).toBeVisible()
+    await expect(d.getByRole('button', { name: 'Prüfen' })).toBeDisabled()
+    await field.fill('1,5')
+    await d.getByRole('button', { name: 'Prüfen' }).click()
+    await expect(d.getByText('Ein Permit über genau 1,50 USDT', { exact: false })).toBeVisible()
+  })
+
   test('stale nonce: says why and asks for a fresh signature, which then goes through', async ({ page }) => {
     await start(page, 'stale-nonce')
     await tab(page, 'Dollars')
@@ -110,6 +142,12 @@ test.describe('dollars', () => {
     await expect(page.getByRole('heading', { name: 'Dollars', level: 1 })).toBeVisible()
     // reopening reads the relay and the chain, and asks the wallet nothing
     expect(await callsBeforeFirstTap(page)).toBe(0)
+    // "Details" follows the resumed job; the sheet did not start it, yet it names the amount
+    await page.getByRole('region', { name: 'On their way' }).getByRole('button', { name: 'Details' }).click()
+    const resumed = sheet(page, 'Deposit USDT')
+    await expect(resumed.getByText('Earning', { exact: true })).toBeVisible(SLOW)
+    await expect(resumed.getByText('1.00 USDT is in Aave and earns from this block on.')).toBeVisible()
+    await resumed.getByRole('button', { name: 'Done' }).click()
     await expect(page.getByRole('region', { name: 'On their way' })).toHaveCount(0, SLOW)
     await tab(page, 'Activity')
     const row = page.getByRole('listitem').filter({ hasText: 'Deposit 1.00 USDT' })

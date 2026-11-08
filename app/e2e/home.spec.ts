@@ -1,0 +1,41 @@
+import { expect, test } from '@playwright/test'
+import { connectPolygon, start, tab } from './app'
+
+const hero = (page: import('@playwright/test').Page) => page.getByRole('region', { name: /^Earning now/ })
+
+test.describe('Home', () => {
+  test('the total adds only what is known and says which side is missing', async ({ page }) => {
+    await start(page, 'happy')
+    // NIM read, Polygon not connected yet
+    await expect(hero(page).getByText('NIM only. Connect Polygon below to add your dollars.')).toBeVisible()
+    await expect(hero(page).getByText('$0.30').first()).toBeVisible()
+
+    await tab(page, 'Dollars')
+    await connectPolygon(page)
+    await tab(page, 'Home')
+    await expect(hero(page).getByText(/^NIM only|^Dollars only/)).toHaveCount(0)
+    await expect(hero(page).getByText(/\$100\.\d+/).first()).toBeVisible()
+
+    // reopened: dollars come back without a tap, NIM needs one
+    await page.reload()
+    await expect(hero(page).getByText('Dollars only. Tap Show my NIM below to add your stake.')).toBeVisible()
+    await expect(hero(page).getByText(/\$100\.\d+/).first()).toBeVisible()
+  })
+
+  test('nothing known yet is a dash, not $0.00', async ({ page }) => {
+    // no price source: a NIM-only staker has nothing that can be added up
+    await start(page, 'happy', '&rates=down')
+    await expect(hero(page).getByText('—', { exact: true }).first()).toBeVisible()
+    await expect(hero(page).getByText('$0.00')).toHaveCount(0)
+  })
+
+  test('idle balances below what can be deposited or staked say why, with no button', async ({ page }) => {
+    await start(page, 'insufficient')
+    await tab(page, 'Dollars')
+    await connectPolygon(page)
+    await tab(page, 'Home')
+    const row = page.getByRole('listitem').filter({ hasText: '0.50 USDT in your wallet' })
+    await expect(row.getByText('Deposits start at 1.00 USDT.')).toBeVisible()
+    await expect(row.getByRole('button')).toHaveCount(0)
+  })
+})

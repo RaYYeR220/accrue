@@ -231,7 +231,17 @@
   overflow-wrap: anywhere;
 }
 .hero-empty {
-  color: var(--faint);
+  color: var(--subtle);
+}
+.hero-partial {
+  margin-top: 6px;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--violet-800);
+}
+.list-why {
+  font-size: var(--fs-xs);
+  color: var(--muted);
 }
 .hero-sub {
   margin-top: var(--s-2);

@@ -8,19 +8,20 @@ export const SCENARIOS = ['happy', 'reject-sign', 'insufficient', 'relay-down', 
 // The relay answers on a 3 s poll, so a deposit takes a few rounds to confirm.
 export const SLOW = { timeout: 25_000 }
 
-export async function open(page: Page, scenario: string, hash = '') {
-  await page.goto(`/?mock=${scenario}&delay=30${hash}`)
+// delay: how long each mock wallet call takes, for states that pass too quickly to see at 30 ms
+export async function open(page: Page, scenario: string, hash = '', extra = '') {
+  await page.goto(`/?mock=${scenario}${extra.includes('delay=') ? '' : '&delay=30'}${extra}${hash}`)
 }
 
-export async function start(page: Page, scenario: string) {
-  await open(page, scenario)
+export async function start(page: Page, scenario: string, extra = '') {
+  await open(page, scenario, '', extra)
   await page.getByRole('button', { name: 'Start', exact: true }).click()
   await expect(nav(page)).toBeVisible()
 }
 
 export const nav = (page: Page) => page.getByRole('navigation', { name: 'Sections' })
 
-export async function tab(page: Page, name: 'Home' | 'Dollars' | 'NIM' | 'Payouts' | 'Activity') {
+export async function tab(page: Page, name: string) {
   await nav(page).getByRole('link', { name, exact: true }).click()
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
 }

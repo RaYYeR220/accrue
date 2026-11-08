@@ -54,6 +54,7 @@ describe('in-app dictionaries', () => {
       'stake.done.': ['stake', 'add', 'switch', 'deactivate', 'retire', 'remove'],
       'stake.title.': ['stake', 'add', 'unstake', 'switch', 'retire', 'remove'],
       'about.risk.': ['contract', 'rate', 'exit', 'unstake', 'pools'],
+      'home.partial.': ['dollars.off', 'dollars.loading', 'nim.off', 'nim.loading', 'nim.unpriced'],
     }
     for (const [prefix, values] of Object.entries(families)) for (const v of values) expect(known, prefix + v).toHaveProperty([prefix + v])
     for (const v of ['contract', 'rate', 'exit', 'unstake', 'pools']) expect(known).toHaveProperty([`about.risk.${v}.body`])

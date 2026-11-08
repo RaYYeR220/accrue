@@ -1,17 +1,18 @@
 import { LIMITS, type AssetKey } from '@accrue/shared'
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState, type ReactNode } from 'react'
-import type { Draft } from '../actions/machine'
+import { getLocal } from '../actions/jobs'
+import type { Draft, UserEvent } from '../actions/machine'
 import { flowConfig } from '../features/dollars/flow'
 import { useDollarAction } from '../features/dollars/useDollarAction'
 import { t } from '../i18n'
-import { polygonTxUrl } from '../model/activity'
-import { checkDeposit, checkWithdraw, maxDeposit, parseAmount, type LimitCheck } from '../model/amount'
+import { polygonTxUrl, settledAmount } from '../model/activity'
+import { checkDeposit, checkWithdraw, maxDeposit, parseAmount, plainUnits, type LimitCheck } from '../model/amount'
 import type { UiError } from '../providers/errors'
 import { Button, Chip, Sheet } from '../ui/components'
 import { AmountField, ExtLink, Facts, Notice, Spinner, Steps } from '../ui/components/Fields'
 import { useApp } from './context'
-import { commaDecimal, num, short, SYMBOL, tokens } from './format'
+import { commaDecimal, exactTokens, polUpTo, short, SYMBOL, tokens } from './format'
 
 export interface SheetSpec {
   kind: 'supply' | 'withdraw'
@@ -20,25 +21,20 @@ export interface SheetSpec {
   attach?: string
 }
 
-const plain = (units: bigint) => {
-  const s = `${units / 1_000_000n}.${(units % 1_000_000n).toString().padStart(6, '0')}`
-  return s.replace(/\.?0+$/, '')
-}
+const plain = (units: bigint) => plainUnits(units, 6, commaDecimal())
 
-const pol = (wei: bigint) => num(Number(wei) / 1e18, 2, 4)
-
+// Limits are exact figures; a balance is floored, so "more than X" never names more than is there.
 function limitMessage(c: LimitCheck, kind: SheetSpec['kind'], asset: AssetKey): string | null {
   if (c.ok) return null
-  const amount = tokens(c.limit, asset)
   switch (c.reason) {
     case 'MIN':
-      return t('amount.min', { min: amount })
+      return t('amount.min', { min: exactTokens(c.limit, asset) })
     case 'MAX':
-      return t('amount.tooMuch', { max: amount })
+      return t('amount.tooMuch', { max: exactTokens(c.limit, asset) })
     case 'ZERO':
       return t('amount.zero')
     case 'BALANCE':
-      return kind === 'supply' ? t('amount.balance', { balance: amount }) : t('amount.position', { balance: amount })
+      return kind === 'supply' ? t('amount.balance', { balance: tokens(c.limit, asset) }) : t('amount.position', { balance: tokens(c.limit, asset) })
   }
 }
 
@@ -49,23 +45,33 @@ function errorText(e: UiError, asset: AssetKey): string {
   const vars: Record<string, string> = {}
   for (const k of ['balance', 'available', 'min', 'max'] as const) {
     const v = d[k]
-    if (typeof v === 'string' && /^\d+$/.test(v)) vars[k] = tokens(BigInt(v), asset)
+    if (typeof v === 'string' && /^\d+$/.test(v)) vars[k] = k === 'balance' ? tokens(BigInt(v), asset) : exactTokens(BigInt(v), asset)
   }
   return t(e.messageKey, vars)
 }
 
-function WhatYouSign({ draft }: { draft: Draft }) {
+const amountText = (amount: bigint | 'all', asset: AssetKey) => (amount === 'all' ? t('sheet.everything', { token: SYMBOL[asset] }) : exactTokens(amount, asset))
+
+// selfGasWei: the user's own wallet sends this one (the relayer could not), so it is a transaction
+// whose fee they pay, not a signature.
+function WhatYouSign({ draft, selfGasWei }: { draft: Draft; selfGasWei?: bigint | null }) {
   const router = flowConfig.router
   const sym = SYMBOL[draft.asset]
-  const amount = draftAmount(draft)
-  const amountText = amount === 'all' ? t('sheet.everything', { token: sym }) : tokens(amount, draft.asset)
+  const amount = amountText(draftAmount(draft), draft.asset)
   const supply = draft.kind === 'supply'
+  const self = selfGasWei !== undefined && selfGasWei !== null
+  const sign = self
+    ? t('sheet.self.sign', { amount })
+    : supply
+      ? t('sheet.sign.supply', { amount, minutes: flowConfig.deadlineSec / 60 })
+      : t('sheet.sign.withdraw', { amount, token: sym, minutes: flowConfig.deadlineSec / 60 })
+  const next = self ? t(supply ? 'sheet.self.next.supply' : 'sheet.self.next.withdraw', { amount }) : supply ? t('sheet.next.supply', { token: sym }) : t('sheet.next.withdraw')
   return (
     <>
       <Facts
         className="sign-facts"
         rows={[
-          { key: 'sign', k: t('sheet.k.sign'), v: supply ? t('sheet.sign.supply', { amount: amountText, minutes: flowConfig.deadlineSec / 60 }) : t('sheet.sign.withdraw', { amount: amountText, token: sym, minutes: flowConfig.deadlineSec / 60 }) },
+          { key: 'sign', k: t(self ? 'sheet.k.send' : 'sheet.k.sign'), v: sign },
           {
             key: 'to',
             k: t('sheet.k.to'),
@@ -77,11 +83,11 @@ function WhatYouSign({ draft }: { draft: Draft }) {
               t('dollars.error.notDeployed')
             ),
           },
-          { key: 'next', k: t('sheet.k.next'), v: supply ? t('sheet.next.supply', { token: sym }) : t('sheet.next.withdraw') },
-          { key: 'gas', k: t('sheet.k.gas'), v: t('sheet.gas') },
+          { key: 'next', k: t('sheet.k.next'), v: next },
+          { key: 'gas', k: t('sheet.k.gas'), v: self ? t('sheet.self.gas', { fee: polUpTo(selfGasWei) }) : t('sheet.gas') },
         ]}
       />
-      {supply && draft.asset === 'USDT0' && <Notice tone="accent">{t('sheet.usdt0Chain')}</Notice>}
+      {!self && supply && draft.asset === 'USDT0' && <Notice tone="accent">{t('sheet.usdt0Chain')}</Notice>}
     </>
   )
 }
@@ -103,7 +109,14 @@ function Status({ icon, title, children, live = true }: { icon: 'spin' | 'ok' | 
 export function DollarSheet({ spec, onClose }: { spec: SheetSpec; onClose: () => void }) {
   const app = useApp()
   const { kind, asset } = spec
-  const { state, dispatch, switchChain, attach } = useDollarAction()
+  const { state, dispatch: send, switchChain, attach } = useDollarAction()
+  // the fee bound of the self-paid send in progress; null on the relay path
+  const [selfGas, setSelfGas] = useState<bigint | null>(null)
+  const dispatch = (ev: UserEvent) => {
+    if (ev.type === 'SELF_GAS') setSelfGas(state.s === 'unknown' || state.s === 'failed' ? state.offer?.kind === 'selfGas' ? state.offer.estimateWei : null : null)
+    else if (ev.type !== 'SUBMIT') setSelfGas(null)
+    send(ev)
+  }
   const [text, setText] = useState('')
   const [all, setAll] = useState(false)
   const [switching, setSwitching] = useState(false)
@@ -165,7 +178,7 @@ export function DollarSheet({ spec, onClose }: { spec: SheetSpec; onClose: () =>
         balance === undefined
           ? t('status.loading')
           : kind === 'supply'
-            ? t('amount.hintSupply', { balance: tokens(balance, asset), min: tokens(LIMITS.minDepositUnits), max: tokens(LIMITS.maxTxUnits) })
+            ? t('amount.hintSupply', { balance: tokens(balance, asset), min: exactTokens(LIMITS.minDepositUnits), max: exactTokens(LIMITS.maxTxUnits) })
             : t('amount.hintWithdraw', { balance: tokens(balance, asset) })
       body = (
         <>
@@ -246,14 +259,22 @@ export function DollarSheet({ spec, onClose }: { spec: SheetSpec; onClose: () =>
       break
     }
     case 'signing':
-      body = (
-        <>
-          <Status icon="spin" title={state.jobId ? t('sheet.st.sending') : t('sheet.st.signing')}>
-            <p>{state.jobId ? t('sheet.st.sendingSub') : t('sheet.st.signingSub')}</p>
-          </Status>
-          <WhatYouSign draft={state.draft} />
-        </>
-      )
+      body =
+        selfGas !== null ? (
+          <>
+            <Status icon="spin" title={t('sheet.self.title')}>
+              <p>{t('sheet.self.sub')}</p>
+            </Status>
+            <WhatYouSign draft={state.draft} selfGasWei={selfGas} />
+          </>
+        ) : (
+          <>
+            <Status icon="spin" title={state.jobId ? t('sheet.st.sending') : t('sheet.st.signing')}>
+              <p>{state.jobId ? t('sheet.st.sendingSub') : t('sheet.st.signingSub')}</p>
+            </Status>
+            <WhatYouSign draft={state.draft} />
+          </>
+        )
       actions = close
       break
     case 'submitted':
@@ -276,7 +297,7 @@ export function DollarSheet({ spec, onClose }: { spec: SheetSpec; onClose: () =>
         <>
           {state.offer?.kind === 'selfGas' && (
             <Button block variant="ghost" onClick={() => dispatch({ type: 'SELF_GAS' })}>
-              {t('sheet.selfGas', { fee: pol(state.offer.estimateWei) })}
+              {t('sheet.selfGas', { fee: polUpTo(state.offer.estimateWei) })}
             </Button>
           )}
           {close}
@@ -284,13 +305,18 @@ export function DollarSheet({ spec, onClose }: { spec: SheetSpec; onClose: () =>
       )
       break
     case 'confirmed': {
-      const d = state.draft
-      const amount = d ? draftAmount(d) : null
-      const amountText = amount === null ? '' : amount === 'all' ? t('sheet.everything', { token: sym }) : tokens(amount, asset)
-      const supply = (d?.kind ?? kind) === 'supply'
+      // a sheet opened from "Details" followed a job it did not start: the job knows the amount
+      const done = settledAmount(state.draft, getLocal(state.jobId ?? spec.attach ?? ''))
+      const supply = (done?.kind ?? kind) === 'supply'
+      const what = done ? amountText(done.amount, done.asset) : null
+      const sub = state.elsewhere
+        ? t('sheet.st.elsewhere')
+        : what === null
+          ? t(supply ? 'sheet.st.earningSubPlain' : 'sheet.st.backSubPlain')
+          : t(supply ? 'sheet.st.earningSub' : 'sheet.st.backSub', { amount: what })
       body = (
         <Status icon="ok" title={supply ? t('sheet.st.earning') : t('sheet.st.back')}>
-          <p>{state.elsewhere ? t('sheet.st.elsewhere') : supply ? t('sheet.st.earningSub', { amount: amountText }) : t('sheet.st.backSub', { amount: amountText })}</p>
+          <p>{sub}</p>
           {state.txHash && <ExtLink href={polygonTxUrl(state.txHash)}>{t('common.viewPolygonscan')}</ExtLink>}
         </Status>
       )
@@ -324,7 +350,7 @@ export function DollarSheet({ spec, onClose }: { spec: SheetSpec; onClose: () =>
       body = (
         <Status icon="no" title={t('sheet.st.failed')}>
           <p>{errorText(state.error, asset)}</p>
-          {avail !== null && <p className="strong">{t('error.availableNow', { amount: tokens(avail, asset) })}</p>}
+          {avail !== null && <p className="strong">{t('error.availableNow', { amount: exactTokens(avail, asset) })}</p>}
           {state.txHash && <ExtLink href={polygonTxUrl(state.txHash)}>{t('common.viewPolygonscan')}</ExtLink>}
         </Status>
       )
@@ -342,12 +368,12 @@ export function DollarSheet({ spec, onClose }: { spec: SheetSpec; onClose: () =>
           )}
           {avail !== null && (
             <Button block onClick={() => dispatch({ type: 'DRAFT', draft: { kind: 'withdraw', asset, amount: avail } })}>
-              {t('sheet.withdrawAvailable', { amount: tokens(avail, asset) })}
+              {t('sheet.withdrawAvailable', { amount: exactTokens(avail, asset) })}
             </Button>
           )}
           {offer?.kind === 'selfGas' && (
             <Button block variant="ghost" onClick={() => dispatch({ type: 'SELF_GAS' })}>
-              {t('sheet.selfGas', { fee: pol(offer.estimateWei) })}
+              {t('sheet.selfGas', { fee: polUpTo(offer.estimateWei) })}
             </Button>
           )}
           {state.error.retry === 'none' && (

@@ -7,10 +7,10 @@ import { useJobs } from '../actions/useJobs'
 import { useAave, type AaveReserves } from '../features/dollars/useAave'
 import { usePosition, type Position } from '../features/dollars/usePosition'
 import { useNim, type NimApi, type TxOutcome } from '../features/nim/useNim'
-import type { Network } from '../features/nim/api'
+import { waitForNimTx, type Network } from '../features/nim/api'
 import { useFiat, type FiatApi } from '../fiat/useFiat'
 import { isRecord } from '../lib/util'
-import { buildActivity, nimLog, recordNimTx, subscribeNimLog, type ActivityRow, type ChainTx, type NimKind } from '../model/activity'
+import { buildActivity, nimLog, recordNimTx, resolveNimEntry, subscribeNimLog, updateNimTx, type ActivityRow, type ChainTx, type NimKind } from '../model/activity'
 import { toUiError, type UiError } from '../providers/errors'
 import { evm } from '../providers/evm'
 import { nimiq } from '../providers/nimiq'
@@ -144,6 +144,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
     staleTime: 60_000,
     retry: false,
   })
+  // Hosts whose address history does not list a sent transaction: look it up by hash, and after a
+  // bound stop calling it "on its way" (resolveNimEntry).
+  const pendingNim = log.filter(e => e.status === 'pending' && !history.data?.some(tx => tx.hash === e.hash))
+  useQuery({
+    queryKey: ['nim', network, nimWallet, 'pending', pendingNim.map(e => e.hash).join(',')],
+    queryFn: async () => {
+      for (const e of pendingNim) {
+        const status = await resolveNimEntry(e, hash => waitForNimTx((m, p) => nimiq.rpc(m, p), hash, { timeoutMs: 0 }), Date.now())
+        if (status !== 'pending') updateNimTx(e.hash, status)
+      }
+      return pendingNim.length
+    },
+    enabled: nim.connected && pendingNim.length > 0,
+    refetchInterval: 20_000,
+    retry: false,
+  })
+
   const nimAccounts = nim.accounts
   const activity = useMemo(
     () =>

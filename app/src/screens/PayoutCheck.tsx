@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { t } from '../i18n'
 import type { PoolRow } from '../features/nim/api'
-import { Card, VerdictBadge } from '../ui/components'
+import { Card } from '../ui/components'
 import { Facts } from '../ui/components/Fields'
 import { useApp } from './context'
 import { nimAmount, pct, when } from './format'
 import { feePct, payoutLine } from './nimParts'
-import { ConnectNim, ScreenHead, TestnetBadge } from './parts'
+import { ConnectNim, PoolVerdict, ScreenHead, TestnetBadge } from './parts'
 
 function Methodology() {
   const app = useApp()
@@ -46,7 +46,7 @@ function Mine() {
       <p className="vc-pool" id="vc-pool">
         {pool.name}
       </p>
-      <VerdictBadge verdict={c.verdict} size="lg" />
+      <PoolVerdict verdict={c.verdict} size="lg" />
       <p className="vc-window">{t('check.window', { days: c.windowDays })}</p>
       <Facts
         rows={[
@@ -70,6 +70,7 @@ function Mine() {
 }
 
 function Row({ p }: { p: PoolRow }) {
+  const app = useApp()
   const [open, setOpen] = useState(false)
   const id = `why-${p.address.replace(/\s/g, '')}`
   return (
@@ -79,7 +80,7 @@ function Row({ p }: { p: PoolRow }) {
           <i className="dot" style={{ background: p.accent ?? 'var(--faint)' }} aria-hidden="true" />
           {p.name}
         </span>
-        <VerdictBadge verdict={p.verdict} />
+        <PoolVerdict verdict={p.verdict} />
       </button>
       <p className="sb-line">
         {t('pool.fee', { pct: feePct(p.fee) })} · {payoutLine(p)}
@@ -91,7 +92,7 @@ function Row({ p }: { p: PoolRow }) {
           ))}
           {p.ratio !== null && <li>{t('pool.ratio', { ratio: pct(p.ratio, 1), expected: pct(p.expectedRatio, 1) })}</li>}
           {p.lastPayoutTs !== null && <li>{t('pool.lastAt', { when: when(p.lastPayoutTs) })}</li>}
-          {p.verdict ? <li>{t(`verdict.${p.verdict}.desc`)}</li> : <li>{t('check.noVerdict')}</li>}
+          {p.verdict ? <li>{t(`verdict.${p.verdict}.desc`)}</li> : <li>{t(app.network === 'testnet' ? 'check.noVerdictTestnet' : 'check.noVerdict')}</li>}
         </ul>
       )}
     </li>

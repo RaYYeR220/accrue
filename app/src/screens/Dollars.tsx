@@ -7,7 +7,7 @@ import { Facts, Notice, Spinner } from '../ui/components/Fields'
 import { Ticker } from '../ui/components/Ticker'
 import { useApp } from './context'
 import { DollarSheet, type SheetSpec } from './DollarSheet'
-import { num, SYMBOL, time, tokens } from './format'
+import { exactTokens, num, pct, SYMBOL, time, tokens } from './format'
 import { ASSET_KEYS, useLiveDollars } from './live'
 import { ConnectEvm, ScreenHead } from './parts'
 import { rowStatus, rowTitle } from './rows'
@@ -34,7 +34,7 @@ function AssetCard({ asset, onOpen }: { asset: AssetKey; onOpen: (s: SheetSpec) 
           <p className="asset-name">{t(NAME[asset])}</p>
         </div>
         <div className="apy">
-          <span className="apy-v">{r ? `${num(r.supplyApy * 100, 2, 2)}%` : '—'}</span>
+          <span className="apy-v">{r ? pct(r.supplyApy) : '—'}</span>
           <span className="apy-k">{t('usd.apy')}</span>
         </div>
       </div>
@@ -72,7 +72,7 @@ function AssetCard({ asset, onOpen }: { asset: AssetKey; onOpen: (s: SheetSpec) 
       )}
       {tooLittle && (
         <p className="why" id={reasonId}>
-          {t('usd.tooLittle', { min: tokens(LIMITS.minDepositUnits, asset), balance: tokens(inWallet, asset) })}
+          {t('usd.tooLittle', { min: exactTokens(LIMITS.minDepositUnits, asset), balance: tokens(inWallet, asset) })}
         </p>
       )}
     </Card>
@@ -82,7 +82,7 @@ function AssetCard({ asset, onOpen }: { asset: AssetKey; onOpen: (s: SheetSpec) 
 function Risks() {
   const app = useApp()
   const r = app.aave.data?.reserves
-  const rate = (k: AssetKey) => (r ? `${num(r[k].supplyApy * 100, 2, 2)}%` : '—')
+  const rate = (k: AssetKey) => (r ? pct(r[k].supplyApy) : '—')
   const avail = (k: AssetKey) => (r ? tokens(r[k].availableLiquidity, k) : '—')
   return (
     <section className="block" aria-labelledby="risk-h">

@@ -1,16 +1,17 @@
-import { LUNA_PER_NIM, normalizeAddress, STAKING_CONTRACT } from '@accrue/shared'
+import { normalizeAddress, STAKING_CONTRACT } from '@accrue/shared'
 import { useMemo, useState, type ReactNode } from 'react'
 import type { PoolRow } from '../features/nim/api'
 import { toNimUiError, type NimUiError } from '../features/nim/errors'
 import type { TxOutcome } from '../features/nim/useNim'
 import { t } from '../i18n'
 import { nimTxUrl, type NimKind } from '../model/activity'
-import { parseAmount } from '../model/amount'
+import { parseAmount, plainUnits } from '../model/amount'
+import { clearSwitchTarget, loadSwitchTarget, saveSwitchTarget } from '../model/switchTarget'
 import { rankPools } from '../model/pools'
 import { Button, Chip, Sheet } from '../ui/components'
 import { AmountField, ExtLink, Facts, Notice, Spinner, Steps, type StepItem } from '../ui/components/Fields'
 import { useApp } from './context'
-import { about, commaDecimal, nimAmount } from './format'
+import { about, commaDecimal, nimAmount, nimExact } from './format'
 import { payoutLine, PoolPicker, stakedTotal, unstakeItems } from './nimParts'
 import { useNow } from './live'
 
@@ -22,7 +23,7 @@ export interface NimSpec {
   pool?: string
 }
 
-const plainNim = (luna: bigint) => `${luna / LUNA_PER_NIM}.${(luna % LUNA_PER_NIM).toString().padStart(5, '0')}`.replace(/\.?0+$/, '')
+const plainNim = (luna: bigint) => plainUnits(luna, 5, commaDecimal())
 
 const same = (a: string, b: string) => normalizeAddress(a) === normalizeAddress(b)
 
@@ -39,7 +40,9 @@ export function NimSheet({ spec, onClose }: { spec: NimSpec; onClose: () => void
   const staker = nim.staker ?? null
   const [text, setText] = useState(spec.amount ? plainNim(spec.amount) : '')
   const [all, setAll] = useState(false)
-  const [pool, setPool] = useState<string | null>(spec.pool ?? null)
+  const wallet = nim.accounts?.wallet ?? null
+  // a switch picks up the pool chosen before the wait
+  const [pool, setPool] = useState<string | null>(spec.pool ?? (spec.mode === 'switch' && wallet ? loadSwitchTarget(wallet) : null))
   const [phase, setPhase] = useState<Phase>({ s: 'form' })
   const ranked = useMemo(() => rankPools(nim.pools?.pools ?? []), [nim.pools])
   const chosen: PoolRow | undefined = pool ? ranked.find(p => same(p.address, pool)) : undefined
@@ -121,7 +124,7 @@ export function NimSheet({ spec, onClose }: { spec: NimSpec; onClose: () => void
       )
       const ok = amount !== null && amount > 0n && refusal === null && chosen
       facts = [
-        { k: t('sheet.k.sign'), v: t('stake.sign.stake', { amount: amount ? nimAmount(amount) : '—', pool: chosen?.name ?? '—' }) },
+        { k: t('sheet.k.sign'), v: t('stake.sign.stake', { amount: amount ? nimExact(amount) : '—', pool: chosen?.name ?? '—' }) },
         toFact,
         { k: t('sheet.k.next'), v: chosen ? t('stake.next.stake', { pool: chosen.name, payouts: payoutLine(chosen) }) : t('pool.pickFirst') },
         feeFact,
@@ -129,7 +132,7 @@ export function NimSheet({ spec, onClose }: { spec: NimSpec; onClose: () => void
       action = (
         <Button block disabled={!ok || busy} onClick={() => ok && go('stake', amount, () => nim.stake(amount, chosen.address), chosen.name)}>
           {busy && <Spinner />}
-          {amount && amount > 0n ? t('stake.do.stake', { amount: nimAmount(amount) }) : t('stake.title.stake')}
+          {amount && amount > 0n ? t('stake.do.stake', { amount: nimExact(amount) }) : t('stake.title.stake')}
         </Button>
       )
       break
@@ -138,7 +141,7 @@ export function NimSheet({ spec, onClose }: { spec: NimSpec; onClose: () => void
       form = amountField(t('stake.amount'), nim.stakeable, false)
       const ok = amount !== null && amount > 0n && refusal === null
       facts = [
-        { k: t('sheet.k.sign'), v: t('stake.sign.add', { amount: amount ? nimAmount(amount) : '—', pool: current?.name ?? '—' }) },
+        { k: t('sheet.k.sign'), v: t('stake.sign.add', { amount: amount ? nimExact(amount) : '—', pool: current?.name ?? '—' }) },
         toFact,
         { k: t('sheet.k.next'), v: current ? t('stake.next.stake', { pool: current.name, payouts: payoutLine(current) }) : '—' },
         feeFact,
@@ -146,7 +149,7 @@ export function NimSheet({ spec, onClose }: { spec: NimSpec; onClose: () => void
       action = (
         <Button block disabled={!ok || busy} onClick={() => ok && go('add', amount, () => nim.stake(amount))}>
           {busy && <Spinner />}
-          {amount && amount > 0n ? t('stake.do.add', { amount: nimAmount(amount) }) : t('stake.title.add')}
+          {amount && amount > 0n ? t('stake.do.add', { amount: nimExact(amount) }) : t('stake.title.add')}
         </Button>
       )
       break
@@ -162,7 +165,7 @@ export function NimSheet({ spec, onClose }: { spec: NimSpec; onClose: () => void
       )
       const ok = amount !== null && amount > 0n && refusal === null && unstakeSteps !== null
       facts = [
-        { k: t('sheet.k.sign'), v: t('stake.sign.deactivate', { amount: amount ? nimAmount(amount) : '—' }) },
+        { k: t('sheet.k.sign'), v: t('stake.sign.deactivate', { amount: amount ? nimExact(amount) : '—' }) },
         toFact,
         { k: t('sheet.k.next'), v: t('stake.next.deactivate') },
         feeFact,
@@ -173,7 +176,7 @@ export function NimSheet({ spec, onClose }: { spec: NimSpec; onClose: () => void
         stepOne ? (
           <Button block disabled={!ok || busy} onClick={() => ok && go('deactivate', amount, () => nim.deactivate(amount))}>
             {busy && <Spinner />}
-            {amount && amount > 0n ? t('stake.do.deactivate', { amount: nimAmount(amount) }) : t('stake.title.unstake')}
+            {amount && amount > 0n ? t('stake.do.deactivate', { amount: nimExact(amount) }) : t('stake.title.unstake')}
           </Button>
         ) : (
           <Notice>{t('stake.alreadyStopped')}</Notice>
@@ -184,7 +187,7 @@ export function NimSheet({ spec, onClose }: { spec: NimSpec; onClose: () => void
       const steps: StepItem[] | null =
         switchPlan?.kind === 'deactivate-first'
           ? [
-              { title: t('stake.sw.stop', { amount: nimAmount(staker?.activeLuna ?? 0n) }), state: switchPlan.steps[0]!.done ? 'done' : 'now' },
+              { title: t('stake.sw.stop', { amount: nimExact(staker?.activeLuna ?? 0n) }), state: switchPlan.steps[0]!.done ? 'done' : 'now' },
               {
                 title: t('nim.step.wait'),
                 sub: switchPlan.steps[1]!.done ? t('nim.step.readyNow') : t('stake.readyIn', { time: about(switchPlan.steps[1]!.etaMs ?? 0) }),
@@ -209,20 +212,44 @@ export function NimSheet({ spec, onClose }: { spec: NimSpec; onClose: () => void
       const direct = switchPlan?.kind === 'direct'
       const stopNow = switchPlan?.kind === 'deactivate-first' && !switchPlan.steps[0]!.done
       facts = [
-        { k: t('sheet.k.sign'), v: direct ? t('stake.sign.switch', { pool: chosen?.name ?? '—' }) : t('stake.sign.deactivate', { amount: nimAmount(staker?.activeLuna ?? 0n) }) },
+        { k: t('sheet.k.sign'), v: direct ? t('stake.sign.switch', { pool: chosen?.name ?? '—' }) : t('stake.sign.deactivate', { amount: nimExact(staker?.activeLuna ?? 0n) }) },
         toFact,
         { k: t('sheet.k.next'), v: direct ? t('stake.next.switch', { pool: chosen?.name ?? '—' }) : t('stake.next.deactivate') },
         feeFact,
       ]
       action = direct ? (
-        <Button block disabled={!chosen || busy} onClick={() => chosen && go('switch', 0n, () => nim.switchPool(chosen.address), chosen.name)}>
+        <Button
+          block
+          disabled={!chosen || busy}
+          onClick={() =>
+            chosen &&
+            go(
+              'switch',
+              0n,
+              async () => {
+                const out = await nim.switchPool(chosen.address)
+                if (out && wallet) clearSwitchTarget(wallet)
+                return out
+              },
+              chosen.name,
+            )
+          }
+        >
           {busy && <Spinner />}
           {t('stake.do.switch', { pool: chosen?.name ?? '…' })}
         </Button>
       ) : stopNow ? (
-        <Button block disabled={!chosen || busy} onClick={() => go('deactivate', staker?.activeLuna ?? 0n, () => nim.deactivateAll())}>
+        <Button
+          block
+          disabled={!chosen || busy}
+          onClick={() => {
+            // remembered for the move, which is only possible after the wait
+            if (chosen && wallet) saveSwitchTarget(wallet, chosen.address)
+            void go('deactivate', staker?.activeLuna ?? 0n, () => nim.deactivateAll())
+          }}
+        >
           {busy && <Spinner />}
-          {t('stake.sw.stopDo', { amount: nimAmount(staker?.activeLuna ?? 0n) })}
+          {t('stake.sw.stopDo', { amount: nimExact(staker?.activeLuna ?? 0n) })}
         </Button>
       ) : (
         <Notice>{t('stake.sw.waiting')}</Notice>
@@ -233,7 +260,7 @@ export function NimSheet({ spec, onClose }: { spec: NimSpec; onClose: () => void
     case 'remove': {
       const luna = amount ?? 0n
       facts = [
-        { k: t('sheet.k.sign'), v: t(mode === 'retire' ? 'stake.sign.retire' : 'stake.sign.remove', { amount: nimAmount(luna) }) },
+        { k: t('sheet.k.sign'), v: t(mode === 'retire' ? 'stake.sign.retire' : 'stake.sign.remove', { amount: nimExact(luna) }) },
         toFact,
         { k: t('sheet.k.next'), v: t(mode === 'retire' ? 'stake.next.retire' : 'stake.next.remove') },
         feeFact,
@@ -241,7 +268,7 @@ export function NimSheet({ spec, onClose }: { spec: NimSpec; onClose: () => void
       action = (
         <Button block disabled={luna === 0n || busy} onClick={() => go(mode, luna, () => (mode === 'retire' ? nim.retire(luna + (staker?.retiredLuna ?? 0n)) : nim.remove()))}>
           {busy && <Spinner />}
-          {t(mode === 'retire' ? 'stake.do.retire' : 'stake.do.remove', { amount: nimAmount(luna) })}
+          {t(mode === 'retire' ? 'stake.do.retire' : 'stake.do.remove', { amount: nimExact(luna) })}
         </Button>
       )
       break
@@ -257,7 +284,7 @@ export function NimSheet({ spec, onClose }: { spec: NimSpec; onClose: () => void
           {pending ? <Spinner /> : '✓'}
         </span>
         <div className="status-body">
-          <p className="status-title">{pending ? t('nim.tx.pending') : t(`stake.done.${phase.kind}`, { amount: nimAmount(phase.luna) })}</p>
+          <p className="status-title">{pending ? t('nim.tx.pending') : t(`stake.done.${phase.kind}`, { amount: nimExact(phase.luna) })}</p>
           <ExtLink href={nimTxUrl(phase.out.hash, app.network)}>{t('common.viewNimiq')}</ExtLink>
         </div>
       </div>
