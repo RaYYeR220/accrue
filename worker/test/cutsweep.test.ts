@@ -1,9 +1,14 @@
 // Review r2 acceptance: a pool is never SHORT (or BEHIND_SCHEDULE) because of where the data was cut,
 // only because of what it paid. Cuts land on every macro block, read the way Task 9 reads them.
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { BATCH_BLOCKS, COINBASE_ADDRESS, poolVerdict, type NimTx } from '@accrue/shared'
 import { HOUR_MS, aggregate, dayOf, hourOf, poolWindowsFromAggregates, type HourAgg, type StakerDayAgg } from '../src/indexer/aggregate'
 import { load } from './chain'
+
+// Every sweep is synchronous CPU work and Vitest does not yield to the event loop between tests, so
+// the worker could not read the runner's reply to a task update for the whole file (> 60 s) and
+// reported "Timeout calling onTaskUpdate". One macrotask turn after each test lets the reply land.
+afterEach(() => new Promise<void>((resolve) => setImmediate(resolve)))
 
 const REWARD = 'NQ38 VK34 DRBL S3CN M9KM 8UJN 9JY2 2KFN VQQH'
 const STAKING = 'NQ77 0000 0000 0000 0000 0000 0000 0000 0001'
