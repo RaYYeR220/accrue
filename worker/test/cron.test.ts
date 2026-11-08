@@ -279,7 +279,7 @@ describe('one pool the RPC fails on cannot starve the others (Task 8 minor)', ()
     const db = new FakeD1()
     const chain = new FakeChain(POOL, garuda.txs, top - 20_000)
     const calls: Record<string, number> = {}
-    const vals = [validators[0], ...[...Object.keys(failing), ...extra].map((a, i) => ({ ...validators[0], address: a, name: `Pool ${i}` }))]
+    const vals = [validators[0]!, ...[...Object.keys(failing), ...extra].map((a, i) => ({ ...validators[0]!, address: a, name: `Pool ${i}` }))]
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {

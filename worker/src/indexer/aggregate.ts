@@ -325,17 +325,7 @@ export function poolWindowsFromAggregates(
   const cycleMs = cycleFromDays(stakerDays, range)
   const gapMs = runGapBlocks(cycleMs) * 1000
   const settleMs = Math.max(cycleMs ?? HOUR_MS, HOUR_MS)
-
-  const runs: { hours: HourRow[]; endTs: number }[] = []
-  for (const h of rows) {
-    if (h.lastPayoutTs === null) continue
-    const first = h.firstPayoutTs ?? h.lastPayoutTs
-    const run = runs[runs.length - 1]
-    if (run && first - run.endTs < gapMs) {
-      run.hours.push(h)
-      run.endTs = h.lastPayoutTs
-    } else runs.push({ hours: [h], endTs: h.lastPayoutTs })
-  }
+  const runs = payoutRuns(rows, gapMs)
 
   const ends: { ts: number; hour: number }[] = []
   runs.forEach((run, i) => {
@@ -370,6 +360,113 @@ export function poolWindowFromAggregates(
   range: WindowRange,
 ): PoolWindow {
   return poolWindowsFromAggregates(hours, stakerDays, range).window
+}
+
+interface Run {
+  hours: HourRow[]
+  startTs: number
+  endTs: number
+}
+
+// Payout hours merge into one run while an hour's last payout and the next hour's first payout are
+// less than `gapMs` apart.
+function payoutRuns(rows: readonly HourRow[], gapMs: number): Run[] {
+  const runs: Run[] = []
+  for (const h of rows) {
+    if (h.lastPayoutTs === null) continue
+    const first = h.firstPayoutTs ?? h.lastPayoutTs
+    const run = runs[runs.length - 1]
+    if (run && first - run.endTs < gapMs) {
+      run.hours.push(h)
+      run.endTs = h.lastPayoutTs
+    } else runs.push({ hours: [h], startTs: first, endTs: h.lastPayoutTs })
+  }
+  return runs
+}
+
+export interface StakerWindow {
+  /** first and last midnight: the staker's payouts are summed over the whole UTC days in between */
+  fromTs: number
+  toTs: number
+  /** where the pool had paid out its earnings before each midnight (a complete run end, or in a stream the hour's last payout) */
+  startTs: number
+  endTs: number
+  /** the pool's earnings and payouts between the two settle points */
+  earned: bigint
+  paid: bigint
+  /** the staker's payouts from fromTs (inclusive) to toTs (exclusive), and how many */
+  received: bigint
+  payouts: number
+}
+
+/**
+ * One staker's payout window, on whole UTC days because staker_day holds day totals.
+ *
+ * A midnight can bound the window only where the pool's payouts settle cleanly: no run crosses it
+ * and the run before it is complete (the next one started, or the data reaches a run gap past it),
+ * or it falls inside a stream (see `poolWindowsFromAggregates`) at least one cycle before the data's
+ * reach. Then every payout before the midnight paid earnings up to that settle point, and every
+ * payout after it pays later ones, so the staker's payouts over the whole days between the first and
+ * the last usable midnight answer exactly the pool's earnings between their settle points. A
+ * midnight inside an ordinary run is skipped; when fewer than two usable ones remain, there is no
+ * window (null). Runs use the pool's cycle (`cycleMs`, from the pool-wide staker_day rows) for the
+ * run gap; with a hole, the longer side is used, as for the pool.
+ */
+export function userWindowFromAggregates(
+  hours: readonly HourRow[],
+  userDays: readonly { day: number; received: bigint; payouts: number }[],
+  range: WindowRange & { cycleMs: number | null },
+): StakerWindow | null {
+  if (range.hole) {
+    const below = { fromTs: range.fromTs, toTs: Math.min(range.toTs, range.hole.fromTs) }
+    const above = { fromTs: Math.max(range.fromTs, range.hole.toTs), toTs: range.toTs }
+    const side = above.toTs - above.fromTs >= below.toTs - below.fromTs ? above : below
+    return userWindowFromAggregates(hours, userDays, { ...side, cycleMs: range.cycleMs })
+  }
+  const rows = hours
+    .filter((h) => h.hour * HOUR_MS >= range.fromTs && h.hour * HOUR_MS < range.toTs)
+    .sort((a, b) => a.hour - b.hour)
+  const gapMs = runGapBlocks(range.cycleMs) * 1000
+  const settleMs = Math.max(range.cycleMs ?? HOUR_MS, HOUR_MS)
+  const runs = payoutRuns(rows, gapMs)
+  const streams = new Set<number>()
+  for (const run of runs) for (const h of streamHours(run.hours)) streams.add(h.hour)
+  const byHour = new Map(rows.map((h) => [h.hour, h]))
+
+  const bounds: { midnight: number; ts: number; hour: number }[] = []
+  for (let d = Math.ceil(range.fromTs / DAY_MS); d * DAY_MS <= range.toTs; d++) {
+    const midnight = d * DAY_MS
+    let i = 0
+    while (i < runs.length && runs[i]!.startTs < midnight) i++
+    const prev = runs[i - 1]
+    if (!prev) continue
+    if (prev.endTs < midnight) {
+      if (i < runs.length || range.toTs - prev.endTs >= gapMs) bounds.push({ midnight, ts: prev.endTs, hour: prev.hours[prev.hours.length - 1]!.hour })
+      continue
+    }
+    const before = byHour.get(midnight / HOUR_MS - 1)
+    if (before?.lastPayoutTs != null && streams.has(before.hour) && midnight <= range.toTs - settleMs) {
+      bounds.push({ midnight, ts: before.lastPayoutTs, hour: before.hour })
+    }
+  }
+  if (bounds.length < 2) return null
+  const a = bounds[0]!
+  const b = bounds[bounds.length - 1]!
+  if (b.ts <= a.ts) return null
+
+  const empty: PoolWindow = {
+    earned: 0n, paidRestake: 0n, paidDirect: 0n, paidUnverified: 0n, otherOut: 0n, cycles: 0,
+    lastPayoutTs: null, windowStartTs: a.ts, windowEndTs: b.ts,
+  }
+  const w = windowBetween(rows, [], empty, a, b, range.toTs)
+  let received = 0n
+  let payouts = 0
+  for (const u of userDays) {
+    if (u.day < a.midnight / DAY_MS || u.day >= b.midnight / DAY_MS) continue
+    received += u.received
+    payouts += u.payouts
+  }
+  return { fromTs: a.midnight, toTs: b.midnight, startTs: a.ts, endTs: b.ts, earned: w.earned, paid: w.paidRestake + w.paidDirect, received, payouts }
 }
 
 // Inner hours of a run that is a stream (see STREAM_MIN_HOURS), or none.
