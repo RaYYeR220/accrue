@@ -2,21 +2,21 @@
   "source": "worker",
   "tool": "vitest 3.2.4",
   "command": "pnpm --filter @accrue/worker test",
-  "ranAt": "2026-11-08T05:02:38.269Z",
-  "commit": "104620e1e26069f23432cccca6428164d0fdd2de",
+  "ranAt": "2026-11-08T08:19:23.506Z",
+  "commit": "2ea69bd47d9e81ca6c596c7d387423002462e8e5",
   "testedCodeMatchesCommit": true,
-  "wallMs": 76273,
+  "wallMs": 31479,
   "ok": true,
-  "files": 14,
-  "tests": 218,
-  "passed": 218,
+  "files": 17,
+  "tests": 248,
+  "passed": 248,
   "failed": 0,
   "skipped": 0,
   "byFile": [
     {
       "file": "worker/test/aggregate.test.ts",
-      "tests": 25,
-      "passed": 25,
+      "tests": 27,
+      "passed": 27,
       "failed": 0,
       "skipped": 0
     },
@@ -31,6 +31,13 @@
       "file": "worker/test/broadcast.test.ts",
       "tests": 17,
       "passed": 17,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "worker/test/budget.test.ts",
+      "tests": 3,
+      "passed": 3,
       "failed": 0,
       "skipped": 0
     },
@@ -71,8 +78,8 @@
     },
     {
       "file": "worker/test/market-api.test.ts",
-      "tests": 15,
-      "passed": 15,
+      "tests": 27,
+      "passed": 27,
       "failed": 0,
       "skipped": 0
     },
@@ -101,6 +108,20 @@
       "file": "worker/test/scan.test.ts",
       "tests": 26,
       "passed": 26,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "worker/test/scheduled.test.ts",
+      "tests": 11,
+      "passed": 11,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "worker/test/store.test.ts",
+      "tests": 2,
+      "passed": 2,
       "failed": 0,
       "skipped": 0
     },

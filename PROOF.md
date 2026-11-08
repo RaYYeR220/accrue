@@ -78,33 +78,31 @@ pinned in `app/test/unstake.test.ts`.
 
 <!-- numbers:pools -->
 
-From [`accrue.pages.dev/api/pools`](https://accrue.pages.dev/api/pools), fetched 2026-11-08 06:07 UTC; verdicts computed at 2026-11-08 06:05 UTC; indexed data reaches 2026-11-08 05:05 UTC to 2026-11-08 05:25 UTC depending on the pool, 7-day window. The app shows the same rows, live.
+From [`accrue.pages.dev/api/pools`](https://accrue.pages.dev/api/pools), fetched 2026-11-08 08:21 UTC; verdicts computed at 2026-11-08 08:21 UTC; indexed data reaches 2026-11-08 06:43 UTC to 2026-11-08 07:59 UTC depending on the pool, 7-day window. The app shows the same rows, live.
 
 | Pool | Pays | Fee | Verdict | Paid of earnings | Promised |
 |---|---|---:|---|---:|---:|
-| Garuda Pool | restakes | 5 % | Paid as promised | 95.00 % | 95.00 % |
+| Garuda Pool | restakes | 5 % | Paid as promised | 95.03 % | 95.00 % |
+| ImpactZero stake | restakes | 0 % | Paid as promised | 100.00 % | 100.00 % |
 | Keyring Staking | restakes | 5 % | Paid as promised | 100.01 % | 95.00 % |
 | Mint Pool | restakes | 5 % | Paid as promised | 94.96 % | 95.00 % |
+| Nimiq Base Staking | restakes | 0 % | Paid as promised | 100.00 % | 100.00 % |
 | Nimiq.Fun | to wallet | 2.5 % | Paid as promised | 95.77 % | 97.50 % |
+| NimiqCafe Staking | restakes | 3 % | Paid as promised | 99.60 % | 97.00 % |
+| NimiqHub Staking | restakes | 5 % | Paid as promised | 95.80 % | 95.00 % |
+| NimiqPocket | restakes | 1 % | Paid as promised | 99.77 % | 99.00 % |
 | ObsidianStake | to wallet | 5 % | Paid as promised | 221.55 % | 95.00 % |
 | Ritvars Staking | restakes | 2 % | Paid as promised | 97.90 % | 98.00 % |
-| Siam Pool | restakes | 3 % | Paid as promised | 97.49 % | 97.00 % |
+| Siam Pool | restakes | 3 % | Paid as promised | 97.31 % | 97.00 % |
+| $NIM_pool | restakes | 0 % | Not enough data | 95.30 % | 100.00 % |
 | CHIPMUNK POOL | to wallet | 5 % | Not enough data | – | 95.00 % |
-| nim.re Staking Pool | restakes | 3.33 % | Not enough data | 87.01 % | 96.67 % |
+| nim.re Staking Pool | restakes | 3.33 % | Not enough data | 86.92 % | 96.67 % |
 | NODENIMIQ1.NIMIQ-JU.FR by &#64;Ju | restakes | 1 % | Not enough data | – | 99.00 % |
 | NODENIMIQ2.NIMIQ-JU.FR by &#64;Ju | restakes | 1 % | Not enough data | – | 99.00 % |
+| Synapse LN - Nimiq | restakes | 1 % | Not enough data | – | 99.00 % |
 | Nimiq Surf | no payouts | 0 % | No payouts by design | – | 100.00 % |
 | Private Whalidator | no payouts | not listed | No payouts by design | – | – |
 | Nimiq Marketing Pool | restakes | 0 % | Can't verify (routed elsewhere) | 50.34 % | 100.00 % |
-| $NIM_pool | restakes | 0 % | no verdict yet | – | 100.00 % |
-| ImpactZero stake | restakes | 0 % | no verdict yet | – | 100.00 % |
-| Nimiq Base Staking | restakes | 0 % | no verdict yet | – | 100.00 % |
-| NimiqCafe Staking | restakes | 3 % | no verdict yet | – | 97.00 % |
-| NimiqHub Staking | restakes | 5 % | no verdict yet | – | 95.00 % |
-| NimiqPocket | restakes | 1 % | no verdict yet | – | 99.00 % |
-| Synapse LN - Nimiq | restakes | 1 % | no verdict yet | – | 99.00 % |
-
-7 of 21 pools had no verdict yet when this was fetched; the API's reason: "Payout Check has not looked at this pool yet."
 
 <!-- /numbers:pools -->
 
@@ -120,12 +118,12 @@ scoreboard on [accrue.pages.dev](https://accrue.pages.dev), and the raw rows at
 |---|---|---:|---|---|---|
 | Router (Foundry, Polygon fork) | `cd contracts && forge test` | 26 | 26 passed | 3 suites; 2 fuzz tests at 256 runs; invariant campaign 64 runs × 20 calls | 2026-11-08, forge 1.8.3 |
 | Shared logic: permits, payout math | `pnpm --filter @accrue/shared test` | 66 | 66 passed | 4 files | 2026-11-08, vitest 3.2.4 |
-| Worker: relayer, indexer, API | `pnpm --filter @accrue/worker test` | 218 | 218 passed | 14 files | 2026-11-08, vitest 3.2.4 |
-| App: flows, models, providers | `pnpm --filter @accrue/app test` | 482 | 482 passed | 28 files | 2026-11-08, vitest 3.2.4 |
-| App end to end (Playwright) | `pnpm --filter @accrue/app e2e` | 160 | 155 passed, 5 skipped | app-375 41, app-430 41, desktop-1440 26, mobile-375 26, wide-1920 26 | 2026-11-08, playwright 1.64.1 |
-| **Total** | | **952** | 947 passed, 5 skipped | | |
+| Worker: relayer, indexer, API | `pnpm --filter @accrue/worker test` | 248 | 248 passed | 17 files | 2026-11-08, vitest 3.2.4 |
+| App: flows, models, providers | `pnpm --filter @accrue/app test` | 493 | 493 passed | 28 files | 2026-11-08, vitest 3.2.4 |
+| App end to end (Playwright) | `pnpm --filter @accrue/app e2e` | 169 | 164 passed, 5 skipped | app-375 44, app-430 44, desktop-1440 27, mobile-375 27, wide-1920 27 | 2026-11-08, playwright 1.64.1 |
+| **Total** | | **1,002** | 997 passed, 5 skipped | | |
 
-Recorded by `node scripts/collect-results.mjs` into [`results/`](results/), testing the code at commit `104620e1e26069f23432cccca6428164d0fdd2de`. The skipped end-to-end cases are QR-code checks that apply only to a computer or only to a phone viewport.
+Recorded by `node scripts/collect-results.mjs` into [`results/`](results/), testing the code at commit `2ea69bd47d9e81ca6c596c7d387423002462e8e5`. The skipped end-to-end cases are QR-code checks that apply only to a computer or only to a phone viewport.
 
 <!-- /numbers:tests -->
 

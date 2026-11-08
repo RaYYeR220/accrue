@@ -2,10 +2,10 @@
   "source": "coverage",
   "tool": "forge 1.8.3",
   "command": "cd contracts && forge coverage --report summary",
-  "ranAt": "2026-11-08T05:00:51.777Z",
-  "commit": "104620e1e26069f23432cccca6428164d0fdd2de",
+  "ranAt": "2026-11-08T08:18:23.347Z",
+  "commit": "2ea69bd47d9e81ca6c596c7d387423002462e8e5",
   "testedCodeMatchesCommit": true,
-  "wallMs": 98842,
+  "wallMs": 86556,
   "ok": true,
   "files": [
     {
@@ -62,13 +62,13 @@
         "of": 130
       },
       "statements": {
-        "pct": 93.41,
-        "hit": 170,
+        "pct": 93.96,
+        "hit": 171,
         "of": 182
       },
       "branches": {
-        "pct": 53.85,
-        "hit": 14,
+        "pct": 57.69,
+        "hit": 15,
         "of": 26
       },
       "functions": {
@@ -108,13 +108,13 @@
         "of": 190
       },
       "statements": {
-        "pct": 94.68,
-        "hit": 249,
+        "pct": 95.06,
+        "hit": 250,
         "of": 263
       },
       "branches": {
-        "pct": 72.55,
-        "hit": 37,
+        "pct": 74.51,
+        "hit": 38,
         "of": 51
       },
       "functions": {
