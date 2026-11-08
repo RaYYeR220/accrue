@@ -2,14 +2,14 @@
   "source": "app",
   "tool": "vitest 3.2.4",
   "command": "pnpm --filter @accrue/app test",
-  "ranAt": "2026-11-08T08:19:37.920Z",
-  "commit": "2ea69bd47d9e81ca6c596c7d387423002462e8e5",
+  "ranAt": "2026-11-08T08:37:17.288Z",
+  "commit": "352557255f1713d779641b9b047eab29d2638fad",
   "testedCodeMatchesCommit": true,
-  "wallMs": 13079,
+  "wallMs": 13497,
   "ok": true,
   "files": 28,
-  "tests": 493,
-  "passed": 493,
+  "tests": 496,
+  "passed": 496,
   "failed": 0,
   "skipped": 0,
   "byFile": [
@@ -71,8 +71,8 @@
     },
     {
       "file": "app/test/app-pools.test.ts",
-      "tests": 13,
-      "passed": 13,
+      "tests": 15,
+      "passed": 15,
       "failed": 0,
       "skipped": 0
     },
@@ -113,8 +113,8 @@
     },
     {
       "file": "app/test/fiat.test.ts",
-      "tests": 20,
-      "passed": 20,
+      "tests": 21,
+      "passed": 21,
       "failed": 0,
       "skipped": 0
     },

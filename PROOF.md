@@ -78,7 +78,7 @@ pinned in `app/test/unstake.test.ts`.
 
 <!-- numbers:pools -->
 
-From [`accrue.pages.dev/api/pools`](https://accrue.pages.dev/api/pools), fetched 2026-11-08 08:21 UTC; verdicts computed at 2026-11-08 08:21 UTC; indexed data reaches 2026-11-08 06:43 UTC to 2026-11-08 07:59 UTC depending on the pool, 7-day window. The app shows the same rows, live.
+From [`accrue.pages.dev/api/pools`](https://accrue.pages.dev/api/pools), fetched 2026-11-08 08:39 UTC; verdicts computed at 2026-11-08 08:37 UTC; indexed data reaches 2026-11-08 07:14 UTC to 2026-11-08 08:21 UTC depending on the pool, 7-day window. The app shows the same rows, live.
 
 | Pool | Pays | Fee | Verdict | Paid of earnings | Promised |
 |---|---|---:|---|---:|---:|
@@ -90,7 +90,7 @@ From [`accrue.pages.dev/api/pools`](https://accrue.pages.dev/api/pools), fetched
 | Nimiq.Fun | to wallet | 2.5 % | Paid as promised | 95.77 % | 97.50 % |
 | NimiqCafe Staking | restakes | 3 % | Paid as promised | 99.60 % | 97.00 % |
 | NimiqHub Staking | restakes | 5 % | Paid as promised | 95.80 % | 95.00 % |
-| NimiqPocket | restakes | 1 % | Paid as promised | 99.77 % | 99.00 % |
+| NimiqPocket | restakes | 1 % | Paid as promised | 99.78 % | 99.00 % |
 | ObsidianStake | to wallet | 5 % | Paid as promised | 221.55 % | 95.00 % |
 | Ritvars Staking | restakes | 2 % | Paid as promised | 97.90 % | 98.00 % |
 | Siam Pool | restakes | 3 % | Paid as promised | 97.31 % | 97.00 % |
@@ -119,11 +119,11 @@ scoreboard on [accrue.pages.dev](https://accrue.pages.dev), and the raw rows at
 | Router (Foundry, Polygon fork) | `cd contracts && forge test` | 26 | 26 passed | 3 suites; 2 fuzz tests at 256 runs; invariant campaign 64 runs × 20 calls | 2026-11-08, forge 1.8.3 |
 | Shared logic: permits, payout math | `pnpm --filter @accrue/shared test` | 66 | 66 passed | 4 files | 2026-11-08, vitest 3.2.4 |
 | Worker: relayer, indexer, API | `pnpm --filter @accrue/worker test` | 248 | 248 passed | 17 files | 2026-11-08, vitest 3.2.4 |
-| App: flows, models, providers | `pnpm --filter @accrue/app test` | 493 | 493 passed | 28 files | 2026-11-08, vitest 3.2.4 |
-| App end to end (Playwright) | `pnpm --filter @accrue/app e2e` | 169 | 164 passed, 5 skipped | app-375 44, app-430 44, desktop-1440 27, mobile-375 27, wide-1920 27 | 2026-11-08, playwright 1.64.1 |
-| **Total** | | **1,002** | 997 passed, 5 skipped | | |
+| App: flows, models, providers | `pnpm --filter @accrue/app test` | 496 | 496 passed | 28 files | 2026-11-08, vitest 3.2.4 |
+| App end to end (Playwright) | `pnpm --filter @accrue/app e2e` | 171 | 166 passed, 5 skipped | app-375 45, app-430 45, desktop-1440 27, mobile-375 27, wide-1920 27 | 2026-11-08, playwright 1.64.1 |
+| **Total** | | **1,007** | 1,002 passed, 5 skipped | | |
 
-Recorded by `node scripts/collect-results.mjs` into [`results/`](results/), testing the code at commit `2ea69bd47d9e81ca6c596c7d387423002462e8e5`. The skipped end-to-end cases are QR-code checks that apply only to a computer or only to a phone viewport.
+Recorded by `node scripts/collect-results.mjs` into [`results/`](results/), testing the code at commit `352557255f1713d779641b9b047eab29d2638fad`. The skipped end-to-end cases are QR-code checks that apply only to a computer or only to a phone viewport.
 
 <!-- /numbers:tests -->
 

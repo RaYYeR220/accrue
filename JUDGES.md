@@ -37,7 +37,7 @@ current):
 
 <!-- numbers:pools -->
 
-From [`accrue.pages.dev/api/pools`](https://accrue.pages.dev/api/pools), fetched 2026-11-08 08:21 UTC; verdicts computed at 2026-11-08 08:21 UTC; indexed data reaches 2026-11-08 06:43 UTC to 2026-11-08 07:59 UTC depending on the pool, 7-day window. The app shows the same rows, live.
+From [`accrue.pages.dev/api/pools`](https://accrue.pages.dev/api/pools), fetched 2026-11-08 08:39 UTC; verdicts computed at 2026-11-08 08:37 UTC; indexed data reaches 2026-11-08 07:14 UTC to 2026-11-08 08:21 UTC depending on the pool, 7-day window. The app shows the same rows, live.
 
 | Pool | Pays | Fee | Verdict | Paid of earnings | Promised |
 |---|---|---:|---|---:|---:|
@@ -49,7 +49,7 @@ From [`accrue.pages.dev/api/pools`](https://accrue.pages.dev/api/pools), fetched
 | Nimiq.Fun | to wallet | 2.5 % | Paid as promised | 95.77 % | 97.50 % |
 | NimiqCafe Staking | restakes | 3 % | Paid as promised | 99.60 % | 97.00 % |
 | NimiqHub Staking | restakes | 5 % | Paid as promised | 95.80 % | 95.00 % |
-| NimiqPocket | restakes | 1 % | Paid as promised | 99.77 % | 99.00 % |
+| NimiqPocket | restakes | 1 % | Paid as promised | 99.78 % | 99.00 % |
 | ObsidianStake | to wallet | 5 % | Paid as promised | 221.55 % | 95.00 % |
 | Ritvars Staking | restakes | 2 % | Paid as promised | 97.90 % | 98.00 % |
 | Siam Pool | restakes | 3 % | Paid as promised | 97.31 % | 97.00 % |

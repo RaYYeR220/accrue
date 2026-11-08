@@ -1,8 +1,8 @@
 {
   "source": "pools",
   "url": "https://accrue.pages.dev/api/pools",
-  "fetchedAt": "2026-11-08T08:21:52.791Z",
-  "asOf": 1794126064610,
+  "fetchedAt": "2026-11-08T08:39:30.963Z",
+  "asOf": 1794127024441,
   "windowDays": 7,
   "pools": [
     {
@@ -97,10 +97,10 @@
       "schedule": "Payouts over 10 NIM are instant when NimiqPocket is elected .",
       "stakers": 195,
       "verdict": "PAID_AS_PROMISED",
-      "ratio": 0.997695,
+      "ratio": 0.99782,
       "expectedRatio": 0.99,
-      "lastPayoutTs": 1794120147207,
-      "reachTs": 1794120191204,
+      "lastPayoutTs": 1794125398552,
+      "reachTs": 1794125503551,
       "reasons": [
         "Paid 99.8% of earnings against 99.0% promised.",
         "The indexer is still catching up on recent transactions of this pool; the window uses the part it has."
@@ -243,10 +243,10 @@
       "schedule": "",
       "stakers": 15,
       "verdict": "PAID_AS_PROMISED",
-      "ratio": 0.99996,
+      "ratio": 0.999995,
       "expectedRatio": 1,
-      "lastPayoutTs": 1794120380206,
-      "reachTs": 1794120431205,
+      "lastPayoutTs": 1794126050828,
+      "reachTs": 1794126101827,
       "reasons": [
         "Paid 100.0% of earnings against 100.0% promised.",
         "The indexer is still catching up on recent transactions of this pool; the window uses the part it has."

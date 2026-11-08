@@ -9,7 +9,7 @@ Every public claim Accrue makes, how strong the evidence is, where to see it and
 | **MODELED** | Follows from a model, a protocol rule or a one-off measurement recorded here with its method; no script in this repository re-runs it. |
 | **NOT-CLAIMED** | Not claimed. Listed so nobody reads it in. |
 
-Test totals: <!-- numbers:tests-total -->997 automated tests pass (5 skipped by design)<!-- /numbers:tests-total -->. Per-suite counts are in
+Test totals: <!-- numbers:tests-total -->1,002 automated tests pass (5 skipped by design)<!-- /numbers:tests-total -->. Per-suite counts are in
 [README.md](README.md#tests); the raw summaries are in [`results/`](results/).
 
 ## On chain, Polygon
@@ -60,7 +60,7 @@ These rows switch tier by themselves once the router is deployed and its transac
 
 | Claim | Tier | Proof | Reproduce |
 |---|---|---|---|
-| Every listed pool is indexed from its own transactions on the Nimiq chain, and each verdict is public with its reasons. A pool reads "Not enough data" until at least 3 complete payout cycles are in the window, and shows no verdict until the indexer has first computed one. | VERIFIED-LIVE | <!-- numbers:pools-summary -->21 listed pools as of 2026-11-08 08:21 UTC: 12 paid as promised, 6 not enough data, 2 no payouts by design, 1 can't verify (routed elsewhere)<!-- /numbers:pools-summary -->; [table in PROOF.md](PROOF.md#payout-check-scoreboard) | `node scripts/verify-onchain.mjs`; [accrue.pages.dev/api/pools](https://accrue.pages.dev/api/pools) |
+| Every listed pool is indexed from its own transactions on the Nimiq chain, and each verdict is public with its reasons. A pool reads "Not enough data" until at least 3 complete payout cycles are in the window, and shows no verdict until the indexer has first computed one. | VERIFIED-LIVE | <!-- numbers:pools-summary -->21 listed pools as of 2026-11-08 08:39 UTC: 12 paid as promised, 6 not enough data, 2 no payouts by design, 1 can't verify (routed elsewhere)<!-- /numbers:pools-summary -->; [table in PROOF.md](PROOF.md#payout-check-scoreboard) | `node scripts/verify-onchain.mjs`; [accrue.pages.dev/api/pools](https://accrue.pages.dev/api/pools) |
 | A pool is never called short with fewer than 3 cycles or with 5 % or more other outflow, and only if every confirmation window agrees. | REPRODUCIBLE | `packages/shared/test/payout.test.ts` ("poolVerdict rules") | `pnpm --filter @accrue/shared test` |
 | A pool paying 80 % of its promise is flagged short (negative control). | REPRODUCIBLE | `payout.test.ts` "negative control"; `worker/test/cutsweep.test.ts` | `pnpm --filter @accrue/shared test`, `pnpm --filter @accrue/worker test` |
 | Where the data stops never makes an honest pool read short. | REPRODUCIBLE | `worker/test/cutsweep.test.ts`: honest payers cut at every macro block, 0 short | `pnpm --filter @accrue/worker test` |
