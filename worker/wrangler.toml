@@ -11,7 +11,8 @@ crons = ["* * * * *"]
 NIM_RPCS = "https://rpc.nimiqwatch.com"
 POLYGON_RPCS = "https://polygon-bor-rpc.publicnode.com,https://1rpc.io/matic,https://polygon.drpc.org"
 RELAYER_ADDRESS = "0x6967c6f5cAD390E5D506974d8A8Cd2e4e0374057"
-ROUTER_ADDRESS = ""
+ROUTER_ADDRESS = "0x7523972ca2309B7e1a71A870D54eCFe96e71280b"
+ROUTER_DEPLOY_BLOCK = "97015445"
 # cron cadence and job sizes (src/scheduled.ts, cronConfig); keep CRON_EVERY_MIN in step with [triggers] crons.
 # With more CPU per run: e.g. crons = ["*/5 * * * *"], CRON_EVERY_MIN = "5", CRON_ONE_JOB_PER_RUN = "false",
 # CRON_TXS_PER_RUN = "1500", CRON_VERDICTS_PER_RUN = "3".
