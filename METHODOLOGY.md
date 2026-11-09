@@ -118,7 +118,10 @@ only, so it cannot produce a "Short".
 - "Paid more than earned in this window (includes a one-off transfer)" when the paid ratio is more than
   20 points above the promise. A transfer to a staker still counts as paid, but it is not a payout cycle; on
   2026-11-07 one listed pool sent a single transfer worth about 1.7 times its weekly earnings to one staker;
-- the share of earnings paid to recipients not checked against the staker set;
+- the share of earnings paid to recipients not checked against the staker set, from 0.05 % up;
+- for "Not enough data" with fewer than 3 cycles, how many complete cycles the window holds and what it earned
+  in NIM ("Only 2 complete payout cycles with 4,629.98 NIM earned in the window; need at least 3."), or "No
+  rewards earned in the window yet.";
 - "Data as of …; indexing is behind" when the data's reach is older than twice the published interval or
   3 hours, whichever is longer;
 - "The indexer is still catching up on recent transactions of this pool" while a gap is open.
