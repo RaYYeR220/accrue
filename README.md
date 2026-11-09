@@ -162,8 +162,8 @@ Requirements: Node 24 and pnpm 9. The contract suites need Foundry and an archiv
 | Name | Where | Purpose |
 |---|---|---|
 | `NIM_RPCS` | `worker/wrangler.toml` | Comma-separated Nimiq JSON-RPC endpoints, tried in order. Default `https://rpc.nimiqwatch.com`. |
-| `POLYGON_RPCS` | `worker/wrangler.toml` | Comma-separated Polygon RPC endpoints; the relayer broadcasts to all of them. |
-| `POLYGON_LOG_RPCS` | `worker/wrangler.toml`, optional | The Polygon endpoints the router's events are read from, in 100-block chunks, tried in order (drpc first: from Cloudflare, publicnode often stalls on `eth_getLogs`); unset, `POLYGON_RPCS`. |
+| `POLYGON_RPCS` | `worker/wrangler.toml` | Comma-separated Polygon RPC endpoints for the relayer: its reads, in order, and its broadcasts, to all of them. |
+| `POLYGON_READ_RPCS` | `worker/wrangler.toml`, optional | Polygon endpoints for the API's own reads (the router's events in 100-block chunks, positions, Aave, health), tried in order; drpc first, since from Cloudflare publicnode often stalls and rate-limits. Unset, `POLYGON_RPCS`. |
 | `RELAYER_ADDRESS` | `worker/wrangler.toml` | Public address of the relayer key; `/api/health` reports its POL balance. |
 | `RELAYER_KEY` | Worker secret (`.dev.vars` locally) | The relayer's hot key. It pays gas and cannot move user funds anywhere but back to their owner. |
 | `ROUTER_ADDRESS` | `worker/wrangler.toml`, optional | Overrides the router in `packages/shared/src/deployments.json`. |

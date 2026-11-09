@@ -3,7 +3,7 @@ import { getAddress, isAddress, type Address } from 'viem'
 import { ASSETS, POLYGON, type AssetKey } from '@accrue/shared'
 import type { Env } from '../env'
 import { errorBody } from '../relayer/errors'
-import { polygonClient, polygonLogClient } from '../rpc/polygon'
+import { polygonReadClient } from '../rpc/polygon'
 import { LOG_CHUNK_BLOCKS, applyEvent, holdingsFromJson, holdingsKey, routerConfig, routerEvents, scanKey, type Holdings, type RouterConfig } from '../indexer/router'
 import { aavePoolAbi, tokenAbi } from './aave'
 import { cacheGet, cachePut } from './cache'
@@ -45,7 +45,7 @@ class Partial extends Error {
 /** Accrue's holdings of an owner: what the cron folded, plus the router logs after it, read now for this owner only. */
 async function accrueHoldings(env: Env, cfg: RouterConfig & { deployBlock: number }, owner: Address): Promise<Holdings> {
   const { router, deployBlock: first } = cfg
-  const client = polygonLogClient(env, { timeoutMs: READ_TIMEOUT_MS })
+  const client = polygonReadClient(env, { timeoutMs: READ_TIMEOUT_MS })
   const [rows, head] = await Promise.all([
     env.DB.prepare('SELECT key, value FROM meta WHERE key IN (?1, ?2)')
       .bind(scanKey(router), holdingsKey(router, owner))
@@ -103,7 +103,7 @@ position.get('/:evm', async (c) => {
     : Promise.resolve({})
   let live: bigint[]
   try {
-    live = (await polygonClient(env, { timeoutMs: READ_TIMEOUT_MS }).multicall({ allowFailure: false, contracts })) as bigint[]
+    live = (await polygonReadClient(env, { timeoutMs: READ_TIMEOUT_MS }).multicall({ allowFailure: false, contracts })) as bigint[]
   } catch {
     return c.json(errorBody('RPC_UNAVAILABLE', { reason: 'polygon_rpc' }), 503)
   }

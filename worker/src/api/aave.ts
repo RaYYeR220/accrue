@@ -3,7 +3,7 @@ import { parseAbi, type Abi } from 'viem'
 import { ASSETS, POLYGON, type AssetKey } from '@accrue/shared'
 import type { Env } from '../env'
 import { errorBody } from '../relayer/errors'
-import { polygonClient } from '../rpc/polygon'
+import { polygonReadClient } from '../rpc/polygon'
 import { readThrough } from './cache'
 
 const FRESH_MS = 60_000
@@ -77,7 +77,7 @@ async function loadReserves(env: Env): Promise<string> {
     { address: POLYGON.pool, abi: aavePoolAbi, functionName: 'getVirtualUnderlyingBalance', args: [ASSETS[k].address] } as const,
     { address: ASSETS[k].address, abi: tokenAbi, functionName: 'balanceOf', args: [ASSETS[k].aToken] } as const,
   ])
-  const res = await polygonClient(env).multicall({ allowFailure: true, contracts })
+  const res = await polygonReadClient(env).multicall({ allowFailure: true, contracts })
   const reserves = {} as Record<AssetKey, ReserveView>
   KEYS.forEach((k, i) => {
     const [data, supply, virtual, cash] = res.slice(4 * i, 4 * i + 4)

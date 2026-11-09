@@ -532,7 +532,7 @@ describe('GET /api/position/:evm and the router log scan', () => {
       return served(params, url)
     }
     const db = new FakeD1()
-    const e = env(db, { ROUTER_ADDRESS: ROUTER, ROUTER_DEPLOY_BLOCK: '900', POLYGON_RPCS: 'https://polygon.test', POLYGON_LOG_RPCS: 'https://capped.test,https://stalls.test' })
+    const e = env(db, { ROUTER_ADDRESS: ROUTER, ROUTER_DEPLOY_BLOCK: '900', POLYGON_RPCS: 'https://polygon.test', POLYGON_READ_RPCS: 'https://capped.test,https://stalls.test' })
     // the cron folds the whole history through the capped node alone, a few chunks per run
     for (let i = 0; i < 20 && cursorOf(db) !== '3436'; i++) expect((await scanRouterLogs(e)).error).toBeUndefined()
     expect(cursorOf(db)).toBe('3436')
@@ -621,16 +621,21 @@ describe('GET /api/position/:evm and the router log scan', () => {
     expect(r.body.assets.USDT0.aTokenBalance).toBe(String(balances.USDT0.balance))
   }, 10_000)
 
-  it('reads router logs from POLYGON_LOG_RPCS (the getLogs-capable nodes) when set, balances from POLYGON_RPCS', async () => {
+  it("the API's own reads (router logs, position, Aave, health) go to POLYGON_READ_RPCS when set; the relayer's list is not asked", async () => {
     const chain = world()
+    chain.extra.eth_getBalance = () => '0x0'
     const db = new FakeD1()
-    const e = env(db, { ROUTER_ADDRESS: ROUTER, ROUTER_DEPLOY_BLOCK: '900', POLYGON_RPCS: 'https://capped.test', POLYGON_LOG_RPCS: 'https://logs.test' })
+    const e = env(db, {
+      ROUTER_ADDRESS: ROUTER, ROUTER_DEPLOY_BLOCK: '900', RELAYER_ADDRESS: '0x6967c6f5cAD390E5D506974d8A8Cd2e4e0374057',
+      POLYGON_RPCS: 'https://relayer.test', POLYGON_READ_RPCS: 'https://reads.test',
+    })
     expect(await scanRouterLogs(e, ALL)).toMatchObject({ events: 4 })
     const r = await getJson(`/api/position/${OWNER}`, e)
     expect(Number(r.body.assets.USDT0.earned) / 1e6).toBeCloseTo(114.545454 - 98.4375, 3)
-    const hosts = (m: string) => new Set(chain.calls.filter((c) => c.method === m).map((c) => new URL(c.url).host))
-    expect(hosts('eth_getLogs')).toEqual(new Set(['logs.test']))
-    expect(hosts('eth_call')).toEqual(new Set(['capped.test']))
+    expect((await health(e)).router).toMatchObject({ lagBlocks: 64 })
+    expect((await health(e)).relayer).toMatchObject({ polBalance: '0' })
+    expect((await getJson('/api/aave', e)).status).toBeLessThan(600)
+    expect(new Set(chain.calls.map((c) => new URL(c.url).host))).toEqual(new Set(['reads.test']))
   })
 
   it('?fresh=1 skips a cached copy older than 3 s, at most one fresh read per owner every 3 s', async () => {

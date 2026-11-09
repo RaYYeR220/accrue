@@ -2,13 +2,13 @@ import { decodeEventLog, encodeEventTopics, getAddress, isAddress, numberToHex, 
 import { ASSETS, POLYGON, type AssetKey } from '@accrue/shared'
 import type { Env } from '../env'
 import { routerAbi } from '../relayer/chain'
-import { polygonLogClient } from '../rpc/polygon'
+import { polygonReadClient } from '../rpc/polygon'
 import { bind, type Stmt } from './store'
 
 // Public Polygon RPCs cap eth_getLogs ranges. From Cloudflare's egress (measured 2026-11-09) drpc's
 // free tier answers up to about 100 blocks in under 0.1 s, publicnode serves 1,800 but often stalls
 // 3 s and refuses with "rate limit exceeded", 1rpc refuses. Chunks drpc serves keep the logs readable
-// without publicnode; POLYGON_LOG_RPCS lists drpc first.
+// without publicnode; POLYGON_READ_RPCS lists drpc first.
 export const LOG_CHUNK_BLOCKS = 100
 // the cron's share per run: 600 blocks (about 20 minutes of Polygon) catch up on a gap quickly
 export const CHUNKS_PER_RUN = 6
@@ -163,7 +163,7 @@ export async function scanRouterLogs(env: Env, opts: { maxChunks?: number } = {}
   if (cfg.misconfigured) return { error: ROUTER_MISCONFIGURED }
   const { router, deployBlock: first } = cfg as RouterConfig & { deployBlock: number }
   try {
-    const client = polygonLogClient(env)
+    const client = polygonReadClient(env)
     const [cursorRow, head] = await Promise.all([
       env.DB.prepare('SELECT value FROM meta WHERE key = ?').bind(scanKey(router)).first<{ value: string }>(),
       client.getBlockNumber({ cacheTime: 0 }),

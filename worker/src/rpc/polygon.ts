@@ -8,11 +8,12 @@ export function polygonUrls(env: Pick<Env, 'POLYGON_RPCS'>): string[] {
   return split(env.POLYGON_RPCS)
 }
 
-// Several public nodes cap eth_getLogs ranges (1rpc at 50 blocks), so router logs go to the nodes in
-// POLYGON_LOG_RPCS that serve whole chunks; unset, the general list.
-export function polygonLogUrls(env: Pick<Env, 'POLYGON_RPCS' | 'POLYGON_LOG_RPCS'>): string[] {
-  const logs = split(env.POLYGON_LOG_RPCS)
-  return logs.length ? logs : polygonUrls(env)
+// The API's own reads (router logs, positions, Aave, health) go to POLYGON_READ_RPCS in the order that
+// answers fastest from Cloudflare; unset, POLYGON_RPCS, which the relayer keeps for its own reads and
+// broadcasts.
+export function polygonReadUrls(env: Pick<Env, 'POLYGON_RPCS' | 'POLYGON_READ_RPCS'>): string[] {
+  const reads = split(env.POLYGON_READ_RPCS)
+  return reads.length ? reads : polygonUrls(env)
 }
 
 export interface ClientOpts {
@@ -26,5 +27,5 @@ export function polygonClient(env: Pick<Env, 'POLYGON_RPCS'>, opts: ClientOpts =
   return createPublicClient({ chain: polygon, transport: fallback(transports, { retryCount: 0 }) }) as PublicClient
 }
 
-export const polygonLogClient = (env: Pick<Env, 'POLYGON_RPCS' | 'POLYGON_LOG_RPCS'>, opts: Omit<ClientOpts, 'urls'> = {}) =>
-  polygonClient(env, { ...opts, urls: polygonLogUrls(env) })
+export const polygonReadClient = (env: Pick<Env, 'POLYGON_RPCS' | 'POLYGON_READ_RPCS'>, opts: Omit<ClientOpts, 'urls'> = {}) =>
+  polygonClient(env, { ...opts, urls: polygonReadUrls(env) })

@@ -1,7 +1,7 @@
 import type { Env } from '../env'
 import { VERSION } from '../env'
 import { GAS_POLICY } from '../relayer/gas'
-import { polygonClient } from '../rpc/polygon'
+import { polygonReadClient } from '../rpc/polygon'
 import { routerConfig, scanKey } from '../indexer/router'
 
 /** Early warning only; relays stop at GAS_POLICY.floorWei, which is also what makes health not ok. */
@@ -13,7 +13,7 @@ async function relayerStatus(env: Env) {
   const address = env.RELAYER_ADDRESS?.trim()
   if (!address) return { relayer: null, ok: true }
   try {
-    const bal = await polygonClient(env).getBalance({ address: address as `0x${string}` })
+    const bal = await polygonReadClient(env).getBalance({ address: address as `0x${string}` })
     return {
       relayer: { address, polBalance: bal.toString(), low: bal < LOW_GAS_WEI },
       ok: bal >= GAS_POLICY.floorWei,
@@ -62,7 +62,7 @@ async function routerStatus(env: Env) {
   }
   const readHead = async () => {
     try {
-      return Number(await polygonClient(env, { timeoutMs: 2_500 }).getBlockNumber({ cacheTime: 0 }))
+      return Number(await polygonReadClient(env, { timeoutMs: 2_500 }).getBlockNumber({ cacheTime: 0 }))
     } catch {
       return null
     }
