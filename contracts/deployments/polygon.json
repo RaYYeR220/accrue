@@ -5,6 +5,8 @@
   "codeHash": "0x6ef6930f732cc0ceddec9bc1fcd42c20b3d185decdc9083bc6f3133a22bb7ba0",
   "txs": {
     "deposit": "0x75059f003c1ad48cfb85e2df4c21137d9f2563985b4c89076655bfca15bf72f4",
-    "withdraw": "0x3f9590b321813663d1b8dbbb59c393be3ac981c1e6e5bfafa630937cfc4c32f6"
+    "withdraw": "0x3f9590b321813663d1b8dbbb59c393be3ac981c1e6e5bfafa630937cfc4c32f6",
+    "first $1.00 deposit from the app": "0x05bde28ce9fda79fbbd5f10efc15eb34dcfb43c6b90b04bddc7cdafacc0a7270",
+    "withdrawal from the app": "0x19290f6de9f5741a263c15a8bd487221af88e7d0cf84f2e46b3e1d6ad324c45e"
   }
 }

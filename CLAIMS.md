@@ -44,6 +44,8 @@ These rows switch tier by themselves once the router is deployed and its transac
 | An Aave reserve without enough liquidity is explained before signing, with the amount that can leave now. | REPRODUCIBLE | `app/e2e/dollars.spec.ts` "aave illiquid" | `pnpm --filter @accrue/app e2e` |
 | aTokens land in the owner's own wallet, so a withdrawal never depends on Accrue. | REPRODUCIBLE | `test_supplyUsdt0_permit_mintsATokenToOwner`; subject to Aave's own pause, freeze and liquidity ([SECURITY.md](SECURITY.md#trust-assumptions)) | `cd contracts && forge test` |
 | The APY on screen is read from the Aave pool on Polygon. | VERIFIED-LIVE | `GET /api/aave` on [accrue.pages.dev](https://accrue.pages.dev/api/aave): `getReserveData` per asset | open the URL |
+| A $1.00 deposit made in the app went into Aave on mainnet, sent and paid for by Accrue's relayer, not the owner; so did its withdrawal. | VERIFIED-LIVE | [`0x05bde28c…0a7270`](https://polygonscan.com/tx/0x05bde28ce9fda79fbbd5f10efc15eb34dcfb43c6b90b04bddc7cdafacc0a7270) and [`0x19290f6d…24c45e`](https://polygonscan.com/tx/0x19290f6de9f5741a263c15a8bd487221af88e7d0cf84f2e46b3e1d6ad324c45e), 2026-11-09, [PROOF.md](PROOF.md#polygon-mainnet) | `node scripts/verify-onchain.mjs` |
+| Withdraw never waits on Accrue's own bookkeeping: when the router's logs cannot be read, the Aave balance still shows and Withdraw stays enabled; only "Put in" and "Earned" show a dash. | REPRODUCIBLE | `worker/test/market-api.test.ts` (partial `/api/position`); `app/e2e/dollars.spec.ts` "when Accrue's own figures cannot be read" | `pnpm --filter @accrue/worker test`, `pnpm --filter @accrue/app e2e` |
 
 ## NIM
 
@@ -51,7 +53,7 @@ These rows switch tier by themselves once the router is deployed and its transac
 |---|---|---|---|
 | Staking uses all six staking transaction types of the Nimiq Pay provider. | REPRODUCIBLE | [`app/src/providers/nimiq.ts`](app/src/providers/nimiq.ts) | read the source |
 | The network's staking rules are checked before a dialog opens: 100 NIM minimum, no 0 to 100 NIM remainder, pool change only once stake is inactive and released, retire only after the lock-up, whole-balance removal. | REPRODUCIBLE | `app/test/staking.test.ts`, `app/test/unstake.test.ts`, `app/e2e/nim.spec.ts` | `pnpm --filter @accrue/app test` |
-| A stake is funded from one account per transaction (the HTLC account when there is one, otherwise the wallet), the way Nimiq Pay stakes; the app says how much can be staked before any dialog. | REPRODUCIBLE | `app/test/staking.test.ts` "one transaction is funded from one account", "wallet 100 + HTLC 150 …"; `app/e2e/nim.spec.ts` "HTLC-only balance" | `pnpm --filter @accrue/app test` |
+| A stake is funded from one account per transaction (the HTLC account when it holds NIM, otherwise the wallet), the way Nimiq Pay stakes; the app says how much can be staked before any dialog. | REPRODUCIBLE | `app/test/staking.test.ts` "one transaction is funded from one account", "an HTLC account holding nothing …", "wallet 100 + HTLC 150 …"; `app/e2e/nim.spec.ts` "HTLC-only balance" | `pnpm --filter @accrue/app test` |
 | On Nimiq testnet the network refused what the app guards against: a new stake below 100 NIM (never included), a retire leaving between 0 and 100 NIM (failed), a pool change while stake was active or still locked (failed), a retire before the lock-up ended (failed), a partial remove (never included). | VERIFIED-LIVE | The testnet transactions and how the network answered each, [PROOF.md](PROOF.md#nimiq-testnet) | `node scripts/verify-onchain.mjs` |
 | Unstaked NIM is released one epoch plus one block after the election block that starts the wait (12 to 24 hours from the tap), and a pool change then succeeds. | MODELED | Protocol source (`is_inactive_stake_released` and `update_staker` in core-rs-albatross); testnet shows the wait starting at the election block and both refused before it | `app/test/unstake.test.ts` pins the arithmetic |
 | Every staking transaction is followed on chain until it is confirmed or failed; after 30 minutes without a sign of it the app says the outcome is unknown and points to the wallet history. | REPRODUCIBLE | `waitForNimTx` in `app/src/features/nim/api.ts` (`app/test/staking.test.ts`); the 30-minute bound is `NIM_PENDING_MAX_MS` in `app/src/model/activity.ts` (`app/test/app-activity.test.ts`) | `pnpm --filter @accrue/app test` |
@@ -79,6 +81,7 @@ These rows switch tier by themselves once the router is deployed and its transac
 | English, German, Spanish, French and Portuguese, complete and translated. | REPRODUCIBLE | `app/test/app-i18n.test.ts`, `app/test/i18n.test.ts`, `app/test/landing-i18n.test.ts` | `pnpm --filter @accrue/app test` |
 | Values are shown in the currency Nimiq Pay is set to (USD, EUR, CRC, GMD), falling back to USD when no rate is available. | REPRODUCIBLE | `app/test/fiat.test.ts` | `pnpm --filter @accrue/app test` |
 | The production build contains none of the development mock. | REPRODUCIBLE | `app/scripts/check-dist.mjs` fails the build if it does ([MOCKS.md](MOCKS.md)) | `pnpm --filter @accrue/app build` |
+| Inside Nimiq Pay on an iPhone, the host injects its providers, `listAccounts` answers, the wallet switches to Polygon, the EIP-712 permits Accrue asks for (USDT0 with its salt domain, USDC, aUSDT0) each recover to the wallet's address under the on-chain domain, and `localStorage` persists. | VERIFIED-LIVE | Checked on a real device with a diagnostic page on 2026-11-09, [PROOF.md](PROOF.md#nimiq-pay-on-a-real-phone) | open Accrue in Nimiq Pay on a phone |
 
 ## Not claimed
 
@@ -92,5 +95,6 @@ These rows switch tier by themselves once the router is deployed and its transac
 - **Converting NIM rewards into dollars.** Not built.
 - **Chains other than Polygon, or tokens other than USDT0 and native USDC.** Bridged USDC.e is not supported.
 - **Usage numbers.** None are published here.
-- **Behaviour on every phone and every Nimiq Pay version.** The in-app end-to-end tests run in a desktop browser
-  at phone sizes against a simulated host ([MOCKS.md](MOCKS.md)), built against `@nimiq/mini-app-sdk` 0.2.5.
+- **Behaviour on every phone and every Nimiq Pay version.** One iPhone was checked
+  ([PROOF.md](PROOF.md#nimiq-pay-on-a-real-phone)); the in-app end-to-end tests run in a desktop browser at phone
+  sizes against a simulated host ([MOCKS.md](MOCKS.md)), built against `@nimiq/mini-app-sdk` 0.2.5.

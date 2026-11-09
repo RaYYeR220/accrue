@@ -46,6 +46,26 @@ What `verify-onchain.mjs` checks once the router is deployed:
 `block` must match `packages/shared/src/deployments.json`, or the record is reported as inconsistent and nothing
 is claimed from it. The format and the checks live in `scripts/lib/deployment.mjs`, shared by both scripts.
 
+The "first $1.00 deposit from the app" is the first deposit made through the app rather than the smoke test: one
+signature, then Accrue's relayer sent it and paid the gas. It and the withdrawal after it are the ones in the demo
+video ([MOCKS.md](MOCKS.md#demo-video)).
+
+## Nimiq Pay on a real phone
+
+On 2026-11-09 a diagnostic page, opened as a Mini App inside Nimiq Pay on an iPhone (iOS 18.7), checked what
+Accrue relies on from the host:
+
+- Nimiq Pay injects its providers into the page (`window.nimiq` and `window.ethereum`);
+- `listAccounts` answers (a fresh wallet lists one account);
+- switching the wallet to Polygon (`0x89`) works;
+- EIP-712 permits signed in Nimiq Pay for USDT0 (its domain with a `salt` and no chain id), USDC and aUSDT0 each
+  recover to the wallet's own address, and each signed domain matches the token's on-chain `DOMAIN_SEPARATOR`;
+- `localStorage` keeps its contents when the Mini App is closed and opened again.
+
+The diagnostic page was a one-off and is not part of this repository; this list is its result. The domains it
+signed are the ones in `packages/shared/src/permit.ts`, which `packages/shared/test/permit.test.ts` holds to the
+`DOMAIN_SEPARATOR` each token reports on Polygon.
+
 ## Nimiq testnet
 
 While the NIM screens were built, the staking rules they enforce were tried on Nimiq testnet with real
