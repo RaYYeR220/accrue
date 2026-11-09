@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import {
   buildPoolWindow,
   buildPoolWindows,
@@ -205,7 +205,7 @@ describe('buildPoolWindow', () => {
       }
       return txs.sort((a, b) => a.blockNumber - b.blockNumber)
     }
-    const SWEEP_TIMEOUT_MS = 180_000
+    const SWEEP_TIMEOUT_MS = 60_000
     const sweep = (txs: NimTx[], cycleH: number, step: number) => {
       const end = START + 9 * 24 * H
       const verdicts: string[] = []
@@ -219,11 +219,16 @@ describe('buildPoolWindow', () => {
       return verdicts
     }
 
-    // CPU-bound sweeps; the timeout only guards against a hang, so it leaves room for a machine busy with
-    // other work (60 s ran out while a video rendered alongside)
-    it('a 12 h cycle paid over 10-11 h at a 300-330 s pace is never SHORT at any cut', () => {
-      for (const spreadH of [10, 11]) for (const seed of [3, 7]) expect(sweep(pool(12, spreadH, 0.95, seed), 12, 600)).not.toContain('SHORT')
-    }, SWEEP_TIMEOUT_MS)
+    // Each sweep is CPU-bound and blocks the event loop while it runs. One test per pool, with a turn of
+    // the loop after each, keeps vitest's worker answering its runner (on a busy machine a single 4-pool
+    // test ran past the runner's 60 s wait: "Timeout calling onTaskUpdate").
+    afterEach(() => new Promise((r) => setImmediate(r)))
+
+    for (const spreadH of [10, 11])
+      for (const seed of [3, 7])
+        it(`a 12 h cycle paid over ${spreadH} h at a 300-330 s pace is never SHORT at any cut (seed ${seed})`, () => {
+          expect(sweep(pool(12, spreadH, 0.95, seed), 12, 600)).not.toContain('SHORT')
+        }, SWEEP_TIMEOUT_MS)
 
     it('the same pool paying 80 % is SHORT at every cut once a cycle has completed', () => {
       const verdicts = sweep(pool(12, 2.5, 0.8, 5), 12, 600)
