@@ -15,12 +15,31 @@ every one of them.
 | Deposits and withdrawals | Accrue's relayer and `AccrueRouter` on Polygon (`/api/relay`) |
 | Exchange rates | NIM price from CoinGecko, then CoinPaprika, then Gate.io + Kraken (their mid price), in that order; a source that refuses is skipped for 15 minutes, and the last good copy is kept for 24 hours. Currency rates from open.er-api.com (`/api/rates`) |
 
-Two fallbacks are real data shown with their age, not simulations:
+Three fallbacks are real data shown with their age or their gaps, not simulations:
 
 - Until `/api/pools` answers, the landing page shows the published facts of the listed pools (name, fee, payout
   type, schedule) from a dated snapshot of the validators API, `app/src/landing/snapshot.json`, labelled with its
   date. It carries no verdicts; verdicts only ever come from the indexer.
 - When exchange rates cannot be read, values are shown in USD and the source line says so.
+- When no Polygon RPC serves the router's logs, the Dollars screen shows the live Aave balance and a dash for
+  "Put in through Accrue" and "Earned so far", with a note saying so; Withdraw keeps working.
+
+## Demo video
+
+The demo video was recorded in a desktop browser, with a test wallet standing in for Nimiq Pay. Its keys were
+held outside the page, and its signatures were made by a local key instead of Nimiq Pay's dialogs.
+
+- Every Polygon transaction in it is real, on mainnet: the $1.00 deposit
+  [`0x05bde28c…0a7270`](https://polygonscan.com/tx/0x05bde28ce9fda79fbbd5f10efc15eb34dcfb43c6b90b04bddc7cdafacc0a7270)
+  and the withdrawal
+  [`0x19290f6d…24c45e`](https://polygonscan.com/tx/0x19290f6de9f5741a263c15a8bd487221af88e7d0cf84f2e46b3e1d6ad324c45e),
+  both sent and paid for by Accrue's relayer. They are recorded with the others in
+  [PROOF.md](PROOF.md#polygon-mainnet).
+- The NIM staking scenes run on Nimiq testnet, with the app's Testnet badge on screen.
+- Payout Check shows mainnet data, live from `/api/pools` and `/api/check`.
+
+What Nimiq Pay itself does with Accrue on a phone was checked on a real device:
+[PROOF.md](PROOF.md#nimiq-pay-on-a-real-phone).
 
 ## The development mock: `?mock=<scenario>`
 
@@ -36,7 +55,8 @@ Two fallbacks are real data shown with their age, not simulations:
 What a server or chain would remember (relay jobs, balances, the staker) is kept in `sessionStorage`, so a reload
 finds it again.
 
-URL options: `?mock=<scenario>[&lang=de][&fiat=EUR][&network=testnet][&chain=0x89][&delay=0][&rates=down]`.
+URL options: `?mock=<scenario>[&lang=de][&fiat=EUR][&network=testnet][&chain=0x89][&delay=0][&rates=down][&position=partial]`
+(`position=partial`: `/api/position` answers as it does when the router's logs cannot be read).
 
 | Scenario | What it sets up |
 |---|---|
