@@ -219,10 +219,11 @@ describe('buildPoolWindow', () => {
       return verdicts
     }
 
-    // Each sweep is CPU-bound and blocks the event loop while it runs. One test per pool, with a turn of
-    // the loop after each, keeps vitest's worker answering its runner (on a busy machine a single 4-pool
-    // test ran past the runner's 60 s wait: "Timeout calling onTaskUpdate").
-    afterEach(() => new Promise((r) => setImmediate(r)))
+    // Each sweep is CPU-bound and blocks the event loop while it runs. One test per pool, with a short
+    // idle wait after each, lets vitest's worker read its runner's replies (on a busy machine a single
+    // 4-pool test, and then a bare setImmediate turn, still ran past the runner's 60 s wait:
+    // "Timeout calling onTaskUpdate").
+    afterEach(() => new Promise((r) => setTimeout(r, 250)))
 
     for (const spreadH of [10, 11])
       for (const seed of [3, 7])
