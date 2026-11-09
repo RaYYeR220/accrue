@@ -225,6 +225,25 @@ function isShort(w: PoolWindow, expectedRatio: number): boolean {
  * `earlier`: windows with the same start ending earlier (see `buildPoolWindows`); SHORT is only
  * issued when every one of them is short too.
  */
+const reasonKey = (r: string) => r.toLowerCase().replace(/[\s.;,]+$/g, '').replace(/\s+/g, ' ').trim()
+
+/**
+ * A list of reasons with none stated twice: the same line in other case or punctuation counts as
+ * the same; of two lines where one is the other plus more detail ("... over 56 cycles"), the more
+ * specific one stays, in the earlier one's place.
+ */
+export function uniqueReasons(reasons: readonly string[]): string[] {
+  const out: { text: string; key: string }[] = []
+  for (const text of reasons) {
+    const key = reasonKey(text)
+    if (key === '') continue
+    const same = out.findIndex((o) => o.key === key || o.key.startsWith(key) || key.startsWith(o.key))
+    if (same < 0) out.push({ text, key })
+    else if (key.length > out[same]!.key.length) out[same] = { text, key }
+  }
+  return out.map((o) => o.text)
+}
+
 export function poolVerdict(
   w: PoolWindow,
   pool: { fee: number; payoutType: 'restake' | 'direct' | 'none'; scheduleMs: number | null },
@@ -232,7 +251,7 @@ export function poolVerdict(
   opts: { earlier?: PoolWindow[] } = {},
 ): { verdict: Verdict; ratio: number | null; expectedRatio: number; reasons: string[] } {
   const expectedRatio = 1 - pool.fee
-  const out = (verdict: Verdict, ratio: number | null, reasons: string[]) => ({ verdict, ratio, expectedRatio, reasons })
+  const out = (verdict: Verdict, ratio: number | null, reasons: string[]) => ({ verdict, ratio, expectedRatio, reasons: uniqueReasons(reasons) })
 
   if (pool.payoutType === 'none') return out('NO_PAYOUTS_BY_DESIGN', null, ['Pool does not pay out; rewards are not distributed to stakers.'])
   if (pool.scheduleMs !== null && w.lastPayoutTs !== null && nowTs - w.lastPayoutTs > 2 * pool.scheduleMs + HOUR_MS) {

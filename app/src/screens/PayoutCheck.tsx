@@ -1,13 +1,16 @@
 import { useState } from 'react'
 import { t } from '../i18n'
 import type { PoolRow } from '../features/nim/api'
-import { noVerdictView } from '../model/pools'
+import { noVerdictView, poolReasonLines } from '../model/pools'
 import { Card } from '../ui/components'
 import { Facts } from '../ui/components/Fields'
 import { useApp } from './context'
-import { daysText, feeLine, nimAmount, pct, when } from './format'
-import { payoutLine } from './nimParts'
+import { daysText, nimAmount, pct, when } from './format'
+import { PoolLine } from './nimParts'
 import { ConnectNim, PoolVerdict, ScreenHead, TestnetBadge } from './parts'
+
+// the API writes its percentages in English with one decimal, whatever the app language
+const p1 = (x: number) => `${(x * 100).toFixed(1)}%`
 
 function Methodology() {
   const app = useApp()
@@ -59,7 +62,7 @@ function Mine() {
       {c.verdict && <p className="vc-desc">{t(`verdict.${c.verdict}.desc`)}</p>}
       {noVerdictView(pool).reasons.length > 0 && (
         <ul className="reasons" aria-label={t('check.reasons')}>
-          {noVerdictView(pool).reasons.map((r, i) => (
+          {poolReasonLines(noVerdictView(pool).reasons, []).map((r, i) => (
             <li key={i}>{r}</li>
           ))}
         </ul>
@@ -83,16 +86,17 @@ function Row({ p }: { p: PoolRow }) {
         </span>
         <PoolVerdict verdict={p.verdict} />
       </button>
-      <p className="sb-line">
-        {feeLine(p.fee)} · {payoutLine(p)}
-      </p>
+      <PoolLine p={p} className="sb-line" />
       {open && (
         <ul className="reasons" id={id}>
-          {noVerdictView(p).reasons.map((r, i) => (
+          {poolReasonLines(noVerdictView(p).reasons, [
+            ...(p.ratio !== null && p.expectedRatio !== null
+              ? [{ text: t('pool.ratio', { ratio: pct(p.ratio, 1), expected: pct(p.expectedRatio, 1) }), covers: [p1(p.ratio), p1(p.expectedRatio)] }]
+              : []),
+            ...(p.lastPayoutTs !== null ? [{ text: t('pool.lastAt', { when: when(p.lastPayoutTs) }) }] : []),
+          ]).map((r, i) => (
             <li key={i}>{r}</li>
           ))}
-          {p.ratio !== null && p.expectedRatio !== null && <li>{t('pool.ratio', { ratio: pct(p.ratio, 1), expected: pct(p.expectedRatio, 1) })}</li>}
-          {p.lastPayoutTs !== null && <li>{t('pool.lastAt', { when: when(p.lastPayoutTs) })}</li>}
           {p.verdict ? <li>{t(`verdict.${p.verdict}.desc`)}</li> : app.network === 'testnet' ? <li>{t('check.noVerdictTestnet')}</li> : noVerdictView(p).unchecked && <li>{t('check.noVerdict')}</li>}
         </ul>
       )}

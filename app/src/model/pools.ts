@@ -1,4 +1,4 @@
-import { parseSchedule, type Verdict } from '@accrue/shared'
+import { parseSchedule, uniqueReasons, type Verdict } from '@accrue/shared'
 import { RAY } from '../features/dollars/accrual'
 import type { PoolRow } from '../features/nim/api'
 
@@ -74,4 +74,27 @@ export function dayEstimate(args: {
     dollarsUsd: units === null ? null : Number(units) / 1e6,
     nimLuna: receivedLuna !== null && milliDays >= MILLI ? (receivedLuna * BigInt(MILLI)) / BigInt(milliDays) : null,
   }
+}
+
+/**
+ * The reason list a pool shows: the API's reasons, then the app's own facts (`extras`) that no
+ * reason already states. An extra says "covers" the numbers it would repeat; when one reason holds
+ * all of them, the extra is skipped. No line appears twice, in any case or punctuation.
+ */
+export function poolReasonLines(reasons: readonly string[], extras: readonly { text: string; covers?: readonly string[] }[]): string[] {
+  const own = uniqueReasons(reasons)
+  const added = extras.filter(x => !x.covers?.length || !own.some(r => x.covers!.every(c => r.includes(c)))).map(x => x.text)
+  return uniqueReasons([...own, ...added])
+}
+
+/**
+ * A pool's free-text schedule that is not a readable interval ("Every 12 hours"), cleaned and split by
+ * how it reads: a short phrase can follow the payout type on the same line, a sentence gets its own.
+ */
+export function scheduleText(p: Pick<PoolRow, 'payoutType' | 'schedule'>): { inline: string | null; block: string | null } {
+  if (p.payoutType === 'none' || !p.schedule || parseSchedule(p.schedule) !== null) return { inline: null, block: null }
+  const text = p.schedule.replace(/\s+/g, ' ').replace(/\s+([.,;:!?])/g, '$1').trim()
+  if (!text) return { inline: null, block: null }
+  const short = text.length <= 28 && text.split(' ').length <= 4 && !/[.!?]$/.test(text)
+  return short ? { inline: text, block: null } : { inline: null, block: text }
 }

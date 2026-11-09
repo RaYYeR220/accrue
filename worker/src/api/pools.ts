@@ -1,6 +1,6 @@
 import { Buffer } from 'node:buffer'
 import { Hono } from 'hono'
-import type { Verdict } from '@accrue/shared'
+import { uniqueReasons, type Verdict } from '@accrue/shared'
 import type { Env } from '../env'
 import { errorBody } from '../relayer/errors'
 import { payoutTypeOf, scheduleMsOf, type PayoutType } from '../indexer/pools'
@@ -75,7 +75,7 @@ export function poolView(r: PoolDbRow, cache: VerdictCache | null, now: number):
     ratio: e?.ratio ?? null,
     expectedRatio: e ? e.expectedRatio : r.fee === null ? null : 1 - r.fee,
     lastPayoutTs: e?.lastPayoutTs ?? null,
-    reasons: behind ? [...reasons, `Data as of ${iso(reachTs)}; indexing is behind`] : reasons,
+    reasons: uniqueReasons(behind ? [...reasons, `Data as of ${iso(reachTs)}; indexing is behind`] : reasons),
     state,
     reachTs,
   }

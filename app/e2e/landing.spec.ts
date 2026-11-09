@@ -69,7 +69,8 @@ test.describe('landing outside Nimiq Pay', () => {
     await why.click()
     await expect(why).toHaveAttribute('aria-expanded', 'true')
     await expect(board.getByText('Paid 97.5% of earnings against 97.0% promised.')).toBeVisible()
-    await expect(board.getByText('Paid 97.5% of earnings against 97% promised.')).toBeVisible()
+    // the app's own ratio line would say the same thing again: stated once
+    await expect(board.getByText(/Paid 97\.5% of earnings against 97(\.0)?% promised/)).toHaveCount(1)
   })
 
   test('a stale NIM price carries its age under the fiat value in the orbit', async ({ page }) => {

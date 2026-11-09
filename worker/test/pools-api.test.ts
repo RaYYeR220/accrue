@@ -177,6 +177,19 @@ describe('verdict cache and GET /api/pools', () => {
     expect((await row('NQ51 SURF MCTM AQXM 15PA K9FX 8EEX 29BE VGH8')).reasons.join(' ')).not.toMatch(/indexing is behind/)
   })
 
+  it('never lists the same reason twice, whatever the cache holds', async () => {
+    await refreshVerdicts(env(db), { now, maxPools: 5 })
+    const g = await storedWindows(db, GARUDA, 0.05, 'Every 12 hours')
+    const raw = JSON.parse(db.query<{ value: string }>('SELECT value FROM meta WHERE key = ?', VERDICTS_KEY)[0]!.value)
+    raw.pools[GARUDA].reasons = ['Paid 95.0% of earnings against 95.0% promised.', 'paid 95.0% of earnings against 95.0% promised', 'Another fact.']
+    db.db.prepare('UPDATE meta SET value = ? WHERE key = ?').run(JSON.stringify(raw), VERDICTS_KEY)
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(g.reach + HOUR_MS)
+    clearMemoryCache()
+    const p = (await getJson('/api/pools', env(db))).body.pools.find((x: any) => x.address === GARUDA)
+    expect(p.reasons).toEqual(['Paid 95.0% of earnings against 95.0% promised.', 'Another fact.'])
+  })
+
   it('verdicts cached by the previous verdict logic stay on show until the cron recomputes them, first in line', async () => {
     await refreshVerdicts(env(db), { now, maxPools: 5 })
     const g = await storedWindows(db, GARUDA, 0.05, 'Every 12 hours')

@@ -945,6 +945,7 @@
   border-radius: 50%;
 }
 .sb-line {
+  display: block;
   font-size: var(--fs-xs);
   color: var(--muted);
 }

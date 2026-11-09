@@ -1,11 +1,14 @@
 import { Fragment, useState, type CSSProperties } from 'react'
 import { t } from '../i18n'
+import { poolReasonLines } from '../model/pools'
 import { VerdictBadge } from '../ui/components'
 import type { PoolRow, PoolsData } from './data'
 import { fmtAgo, fmtCompact, fmtDate, fmtDateTime, fmtDaysText, fmtNum, fmtPct } from './format'
 import { accentDot } from './orbit/tint'
 import { scheduleInfo } from './schedule'
 
+// the API writes its percentages in English with one decimal, whatever the app language
+const p1 = (x: number) => `${(x * 100).toFixed(1)}%`
 const feePct = (fee: number | null) => (fee === null ? t('landing.board.feeNA') : fmtPct(fee))
 
 function sched(p: PoolRow) {
@@ -18,13 +21,14 @@ function Reasons({ p, id }: { p: PoolRow; id: string }) {
     <tr className="reasons-row" id={id}>
       <td colSpan={7}>
         <ul>
-          {p.reasons.map((r, i) => (
+          {poolReasonLines(p.reasons, [
+            ...(p.ratio !== null && p.expectedRatio !== null
+              ? [{ text: t('landing.board.ratio', { ratio: fmtPct(p.ratio, 1), expected: fmtPct(p.expectedRatio, 1) }), covers: [p1(p.ratio), p1(p.expectedRatio)] }]
+              : []),
+            ...(p.lastPayoutTs !== null ? [{ text: t('landing.board.lastPayout', { when: fmtAgo(p.lastPayoutTs) }) }] : []),
+          ]).map((r, i) => (
             <li key={i}>{r}</li>
           ))}
-          {p.ratio !== null && p.expectedRatio !== null && (
-            <li>{t('landing.board.ratio', { ratio: fmtPct(p.ratio, 1), expected: fmtPct(p.expectedRatio, 1) })}</li>
-          )}
-          {p.lastPayoutTs !== null && <li>{t('landing.board.lastPayout', { when: fmtAgo(p.lastPayoutTs) })}</li>}
         </ul>
       </td>
     </tr>

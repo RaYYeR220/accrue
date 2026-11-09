@@ -1,8 +1,10 @@
 import type { Verdict } from '@accrue/shared'
-import { describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it } from 'vitest'
 import type { PoolRow } from '../src/features/nim/api'
 import { RAY } from '../src/features/dollars/accrual'
-import { dayEstimate, nextPayout, noVerdictView, rankPools } from '../src/model/pools'
+import { payoutLine } from '../src/screens/nimParts'
+import { loadAppStrings } from '../src/screens/strings'
+import { dayEstimate, nextPayout, noVerdictView, poolReasonLines, rankPools, scheduleText } from '../src/model/pools'
 
 const H = 3_600_000
 const NOW = 1_762_500_000_000
@@ -131,4 +133,52 @@ describe('noVerdictView: what to say about a pool by the API state, not by its w
     expect(noVerdictView({ verdict: null, reasons: [] })).toEqual({ reasons: [], unchecked: true })
     expect(noVerdictView({ verdict: 'SHORT', reasons: reason })).toEqual({ reasons: reason, unchecked: false })
   })
+})
+
+describe('poolReasonLines: the API reasons plus the app facts, none twice', () => {
+  const ratio = { text: 'paid 97.2% of earnings against 97.0% promised', covers: ['97.2%', '97.0%'] }
+  const last = { text: 'last payout 12:37 PM' }
+
+  it("does not add the ratio line when a reason already states that ratio (Siam Pool's first two lines)", () => {
+    expect(poolReasonLines(['Paid 97.2% of earnings against 97.0% promised.', 'The indexer is catching up.'], [ratio, last])).toEqual([
+      'Paid 97.2% of earnings against 97.0% promised.',
+      'The indexer is catching up.',
+      'last payout 12:37 PM',
+    ])
+  })
+  it('adds the ratio line when no reason states it', () => {
+    expect(poolReasonLines(['Paid ratio within the uncertainty band; not conclusive.'], [ratio])).toEqual([
+      'Paid ratio within the uncertainty band; not conclusive.',
+      'paid 97.2% of earnings against 97.0% promised',
+    ])
+  })
+  it('drops repeats inside the API list itself', () => {
+    expect(poolReasonLines(['a.', 'A', 'b'], [])).toEqual(['a.', 'b'])
+  })
+})
+
+describe('scheduleText: the pool free-text schedule never runs into the payout type', () => {
+  const s = (schedule: string | null, payoutType: PoolRow['payoutType'] = 'restake') => scheduleText({ schedule, payoutType })
+  it('a readable interval is not free text', () => expect(s('Every 12 hours')).toEqual({ inline: null, block: null }))
+  it('a sentence goes on its own, with the stray space before the period closed', () => {
+    expect(s('Payouts over 10 NIM are instant when NimiqPocket is elected .')).toEqual({ inline: null, block: 'Payouts over 10 NIM are instant when NimiqPocket is elected.' })
+  })
+  it('a short phrase stays inline', () => expect(s('Daily  at noon')).toEqual({ inline: 'Daily at noon', block: null }))
+  it('no schedule and no payouts give nothing', () => {
+    expect(s(null)).toEqual({ inline: null, block: null })
+    expect(s('Payouts are instant.', 'none')).toEqual({ inline: null, block: null })
+  })
+})
+
+beforeAll(async () => {
+  await loadAppStrings('en')
+})
+
+describe('payoutLine: type and interval only, never the free-text schedule', () => {
+  it('states the interval it can read', () => expect(payoutLine(pool({ schedule: 'Every 3 hours' }))).toBe('restakes every 3 hours'))
+  it('a free-text schedule is left to scheduleText, not glued on', () => {
+    expect(payoutLine(pool({ schedule: 'Payouts over 10 NIM are instant when NimiqPocket is elected .' }))).toBe('restakes')
+    expect(payoutLine(pool({ schedule: 'Payouts over 10 NIM are instant.', payoutType: 'direct' }))).toBe('pays to your wallet')
+  })
+  it('no schedule at all says so', () => expect(payoutLine(pool({ schedule: null }))).toBe('restakes on no published schedule'))
 })

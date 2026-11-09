@@ -1,5 +1,6 @@
 import { useRef, useState, type CSSProperties, type FormEvent } from 'react'
 import { t } from '../i18n'
+import { poolReasonLines } from '../model/pools'
 import { HttpError } from '../providers/errors'
 import { Amount, Button, Card, Stat, VerdictBadge } from '../ui/components'
 import { describeCheck, describePosition, fetchCheck, fetchPosition, type CheckView, type PositionView } from './data'
@@ -69,7 +70,7 @@ function NimResult({ view, poolCount }: { view: CheckView; poolCount: number }) 
         <VerdictBadge verdict={pool.verdict} />
         {pool.reasons.length > 0 && (
           <ul>
-            {pool.reasons.map((r, i) => (
+            {poolReasonLines(pool.reasons, []).map((r, i) => (
               <li key={i}>{r}</li>
             ))}
           </ul>

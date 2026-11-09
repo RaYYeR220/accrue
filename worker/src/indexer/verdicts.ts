@@ -1,4 +1,4 @@
-import { poolVerdict, type PoolWindow, type Verdict } from '@accrue/shared'
+import { poolVerdict, uniqueReasons, type PoolWindow, type Verdict } from '@accrue/shared'
 import type { Env } from '../env'
 import { DAY_MS, HOUR_MS, dayOf, hourFromDb, poolWindowsFromAggregates, type PoolHourDb } from './aggregate'
 import { payoutTypeOf, scheduleMsOf } from './pools'
@@ -139,7 +139,7 @@ export function computeEntry(
     ratio: v.ratio,
     expectedRatio: v.expectedRatio,
     lastPayoutTs: window.lastPayoutTs,
-    reasons: c.resume_hash ? [...v.reasons, CATCHING_UP] : v.reasons,
+    reasons: uniqueReasons(c.resume_hash ? [...v.reasons, CATCHING_UP] : v.reasons),
     cycleMs,
     reachTs: c.reach_ts,
   }

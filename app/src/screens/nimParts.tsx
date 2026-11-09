@@ -1,6 +1,7 @@
 import { parseSchedule, type Staker } from '@accrue/shared'
 import { t } from '../i18n'
 import type { PoolRow } from '../features/nim/api'
+import { poolReasonLines, scheduleText } from '../model/pools'
 import type { UnstakeStep } from '../features/nim/unstake'
 import type { StepItem } from '../ui/components/Fields'
 import { about, ago, every, feeLine, nimAmount, pct } from './format'
@@ -9,8 +10,23 @@ import { PoolVerdict } from './parts'
 export function payoutLine(p: PoolRow): string {
   if (p.payoutType === 'none') return t('pool.noPayouts')
   const ms = p.schedule ? parseSchedule(p.schedule) : null
-  const sched = ms !== null ? every(ms) : p.schedule ? p.schedule : t('pool.noSchedule')
-  return t(p.payoutType === 'restake' ? 'pool.restakes' : 'pool.direct', { schedule: sched })
+  // a free-text schedule is not part of this phrase: it is shown beside it (see PoolLine)
+  const sched = ms !== null ? every(ms) : p.schedule?.trim() ? '' : t('pool.noSchedule')
+  return t(p.payoutType === 'restake' ? 'pool.restakes' : 'pool.direct', { schedule: sched }).trim()
+}
+
+/** "fee 1% · restakes every 3 hours" and, when the pool's schedule is free text, that text apart from it. */
+export function PoolLine({ p, className }: { p: PoolRow; className: string }) {
+  const { inline, block } = scheduleText(p)
+  return (
+    <>
+      <span className={className}>
+        {feeLine(p.fee)} · {payoutLine(p)}
+        {inline && ` · ${inline}`}
+      </span>
+      {block && <span className={`${className} pool-note`}>{block}</span>}
+    </>
+  )
 }
 
 // One pool's record, as facts: verdict (or none yet), fee, how and when it pays, what it paid.
@@ -18,9 +34,7 @@ export function PoolFacts({ p }: { p: PoolRow }) {
   return (
     <span className="pool-facts">
       <PoolVerdict verdict={p.verdict} />
-      <span className="pool-line">
-        {feeLine(p.fee)} · {payoutLine(p)}
-      </span>
+      <PoolLine p={p} className="pool-line" />
       {p.ratio !== null && p.expectedRatio !== null && (
         <span className="pool-line">{t('pool.ratio', { ratio: pct(p.ratio, 1), expected: pct(p.expectedRatio, 1) })}</span>
       )}

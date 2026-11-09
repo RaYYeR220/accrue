@@ -24,8 +24,18 @@ test.describe('Payout Check', () => {
     await tab(page, 'Payouts')
     const board = page.getByRole('region', { name: 'All 8 pools' })
     for (const label of LABELS) await expect(board.getByText(label, { exact: true }).first()).toBeVisible()
+    // one reason per fact: the API's ratio line and the app's own would say the same thing twice
+    await board.getByRole('button', { name: /Siam Pool/ }).click()
+    const siam = board.getByRole('listitem').filter({ has: page.getByRole('button', { name: /Siam Pool/ }) })
+    await expect(siam.getByRole('listitem').filter({ hasText: /97\.5%/ })).toHaveCount(1)
+    await expect(siam.getByText(/of earnings against/i)).toHaveCount(1)
     await board.getByRole('button', { name: /Kestrel Pool/ }).click()
     await expect(board.getByText('Paid 81.0% of earnings against 95.0% promised over 6 cycles.')).toBeVisible()
+    // a free-text schedule is its own line, not run into "restakes"
+    const fjord = board.getByRole('listitem').filter({ has: page.getByRole('button', { name: /Fjord Pool/ }) })
+    await expect(fjord).toContainText('fee 6% · restakes')
+    await expect(fjord).not.toContainText('restakes Payouts')
+    await expect(fjord.getByText('Payouts over 10 NIM are instant when Fjord Pool is elected.', { exact: true })).toBeVisible()
     await board.getByRole('button', { name: /Fjord Pool/ }).click()
     // the API's own "has not looked yet" and the app's line would contradict each other: one neutral line
     await expect(board.getByText('Not checked yet', { exact: true })).toBeVisible()

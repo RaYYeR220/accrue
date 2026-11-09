@@ -9,6 +9,7 @@ import {
   poolVerdict,
   RUN_GAP_BLOCKS,
   runGapBlocks,
+  uniqueReasons,
   userExpected,
   userVerdict,
   type NimTx,
@@ -376,5 +377,22 @@ describe('user math', () => {
     expect(userVerdict({ expected: 1000n, received: 800n, cycles: 5 }).verdict).toBe('SHORT')
     expect(userVerdict({ expected: 1000n, received: 800n, cycles: 2 })).toEqual({ verdict: 'NOT_ENOUGH_DATA', pct: null })
     expect(userVerdict({ expected: 0n, received: 0n, cycles: 9 })).toEqual({ verdict: 'NOT_ENOUGH_DATA', pct: null })
+  })
+})
+
+describe('uniqueReasons: a reason is never stated twice', () => {
+  it('drops exact repeats and wording-only repeats, keeping the first', () => {
+    expect(uniqueReasons(['Paid 97.2% of earnings against 97.0% promised.', 'paid 97.2% of earnings against 97.0% promised', 'Other.'])).toEqual([
+      'Paid 97.2% of earnings against 97.0% promised.',
+      'Other.',
+    ])
+  })
+  it('keeps the more specific of two lines that state the same ratio', () => {
+    expect(uniqueReasons(['Paid 97.5% of earnings against 97.0% promised.', 'Paid 97.5% of earnings against 97.0% promised over 56 cycles.'])).toEqual([
+      'Paid 97.5% of earnings against 97.0% promised over 56 cycles.',
+    ])
+  })
+  it('leaves distinct reasons alone', () => {
+    expect(uniqueReasons(['a', 'b'])).toEqual(['a', 'b'])
   })
 })
