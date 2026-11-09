@@ -5,9 +5,13 @@ import { routerAbi } from '../relayer/chain'
 import { polygonLogClient } from '../rpc/polygon'
 import { bind, type Stmt } from './store'
 
-// public Polygon RPCs refuse eth_getLogs over wider ranges (some at 2,000 blocks; 1rpc at 50, so
-// POLYGON_LOG_RPCS names the nodes that serve a whole chunk)
-export const LOG_CHUNK_BLOCKS = 1_800
+// Public Polygon RPCs cap eth_getLogs ranges. From Cloudflare's egress (measured 2026-11-09) drpc's
+// free tier answers up to about 100 blocks in under 0.1 s, publicnode serves 1,800 but often stalls
+// 3 s and refuses with "rate limit exceeded", 1rpc refuses. Chunks drpc serves keep the logs readable
+// without publicnode; POLYGON_LOG_RPCS lists drpc first.
+export const LOG_CHUNK_BLOCKS = 100
+// the cron's share per run: 600 blocks (about 20 minutes of Polygon) catch up on a gap quickly
+export const CHUNKS_PER_RUN = 6
 // the cron folds only blocks this far below the head; younger ones a request reads itself
 export const SETTLE_BLOCKS = 64
 const RAY = 10n ** 27n
@@ -165,7 +169,7 @@ export async function scanRouterLogs(env: Env, opts: { maxChunks?: number } = {}
       client.getBlockNumber({ cacheTime: 0 }),
     ])
     const from = cursorRow ? Number(cursorRow.value) + 1 : first
-    const to = Math.min(Number(head) - SETTLE_BLOCKS, from + (opts.maxChunks ?? 3) * LOG_CHUNK_BLOCKS - 1)
+    const to = Math.min(Number(head) - SETTLE_BLOCKS, from + (opts.maxChunks ?? CHUNKS_PER_RUN) * LOG_CHUNK_BLOCKS - 1)
     if (to < from) return { from, to, events: 0 }
     const events = await routerEvents(client, router, from, to)
     // every write holds only while the cursor is still the one read here: two overlapping runs never

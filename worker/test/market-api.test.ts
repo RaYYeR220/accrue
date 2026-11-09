@@ -477,12 +477,14 @@ describe('GET /api/position/:evm and the router log scan', () => {
   }
   const world = (head = 3_500) => polygon({ balances, head, logs, router: ROUTER })
   const routed = (DB: unknown) => env(DB, { ROUTER_ADDRESS: ROUTER, ROUTER_DEPLOY_BLOCK: '900' })
+  // enough 100-block chunks to fold the whole test history (deploy block 900, head 3,500) in one scan
+  const ALL = { maxChunks: 30 }
 
   it('earned = scaled from Accrue x index now - principal, over two supplies and one withdraw', async () => {
     const chain = world()
     const db = new FakeD1()
     // the cron folds what is settled (64 blocks behind the head) ...
-    const scan = await scanRouterLogs(routed(db), { maxChunks: 3 })
+    const scan = await scanRouterLogs(routed(db), ALL)
     expect(scan).toMatchObject({ from: 900, to: 3_500 - 64, events: 4 })
     // ... the request adds the rest for its owner only
     chain.calls.length = 0
@@ -511,7 +513,7 @@ describe('GET /api/position/:evm and the router log scan', () => {
   it('accepts EIP-55 and lowercase addresses alike, refuses anything else', async () => {
     world()
     const db = new FakeD1()
-    await scanRouterLogs(routed(db), { maxChunks: 3 })
+    await scanRouterLogs(routed(db), ALL)
     const a = await getJson(`/api/position/${OWNER}`, routed(db))
     clearMemoryCache()
     const b = await getJson(`/api/position/${OWNER.toLowerCase()}`, routed(db))
@@ -519,14 +521,46 @@ describe('GET /api/position/:evm and the router log scan', () => {
     for (const bad of ['0x1234', 'nope', `${OWNER}00`]) expect((await getJson(`/api/position/${bad}`, routed(db))).status).toBe(400)
   })
 
-  it('without a scan yet, a request reads from the deploy block in chunks of at most 1,800 blocks', async () => {
+  it('router logs go in chunks a capped free node serves on its own (drpc: about 100 blocks), so a stalling node is never needed', async () => {
     const chain = world()
+    const served = chain.extra.eth_getLogs!
+    // what Cloudflare's egress sees: drpc refuses more than ~100 blocks at once, publicnode stalls 3 s and refuses
+    chain.extra.eth_getLogs = (params, url) => {
+      const f = params[0] as { fromBlock: Hex; toBlock: Hex }
+      if (url.startsWith('https://capped.test') && Number(f.toBlock) - Number(f.fromBlock) + 1 > 101) return new RpcError('ranges over 10000 blocks are not supported on free plan', 35)
+      if (url.startsWith('https://stalls.test')) return HANG
+      return served(params, url)
+    }
+    const db = new FakeD1()
+    const e = env(db, { ROUTER_ADDRESS: ROUTER, ROUTER_DEPLOY_BLOCK: '900', POLYGON_RPCS: 'https://polygon.test', POLYGON_LOG_RPCS: 'https://capped.test,https://stalls.test' })
+    // the cron folds the whole history through the capped node alone, a few chunks per run
+    for (let i = 0; i < 20 && cursorOf(db) !== '3436'; i++) expect((await scanRouterLogs(e)).error).toBeUndefined()
+    expect(cursorOf(db)).toBe('3436')
+    const t0 = Date.now()
+    const r = await getJson(`/api/position/${OWNER}`, e)
+    expect(Date.now() - t0).toBeLessThan(1_000)
+    expect(r.body.partial).toBeUndefined()
+    expect(Number(r.body.assets.USDT0.earned) / 1e6).toBeCloseTo(114.545454 - 98.4375, 3)
+    const logReads = chain.calls.filter((c) => c.method === 'eth_getLogs')
+    expect(logReads.every((c) => c.url.startsWith('https://capped.test'))).toBe(true)
+  }, 10_000)
+
+  it('without a scan yet, a request reads up to 1,000 blocks from the deploy block in chunks of at most 100 blocks', async () => {
+    // deploy block 900, head 1,899: the owner's first supply (block 1000) is in the range
+    const chain = world(1_899)
     const r = await getJson(`/api/position/${OWNER}`, routed(new FakeD1()))
     expect(r.status).toBe(200)
+    expect(r.body.partial).toBeUndefined()
     const ranges = chain.calls.filter((c) => c.method === 'eth_getLogs').map((c) => c.params[0] as { fromBlock: Hex; toBlock: Hex })
-    expect(ranges.length).toBe(2)
-    for (const g of ranges) expect(Number(g.toBlock) - Number(g.fromBlock) + 1).toBeLessThanOrEqual(1800)
-    expect(Number(r.body.assets.USDT0.earned) / 1e6).toBeCloseTo(114.545454 - 98.4375, 3)
+    expect(ranges.length).toBe(10)
+    for (const g of ranges) expect(Number(g.toBlock) - Number(g.fromBlock) + 1).toBeLessThanOrEqual(100)
+    const a = r.body.assets.USDT0
+    expect(BigInt(a.principal)).toBeGreaterThan(0n)
+    expect(BigInt(a.earned)).toBe((BigInt(a.scaledFromAccrue) * income) / RAY - BigInt(a.principal))
+    // one block more than a request may read: partial, the cron has to catch up first
+    world(1_900)
+    clearMemoryCache()
+    expect((await getJson(`/api/position/${OWNER}`, routed(new FakeD1()))).body).toMatchObject({ partial: true, reason: 'catching_up' })
   })
 
   // what a withdrawal needs (the aToken balance) is always there; only what Accrue tracks is missing
@@ -549,7 +583,7 @@ describe('GET /api/position/:evm and the router log scan', () => {
   it('when no RPC serves the router logs: the live balances, partial, router_logs, and nothing cached', async () => {
     const chain = world()
     const db = new FakeD1()
-    await scanRouterLogs(routed(db), { maxChunks: 3 })
+    await scanRouterLogs(routed(db), ALL)
     chain.extra.eth_getLogs = () => new RpcError('eth_getLogs is limited to 0 - 50 blocks range', -32602)
     const r = await getJson(`/api/position/${OWNER}`, routed(db))
     expect(r.status).toBe(200)
@@ -564,7 +598,7 @@ describe('GET /api/position/:evm and the router log scan', () => {
   it('a log RPC that hangs does not hold the answer: partial within about three seconds', async () => {
     const chain = world()
     const db = new FakeD1()
-    await scanRouterLogs(routed(db), { maxChunks: 3 })
+    await scanRouterLogs(routed(db), ALL)
     chain.extra.eth_getLogs = () => HANG
     const t0 = Date.now()
     const r = await getJson(`/api/position/${OWNER}`, routed(db))
@@ -575,7 +609,7 @@ describe('GET /api/position/:evm and the router log scan', () => {
   it('a balance read gives up on a hanging RPC after 2.5 s and asks the next one', async () => {
     const chain = world()
     const db = new FakeD1()
-    await scanRouterLogs(routed(db), { maxChunks: 3 })
+    await scanRouterLogs(routed(db), ALL)
     const onCall = chain.onCall
     chain.onCall = (params, url) => (url.startsWith('https://slow.test') ? HANG : onCall(params, url))
     const t0 = Date.now()
@@ -591,7 +625,7 @@ describe('GET /api/position/:evm and the router log scan', () => {
     const chain = world()
     const db = new FakeD1()
     const e = env(db, { ROUTER_ADDRESS: ROUTER, ROUTER_DEPLOY_BLOCK: '900', POLYGON_RPCS: 'https://capped.test', POLYGON_LOG_RPCS: 'https://logs.test' })
-    expect(await scanRouterLogs(e, { maxChunks: 3 })).toMatchObject({ events: 4 })
+    expect(await scanRouterLogs(e, ALL)).toMatchObject({ events: 4 })
     const r = await getJson(`/api/position/${OWNER}`, e)
     expect(Number(r.body.assets.USDT0.earned) / 1e6).toBeCloseTo(114.545454 - 98.4375, 3)
     const hosts = (m: string) => new Set(chain.calls.filter((c) => c.method === m).map((c) => new URL(c.url).host))
@@ -605,7 +639,7 @@ describe('GET /api/position/:evm and the router log scan', () => {
     vi.setSystemTime(t)
     const chain = world()
     const db = new FakeD1()
-    await scanRouterLogs(routed(db), { maxChunks: 3 })
+    await scanRouterLogs(routed(db), ALL)
     await getJson(`/api/position/${OWNER}`, routed(db))
     const reads = () => chain.count('eth_call')
     const before = reads()
@@ -633,18 +667,19 @@ describe('GET /api/position/:evm and the router log scan', () => {
       expect(r.status).toBe(200)
       expect(r.body.assets.USDT0).toEqual({ aTokenBalance: String(balances.USDT0.balance), scaledFromAccrue: '0', principal: '0', earned: '0' })
       expect(chain.calls.map((c) => c.method)).toEqual(['eth_call'])
-      expect(await scanRouterLogs(env(new FakeD1(), { ROUTER_ADDRESS: '' }), { maxChunks: 3 })).toMatchObject({ skipped: true })
+      expect(await scanRouterLogs(env(new FakeD1(), { ROUTER_ADDRESS: '' }), ALL)).toMatchObject({ skipped: true })
     })
   })
 
   const cursorOf = (db: FakeD1) => db.query<{ value: string }>('SELECT value FROM meta WHERE key = ?', `router_scan:${ROUTER.toLowerCase()}`)[0]?.value
 
-  it('every cron run scans the router', async () => {
+  it('every cron run scans the router, six 100-block chunks at most', async () => {
     world()
     const db = new FakeD1()
     const r = await runScheduled(routed(db))
-    expect(r.router).toMatchObject({ from: 900, to: 3_436, events: 4 })
-    expect(cursorOf(db)).toBe('3436')
+    expect(r.router).toMatchObject({ from: 900, to: 1_499, events: 1 })
+    expect(cursorOf(db)).toBe('1499')
+    expect((await runScheduled(routed(db))).router).toMatchObject({ from: 1_500, to: 2_099, events: 2 })
   })
 
   it('a run whose job never finishes (as when the platform stops it) has already moved the router fold', async () => {
@@ -655,7 +690,7 @@ describe('GET /api/position/:evm and the router log scan', () => {
     )
     const db = new FakeD1()
     void runScheduled(routed(db))
-    await vi.waitFor(() => expect(cursorOf(db)).toBe('3436'))
+    await vi.waitFor(() => expect(cursorOf(db)).toBe('1499'))
   })
 
   it('/api/health reports how far the router fold is behind the head, in blocks and in minutes since it moved', async () => {
@@ -666,7 +701,7 @@ describe('GET /api/position/:evm and the router log scan', () => {
     const db = new FakeD1()
     // nothing folded yet: the whole range since the deploy block
     expect((await health(routed(db))).router).toEqual({ address: ROUTER, deployBlock: 900, lagBlocks: 2_601, lagMinutes: null })
-    await scanRouterLogs(routed(db), { maxChunks: 3 })
+    await scanRouterLogs(routed(db), ALL)
     vi.setSystemTime(t + 3 * 60_000)
     world(3_590)
     expect((await health(routed(db))).router).toEqual({ address: ROUTER, deployBlock: 900, lagBlocks: 154, lagMinutes: 3 })
@@ -678,9 +713,9 @@ describe('GET /api/position/:evm and the router log scan', () => {
   it('the scan resumes where it stopped and never folds an event twice', async () => {
     world(3_500)
     const db = new FakeD1()
-    expect(await scanRouterLogs(routed(db), { maxChunks: 1 })).toMatchObject({ from: 900, to: 2_699, events: 3 })
-    expect(await scanRouterLogs(routed(db), { maxChunks: 1 })).toMatchObject({ from: 2_700, to: 3_436, events: 1 })
-    expect(await scanRouterLogs(routed(db), { maxChunks: 1 })).toMatchObject({ events: 0 })
+    expect(await scanRouterLogs(routed(db), { maxChunks: 18 })).toMatchObject({ from: 900, to: 2_699, events: 3 })
+    expect(await scanRouterLogs(routed(db), { maxChunks: 18 })).toMatchObject({ from: 2_700, to: 3_436, events: 1 })
+    expect(await scanRouterLogs(routed(db), { maxChunks: 18 })).toMatchObject({ events: 0 })
     const r = await getJson(`/api/position/${OWNER}`, routed(db))
     expect(Number(r.body.assets.USDT0.earned) / 1e6).toBeCloseTo(114.545454 - 98.4375, 3)
     const other = await getJson(`/api/position/${OTHER}`, routed(db))
@@ -700,7 +735,7 @@ describe('GET /api/position/:evm and the router log scan', () => {
     // an override that is not deployments.json's router needs its block
     world()
     const bad = env(new FakeD1(), { ROUTER_ADDRESS: ROUTER })
-    expect(await scanRouterLogs(bad, { maxChunks: 3 })).toMatchObject({ error: expect.stringMatching(/misconfigured/) })
+    expect(await scanRouterLogs(bad, ALL)).toMatchObject({ error: expect.stringMatching(/misconfigured/) })
     const r = await getJson(`/api/position/${OWNER}`, bad)
     expect(r).toMatchObject({ status: 503, body: { error: 'RPC_UNAVAILABLE', detail: { reason: 'router_misconfigured' } } })
     const h = await health(bad)
@@ -736,7 +771,7 @@ describe('GET /api/position/:evm and the router log scan', () => {
         }),
       batch: (s: never[]) => db.batch(s),
     }
-    expect(await scanRouterLogs(routed(limited), { maxChunks: 3 })).toMatchObject({ events: 250 })
+    expect(await scanRouterLogs(routed(limited), ALL)).toMatchObject({ events: 250 })
     expect(db.query<{ n: number }>("SELECT COUNT(*) n FROM meta WHERE key LIKE 'router_pos:%'")[0]!.n).toBe(250)
     const r = await getJson(`/api/position/${owners[199]}`, routed(db))
     expect(r.body.assets.USDT0.principal).toBe('1000199')

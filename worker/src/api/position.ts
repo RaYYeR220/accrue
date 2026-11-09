@@ -9,8 +9,9 @@ import { aavePoolAbi, tokenAbi } from './aave'
 import { cacheGet, cachePut } from './cache'
 
 const RAY = 10n ** 27n
-// a request reads at most this much of the range the cron has not folded yet (about 6 h of Polygon)
-const MAX_REQUEST_CHUNKS = 6
+// a request reads at most this much of the range the cron has not folded yet (1,000 blocks, about
+// 33 minutes of Polygon; the cron folds every minute); further behind, the answer is partial
+const MAX_REQUEST_CHUNKS = 10
 const POSITION_CACHE_MS = 15_000
 // `?fresh=1` (the app, right after a deposit or withdrawal lands) skips a copy older than this; at
 // most one such read per owner in that time, so it cannot be used to hammer the RPCs
