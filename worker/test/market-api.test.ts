@@ -35,6 +35,17 @@ const KRAKEN = 'https://api.kraken.com/0/public/Ticker?pair=USDTZUSD'
 const env = (DB: unknown, over: Record<string, unknown> = {}) =>
   ({ DB, NIM_RPCS: 'https://nim.test', POLYGON_RPCS: 'https://polygon.test', RELAYER_ADDRESS: '', RELAYER: null, ...over }) as never
 
+// A build whose deployments.json names no router yet; the shared constants are read at call time.
+async function withoutDeployment(fn: () => Promise<void>) {
+  const saved = { router: POLYGON.router, deployBlock: POLYGON.deployBlock }
+  Object.assign(POLYGON, { router: null, deployBlock: null })
+  try {
+    await fn()
+  } finally {
+    Object.assign(POLYGON, saved)
+  }
+}
+
 async function getJson(path: string, e: never) {
   const res = await app.request(path, {}, e)
   return { status: res.status, headers: res.headers, body: (await res.json()) as Record<string, any> }
@@ -527,12 +538,13 @@ describe('GET /api/position/:evm and the router log scan', () => {
 
   it('before the router is deployed: the live aToken balance and zeros for what Accrue tracks, no log query', async () => {
     const chain = world()
-    const r = await getJson(`/api/position/${OWNER}`, env(new FakeD1(), { ROUTER_ADDRESS: '' }))
-    expect(POLYGON.router).toBeNull()
-    expect(r.status).toBe(200)
-    expect(r.body.assets.USDT0).toEqual({ aTokenBalance: String(balances.USDT0.balance), scaledFromAccrue: '0', principal: '0', earned: '0' })
-    expect(chain.calls.map((c) => c.method)).toEqual(['eth_call'])
-    expect(await scanRouterLogs(env(new FakeD1(), { ROUTER_ADDRESS: '' }), { maxChunks: 3 })).toMatchObject({ skipped: true })
+    await withoutDeployment(async () => {
+      const r = await getJson(`/api/position/${OWNER}`, env(new FakeD1(), { ROUTER_ADDRESS: '' }))
+      expect(r.status).toBe(200)
+      expect(r.body.assets.USDT0).toEqual({ aTokenBalance: String(balances.USDT0.balance), scaledFromAccrue: '0', principal: '0', earned: '0' })
+      expect(chain.calls.map((c) => c.method)).toEqual(['eth_call'])
+      expect(await scanRouterLogs(env(new FakeD1(), { ROUTER_ADDRESS: '' }), { maxChunks: 3 })).toMatchObject({ skipped: true })
+    })
   })
 
   it('the cron scans the router after its indexer tick', async () => {
@@ -565,7 +577,7 @@ describe('GET /api/position/:evm and the router log scan', () => {
     expect(routerConfig({ ROUTER_ADDRESS: OTHER }, deployed)).toEqual({ router: OTHER, deployBlock: null, misconfigured: true })
     expect(routerConfig({ ROUTER_ADDRESS: '' }, { router: null, deployBlock: null })).toBeNull()
 
-    // today deployments.json has no router, so any override needs its block
+    // an override that is not deployments.json's router needs its block
     world()
     const bad = env(new FakeD1(), { ROUTER_ADDRESS: ROUTER })
     expect(await scanRouterLogs(bad, { maxChunks: 3 })).toMatchObject({ error: expect.stringMatching(/misconfigured/) })
@@ -574,7 +586,13 @@ describe('GET /api/position/:evm and the router log scan', () => {
     const h = await health(bad)
     expect(h).toMatchObject({ ok: false, router: 'misconfigured' })
     expect(await health(routed(new FakeD1()))).toMatchObject({ ok: true, router: { address: ROUTER, deployBlock: 900 } })
-    expect(await health(env(new FakeD1(), { ROUTER_ADDRESS: '' }))).toMatchObject({ ok: true, router: null })
+    expect(await health(env(new FakeD1(), { ROUTER_ADDRESS: '' }))).toMatchObject({
+      ok: true,
+      router: { address: POLYGON.router, deployBlock: POLYGON.deployBlock },
+    })
+    await withoutDeployment(async () => {
+      expect(await health(env(new FakeD1(), { ROUTER_ADDRESS: '' }))).toMatchObject({ ok: true, router: null })
+    })
   })
 
   it('folds 250 owners in one scan without binding more than 100 parameters in a statement', async () => {
