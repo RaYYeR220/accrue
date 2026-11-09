@@ -177,6 +177,38 @@ describe('verdict cache and GET /api/pools', () => {
     expect((await row('NQ51 SURF MCTM AQXM 15PA K9FX 8EEX 29BE VGH8')).reasons.join(' ')).not.toMatch(/indexing is behind/)
   })
 
+  it('verdicts cached by the previous verdict logic stay on show until the cron recomputes them, first in line', async () => {
+    await refreshVerdicts(env(db), { now, maxPools: 5 })
+    const g = await storedWindows(db, GARUDA, 0.05, 'Every 12 hours')
+    // the cache as the deployed logic (version 1) wrote it: same pool inputs, the old wording
+    const raw = JSON.parse(db.query<{ value: string }>('SELECT value FROM meta WHERE key = ?', VERDICTS_KEY)[0]!.value)
+    for (const e of Object.values(raw.pools) as { meta: string }[]) e.meta = JSON.stringify([1, ...JSON.parse(e.meta).slice(1)])
+    const OLD = 'Only 2 complete payout cycle(s) with 462997721 luna earned in the window; need at least 3.'
+    raw.pools[GARUDA].reasons = [OLD]
+    db.db.prepare('UPDATE meta SET value = ? WHERE key = ?').run(JSON.stringify(raw), VERDICTS_KEY)
+
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(g.reach + HOUR_MS)
+    const garudaRow = async () => {
+      clearMemoryCache()
+      return (await getJson('/api/pools', env(db))).body.pools.find((p: any) => p.address === GARUDA)
+    }
+    expect(await garudaRow()).toMatchObject({ state: 'checked', verdict: g.verdict.verdict, reasons: [OLD] })
+
+    // a deploy with new verdict logic recomputes every cached verdict, ahead of the data refreshes
+    const r = await refreshVerdicts(env(db), { now: now + 60_000, maxPools: 1 })
+    const r2 = await refreshVerdicts(env(db), { now: now + 120_000, maxPools: 1 })
+    expect(new Set([...r.computed, ...r2.computed])).toEqual(new Set([GARUDA, SIAM]))
+    expect(await garudaRow()).toMatchObject({ state: 'checked', verdict: g.verdict.verdict, reasons: g.verdict.reasons })
+    expect((await refreshVerdicts(env(db), { now: now + 180_000, maxPools: 5 })).computed).toEqual([])
+  })
+
+  it('a pool whose fee changed has no verdict until it is recomputed', async () => {
+    await refreshVerdicts(env(db), { now, maxPools: 5 })
+    db.db.prepare('UPDATE pools SET fee = 0.5 WHERE address = ?').run(GARUDA)
+    expect((await getJson('/api/pools', env(db))).body.pools.find((p: any) => p.address === GARUDA)).toMatchObject({ verdict: null, state: 'unchecked' })
+  })
+
   it('a verdict is recomputed when the pool changes its fee, not on every run', async () => {
     await refreshVerdicts(env(db), { now, maxPools: 5 })
     db.db.prepare('UPDATE pools SET fee = 0.5 WHERE address = ?').run(GARUDA)

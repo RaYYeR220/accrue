@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { COINBASE_ADDRESS, STAKING_CONTRACT, addressFromBytesHex, formatNimAddress, isValidNimAddress, lunaToNim, nimToLuna, normalizeAddress } from '../src/index'
+import { COINBASE_ADDRESS, STAKING_CONTRACT, addressFromBytesHex, formatNim, formatNimAddress, isValidNimAddress, lunaToNim, nimToLuna, normalizeAddress } from '../src/index'
 
 describe('luna conversion', () => {
   it('nimToLuna', () => {
@@ -12,6 +12,17 @@ describe('luna conversion', () => {
     expect(lunaToNim(10_000_000n)).toBe('100')
     expect(lunaToNim(150_000n)).toBe('1.5')
     expect(lunaToNim(0n)).toBe('0')
+  })
+  it('formatNim: whole NIM with thousands separators and at most two decimals', () => {
+    expect(formatNim(462_997_721n)).toBe('4,629.98')
+    expect(formatNim(0n)).toBe('0')
+    expect(formatNim(10_000_000n)).toBe('100')
+    expect(formatNim(150_000n)).toBe('1.5')
+    expect(formatNim(123_456_789_012_345n)).toBe('1,234,567,890.12')
+    expect(formatNim(999n)).toBe('0.01')
+    expect(formatNim(499n)).toBe('0')
+    expect(formatNim(99_999_500n)).toBe('1,000')
+    expect(formatNim(-462_997_721n)).toBe('-4,629.98')
   })
   it('rejects bad input', () => {
     expect(() => nimToLuna('1.123456')).toThrow()

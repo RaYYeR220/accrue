@@ -8,7 +8,8 @@ export const VERDICTS_KEY = 'pool_verdicts'
 export const PRUNED_KEY = 'pruned_day'
 export const WINDOW_MS = 7 * DAY_MS
 // bump when the verdict logic changes, so a deploy recomputes every cached verdict
-const LOGIC_VERSION = 1
+// (2: reasons state NIM, not luna, and skip a 0.0 % unverified note)
+const LOGIC_VERSION = 2
 // a pool's data moves with every visit (ImpactZero: every tick); its verdict is refreshed at most this often
 const REFRESH_MS = 15 * 60_000
 // rows older than a pool's window, minus this slack, are no longer read by anything
@@ -79,14 +80,21 @@ export const NO_FEE = 'The pool does not publish a fee, so there is no promised 
 
 export const metaKey = (p: PoolMetaRow) => JSON.stringify([LOGIC_VERSION, p.fee, payoutTypeOf(p.payout_type), p.schedule ?? '', p.reward_address])
 
+// the pool inputs of a metaKey, without the logic version
+const inputsOf = (meta: string) => meta.replace(/^\[\d+,/, '[')
+
 /**
  * The cached verdict of a pool as long as it was computed for the pool's current fee, payout type,
- * schedule and reward address; pools that need no data get theirs on the spot. Otherwise null.
+ * schedule and reward address; pools that need no data get theirs on the spot. One computed by an
+ * older verdict logic for the same inputs stays until the cron recomputes it (first, see
+ * refreshVerdicts), so a deploy does not blank the scoreboard. Otherwise null.
  */
 export function currentEntry(p: PoolMetaRow, cache: VerdictCache | null): Omit<VerdictEntry, 'meta' | 'data' | 'at'> | null {
   const e = cache?.pools[p.address]
-  if (e && e.meta === metaKey(p)) return e
+  const mk = metaKey(p)
+  if (e && e.meta === mk) return e
   if (payoutTypeOf(p.payout_type) === 'none' || p.fee === null) return quickEntry(p, undefined)
+  if (e && inputsOf(e.meta) === inputsOf(mk)) return e
   return null
 }
 

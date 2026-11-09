@@ -276,6 +276,29 @@ describe('poolVerdict rules', () => {
   it('2 cycles -> NOT_ENOUGH_DATA', () => expect(poolVerdict({ ...base, cycles: 2 }, cfg, now).verdict).toBe('NOT_ENOUGH_DATA'))
   it('earned 0 -> NOT_ENOUGH_DATA', () =>
     expect(poolVerdict({ ...base, earned: 0n, paidRestake: 0n }, cfg, now).verdict).toBe('NOT_ENOUGH_DATA'))
+  it('too few cycles: the reason states the earnings in NIM, never raw luna', () => {
+    const v = poolVerdict({ ...base, cycles: 2, earned: 462_997_721n, paidRestake: 449_107_789n }, cfg, now)
+    expect(v.reasons).toEqual(['Only 2 complete payout cycles with 4,629.98 NIM earned in the window; need at least 3.'])
+    expect(poolVerdict({ ...base, cycles: 1, earned: 123_456_789_012n }, cfg, now).reasons).toEqual([
+      'Only 1 complete payout cycle with 1,234,567.89 NIM earned in the window; need at least 3.',
+    ])
+    expect(poolVerdict({ ...base, cycles: 0, earned: 5_000_000n }, cfg, now).reasons).toEqual([
+      'No complete payout cycle in the window yet (50 NIM earned); need at least 3.',
+    ])
+    expect(JSON.stringify(v)).not.toMatch(/luna/)
+  })
+  it('nothing earned in the window says so, whatever the cycle count', () => {
+    for (const cycles of [0, 2, 5]) {
+      expect(poolVerdict({ ...base, cycles, earned: 0n, paidRestake: 0n }, cfg, now).reasons).toEqual(['No rewards earned in the window yet.'])
+    }
+  })
+  it('the unverified-recipients note appears from 0.05 % of earnings, not for a rounding sliver', () => {
+    const note = (paidUnverified: bigint) => poolVerdict({ ...base, earned: 10_000_000n, paidRestake: 9_700_000n, paidUnverified }, cfg, now).reasons
+    expect(note(0n).join(' ')).not.toMatch(/not checked/)
+    expect(note(4_999n).join(' ')).not.toMatch(/not checked/)
+    expect(note(5_000n)).toContain('0.1% of earnings was paid to recipients not checked against the staker set.')
+    expect(note(200_000n)).toContain('2.0% of earnings was paid to recipients not checked against the staker set.')
+  })
   it('30 h since last payout on a 12 h schedule -> BEHIND_SCHEDULE', () =>
     expect(poolVerdict(base, { ...cfg, scheduleMs: 12 * HOUR }, base.lastPayoutTs! + 30 * HOUR).verdict).toBe('BEHIND_SCHEDULE'))
   it('24 h since last payout on a 12 h schedule is still fine', () =>

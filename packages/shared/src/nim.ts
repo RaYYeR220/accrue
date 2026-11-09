@@ -38,6 +38,15 @@ export function lunaToNim(l: bigint): string {
   return `${neg ? '-' : ''}${whole}${frac ? `.${frac}` : ''}`
 }
 
+/** NIM for people to read: thousands separators, rounded to at most two decimals ("4,629.98"). */
+export function formatNim(l: bigint): string {
+  const neg = l < 0n
+  const cents = ((neg ? -l : l) + LUNA_PER_NIM / 200n) / (LUNA_PER_NIM / 100n)
+  const whole = (cents / 100n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  const frac = (cents % 100n).toString().padStart(2, '0').replace(/0+$/, '')
+  return `${neg && cents > 0n ? '-' : ''}${whole}${frac ? `.${frac}` : ''}`
+}
+
 export function nimToLuna(s: string): bigint {
   const m = /^(-?)(\d+)(?:\.(\d{1,5}))?$/.exec(s.trim())
   if (!m) throw new Error(`invalid NIM amount: ${s}`)

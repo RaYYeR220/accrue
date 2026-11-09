@@ -1,5 +1,5 @@
 import type { Verdict } from './errors'
-import { COINBASE_ADDRESS, STAKING_CONTRACT, addressFromBytesHex, normalizeAddress, type NimTx } from './nim'
+import { COINBASE_ADDRESS, STAKING_CONTRACT, addressFromBytesHex, formatNim, normalizeAddress, type NimTx } from './nim'
 
 export type PayoutTxKind = 'EARNED' | 'RESTAKE_PAYOUT' | 'DIRECT_PAYOUT' | 'OTHER_OUT' | 'OTHER_IN'
 
@@ -209,6 +209,8 @@ export const SHORT_MARGIN = 0.05
 export const MIN_CYCLES = 3
 // a window paying more than this above the promise holds a transfer that is not a payout cycle
 export const OVERPAY_MARGIN = 0.2
+// the share of earnings paid to unchecked recipients from which a verdict mentions it (0.05 %)
+export const UNVERIFIED_NOTE_MIN = 0.0005
 const HOUR_MS = 3_600_000
 
 // A confirmation window only has to show the shortfall at another end; the main window already
@@ -236,15 +238,23 @@ export function poolVerdict(
   if (pool.scheduleMs !== null && w.lastPayoutTs !== null && nowTs - w.lastPayoutTs > 2 * pool.scheduleMs + HOUR_MS) {
     return out('BEHIND_SCHEDULE', null, ['The last payout is more than twice the advertised interval ago.'])
   }
-  if (w.cycles < MIN_CYCLES || w.earned === 0n) {
-    return out('NOT_ENOUGH_DATA', null, [`Only ${w.cycles} complete payout cycle(s) with ${w.earned} luna earned in the window; need at least ${MIN_CYCLES}.`])
+  if (w.earned <= 0n) return out('NOT_ENOUGH_DATA', null, ['No rewards earned in the window yet.'])
+  if (w.cycles < MIN_CYCLES) {
+    const earned = `${formatNim(w.earned)} NIM`
+    return out('NOT_ENOUGH_DATA', null, [
+      w.cycles === 0
+        ? `No complete payout cycle in the window yet (${earned} earned); need at least ${MIN_CYCLES}.`
+        : `Only ${w.cycles} complete payout ${w.cycles === 1 ? 'cycle' : 'cycles'} with ${earned} earned in the window; need at least ${MIN_CYCLES}.`,
+    ])
   }
 
   const ppm = (a: bigint) => Number((a * 1_000_000n) / w.earned) / 1_000_000
   const ratio = ppm(w.paidRestake + w.paidDirect)
   const otherShare = ppm(w.otherOut)
   const pct = (x: number) => (x * 100).toFixed(1)
-  const note = w.paidUnverified > 0n ? [`${pct(ppm(w.paidUnverified))}% of earnings was paid to recipients not checked against the staker set.`] : []
+  // below this the share prints as 0.0 %: a rounding sliver, not something to flag
+  const unverified = ppm(w.paidUnverified)
+  const note = unverified >= UNVERIFIED_NOTE_MIN ? [`${pct(unverified)}% of earnings was paid to recipients not checked against the staker set.`] : []
 
   if (otherShare >= 0.3) {
     return out('CANT_VERIFY_ROUTED', ratio, [`${pct(otherShare)}% of earnings leave the reward address to non-staker destinations.`, ...note])
