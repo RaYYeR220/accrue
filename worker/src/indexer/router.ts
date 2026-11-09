@@ -2,10 +2,11 @@ import { decodeEventLog, encodeEventTopics, getAddress, isAddress, numberToHex, 
 import { ASSETS, POLYGON, type AssetKey } from '@accrue/shared'
 import type { Env } from '../env'
 import { routerAbi } from '../relayer/chain'
-import { polygonClient } from '../rpc/polygon'
+import { polygonLogClient } from '../rpc/polygon'
 import { bind, type Stmt } from './store'
 
-// public Polygon RPCs refuse eth_getLogs over wider ranges (some at 2,000 blocks)
+// public Polygon RPCs refuse eth_getLogs over wider ranges (some at 2,000 blocks; 1rpc at 50, so
+// POLYGON_LOG_RPCS names the nodes that serve a whole chunk)
 export const LOG_CHUNK_BLOCKS = 1_800
 // the cron folds only blocks this far below the head; younger ones a request reads itself
 export const SETTLE_BLOCKS = 64
@@ -158,7 +159,7 @@ export async function scanRouterLogs(env: Env, opts: { maxChunks?: number } = {}
   if (cfg.misconfigured) return { error: ROUTER_MISCONFIGURED }
   const { router, deployBlock: first } = cfg as RouterConfig & { deployBlock: number }
   try {
-    const client = polygonClient(env)
+    const client = polygonLogClient(env)
     const [cursorRow, head] = await Promise.all([
       env.DB.prepare('SELECT value FROM meta WHERE key = ?').bind(scanKey(router)).first<{ value: string }>(),
       client.getBlockNumber({ cacheTime: 0 }),

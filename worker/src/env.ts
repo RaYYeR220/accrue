@@ -5,6 +5,8 @@ export interface Env {
   RELAYER: DurableObjectNamespace<Relayer>
   NIM_RPCS: string
   POLYGON_RPCS: string
+  /** Nodes that serve eth_getLogs over a whole LOG_CHUNK_BLOCKS chunk, in order; unset means POLYGON_RPCS. */
+  POLYGON_LOG_RPCS?: string
   RELAYER_ADDRESS: string
   /** Router override; empty falls back to the deployed address in @accrue/shared. */
   ROUTER_ADDRESS?: string

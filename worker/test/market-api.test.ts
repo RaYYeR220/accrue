@@ -21,7 +21,7 @@ import { health } from '../src/api/health'
 import { routerAbi } from '../src/relayer/chain'
 import { runScheduled } from '../src/scheduled'
 import { FakeD1 } from './d1'
-import { FakeChain, RpcError } from './helpers'
+import { FakeChain, HANG, RpcError } from './helpers'
 
 const RAY = 10n ** 27n
 const MULTICALL3 = '0xca11bde05977b3631167028862be2a173976ca11'
@@ -529,11 +529,101 @@ describe('GET /api/position/:evm and the router log scan', () => {
     expect(Number(r.body.assets.USDT0.earned) / 1e6).toBeCloseTo(114.545454 - 98.4375, 3)
   })
 
-  it('answers 503 rather than a partial position when the unscanned range is longer than a request may read', async () => {
+  // what a withdrawal needs (the aToken balance) is always there; only what Accrue tracks is missing
+  const partialBody = (reason: string) => ({
+    partial: true,
+    reason,
+    assets: {
+      USDT0: { aTokenBalance: String(balances.USDT0.balance), scaledFromAccrue: null, principal: null, earned: null },
+      USDC: { aTokenBalance: '0', scaledFromAccrue: null, principal: null, earned: null },
+    },
+  })
+
+  it('when the unscanned range is longer than a request may read: the live balances, partial, catching_up', async () => {
     world(900 + 20_000)
     const r = await getJson(`/api/position/${OWNER}`, routed(new FakeD1()))
-    expect(r.status).toBe(503)
-    expect(r.body).toMatchObject({ error: 'RPC_UNAVAILABLE', detail: { reason: 'catching_up' } })
+    expect(r.status).toBe(200)
+    expect(r.body).toEqual(partialBody('catching_up'))
+  })
+
+  it('when no RPC serves the router logs: the live balances, partial, router_logs, and nothing cached', async () => {
+    const chain = world()
+    const db = new FakeD1()
+    await scanRouterLogs(routed(db), { maxChunks: 3 })
+    chain.extra.eth_getLogs = () => new RpcError('eth_getLogs is limited to 0 - 50 blocks range', -32602)
+    const r = await getJson(`/api/position/${OWNER}`, routed(db))
+    expect(r.status).toBe(200)
+    expect(r.body).toEqual(partialBody('router_logs'))
+    // the next request tries the logs again rather than serving the partial answer
+    world()
+    const again = await getJson(`/api/position/${OWNER}`, routed(db))
+    expect(again.body.partial).toBeUndefined()
+    expect(Number(again.body.assets.USDT0.earned) / 1e6).toBeCloseTo(114.545454 - 98.4375, 3)
+  })
+
+  it('a log RPC that hangs does not hold the answer: partial within about three seconds', async () => {
+    const chain = world()
+    const db = new FakeD1()
+    await scanRouterLogs(routed(db), { maxChunks: 3 })
+    chain.extra.eth_getLogs = () => HANG
+    const t0 = Date.now()
+    const r = await getJson(`/api/position/${OWNER}`, routed(db))
+    expect(Date.now() - t0).toBeLessThan(3_600)
+    expect(r.body).toEqual(partialBody('router_logs'))
+  }, 10_000)
+
+  it('a balance read gives up on a hanging RPC after 2.5 s and asks the next one', async () => {
+    const chain = world()
+    const db = new FakeD1()
+    await scanRouterLogs(routed(db), { maxChunks: 3 })
+    const onCall = chain.onCall
+    chain.onCall = (params, url) => (url.startsWith('https://slow.test') ? HANG : onCall(params, url))
+    const t0 = Date.now()
+    const r = await getJson(`/api/position/${OWNER}`, env(db, { ROUTER_ADDRESS: ROUTER, ROUTER_DEPLOY_BLOCK: '900', POLYGON_RPCS: 'https://slow.test,https://polygon.test' }))
+    const took = Date.now() - t0
+    expect(took).toBeGreaterThanOrEqual(2_400)
+    expect(took).toBeLessThan(3_600)
+    expect(r.status).toBe(200)
+    expect(r.body.assets.USDT0.aTokenBalance).toBe(String(balances.USDT0.balance))
+  }, 10_000)
+
+  it('reads router logs from POLYGON_LOG_RPCS (the getLogs-capable nodes) when set, balances from POLYGON_RPCS', async () => {
+    const chain = world()
+    const db = new FakeD1()
+    const e = env(db, { ROUTER_ADDRESS: ROUTER, ROUTER_DEPLOY_BLOCK: '900', POLYGON_RPCS: 'https://capped.test', POLYGON_LOG_RPCS: 'https://logs.test' })
+    expect(await scanRouterLogs(e, { maxChunks: 3 })).toMatchObject({ events: 4 })
+    const r = await getJson(`/api/position/${OWNER}`, e)
+    expect(Number(r.body.assets.USDT0.earned) / 1e6).toBeCloseTo(114.545454 - 98.4375, 3)
+    const hosts = (m: string) => new Set(chain.calls.filter((c) => c.method === m).map((c) => new URL(c.url).host))
+    expect(hosts('eth_getLogs')).toEqual(new Set(['logs.test']))
+    expect(hosts('eth_call')).toEqual(new Set(['capped.test']))
+  })
+
+  it('?fresh=1 skips a cached copy older than 3 s, at most one fresh read per owner every 3 s', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    const t = Date.UTC(2026, 10, 9, 13)
+    vi.setSystemTime(t)
+    const chain = world()
+    const db = new FakeD1()
+    await scanRouterLogs(routed(db), { maxChunks: 3 })
+    await getJson(`/api/position/${OWNER}`, routed(db))
+    const reads = () => chain.count('eth_call')
+    const before = reads()
+    vi.setSystemTime(t + 2_000)
+    // within 3 s even a fresh request is answered from the copy
+    await getJson(`/api/position/${OWNER}?fresh=1`, routed(db))
+    expect(reads()).toBe(before)
+    vi.setSystemTime(t + 6_000)
+    // a plain request still takes the 15 s copy
+    await getJson(`/api/position/${OWNER}`, routed(db))
+    expect(reads()).toBe(before)
+    const fresh = await getJson(`/api/position/${OWNER}?fresh=1`, routed(db))
+    expect(fresh.status).toBe(200)
+    expect(reads()).toBe(before + 1)
+    // and that read is what everyone gets next
+    await getJson(`/api/position/${OWNER}?fresh=1`, routed(db))
+    await getJson(`/api/position/${OWNER}`, routed(db))
+    expect(reads()).toBe(before + 1)
   })
 
   it('before the router is deployed: the live aToken balance and zeros for what Accrue tracks, no log query', async () => {
@@ -622,10 +712,18 @@ describe('GET /api/position/:evm and the router log scan', () => {
     expect(r.body.assets.USDT0.principal).toBe('1000199')
   })
 
-  it('a D1 failure while reading Accrue holdings is db_error, not an RPC outage', async () => {
+  it('a D1 failure while reading Accrue holdings still answers the live balances, partial with db_error', async () => {
     world()
     const DB = { prepare: () => ({ bind: () => ({ all: async () => { throw new Error('D1_ERROR: internal') }, first: async () => { throw new Error('D1_ERROR: internal') } }) }) }
     const r = await getJson(`/api/position/${OWNER}`, routed(DB))
-    expect(r).toMatchObject({ status: 500, body: { error: 'INTERNAL', detail: { reason: 'db_error' } } })
+    expect(r.status).toBe(200)
+    expect(r.body).toEqual(partialBody('db_error'))
+  })
+
+  it('no Polygon RPC answering the balance read is still 503: there is nothing to show', async () => {
+    const chain = world()
+    chain.onCall = () => new RpcError('upstream down', -32603)
+    const r = await getJson(`/api/position/${OWNER}`, routed(new FakeD1()))
+    expect(r).toMatchObject({ status: 503, body: { error: 'RPC_UNAVAILABLE', detail: { reason: 'polygon_rpc' } } })
   })
 })

@@ -52,12 +52,15 @@ export class RpcError {
   ) {}
 }
 export const TIMEOUT = Symbol('timeout')
+/** A node that never answers: the request hangs until the caller aborts it, like a real stalled fetch. */
+export const HANG = Symbol('hang')
 
 type Handler = (params: unknown[], url: string) => unknown
 
 /**
  * JSON-RPC chain behind a stubbed fetch. Every URL hits the same chain; per-URL behaviour (one node slow, another
- * refusing) goes through `onSend`. Return RpcError for an error response, TIMEOUT to throw like an aborted fetch.
+ * refusing) goes through `onSend`. Return RpcError for an error response, TIMEOUT to throw like an aborted fetch,
+ * HANG for a node that never answers.
  */
 export class FakeChain {
   calls: { url: string; method: string; params: unknown[] }[] = []
@@ -119,11 +122,18 @@ export class FakeChain {
     }
   }
 
-  fetch = async (input: unknown, init?: { body?: string }) => {
+  fetch = async (input: unknown, init?: { body?: string; signal?: AbortSignal | null }) => {
     const url = String(input)
     const req = JSON.parse(String(init?.body)) as { id: number; method: string; params?: unknown[] }
     this.calls.push({ url, method: req.method, params: req.params ?? [] })
     const out = await this.handle(req.method, req.params ?? [], url)
+    if (out === HANG) {
+      await new Promise((_, reject) => {
+        const abort = () => reject(new DOMException('The operation was aborted', 'AbortError'))
+        if (init?.signal?.aborted) abort()
+        init?.signal?.addEventListener('abort', abort)
+      })
+    }
     if (out === TIMEOUT) throw new DOMException('The operation was aborted due to timeout', 'TimeoutError')
     if (out instanceof RpcError)
       return Response.json({ jsonrpc: '2.0', id: req.id, error: { code: out.code, message: out.message, data: out.data } })

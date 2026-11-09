@@ -10,6 +10,8 @@ crons = ["* * * * *"]
 [vars]
 NIM_RPCS = "https://rpc.nimiqwatch.com"
 POLYGON_RPCS = "https://polygon-bor-rpc.publicnode.com,https://1rpc.io/matic,https://polygon.drpc.org"
+# router logs: nodes that serve eth_getLogs over a whole 1,800-block chunk (1rpc stops at 50 blocks)
+POLYGON_LOG_RPCS = "https://polygon-bor-rpc.publicnode.com,https://polygon.drpc.org"
 RELAYER_ADDRESS = "0x6967c6f5cAD390E5D506974d8A8Cd2e4e0374057"
 ROUTER_ADDRESS = "0x7523972ca2309B7e1a71A870D54eCFe96e71280b"
 ROUTER_DEPLOY_BLOCK = "97015445"
