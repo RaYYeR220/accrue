@@ -309,6 +309,19 @@ describe('/api/pools and /api/check', () => {
     await fetchCheck('NQ09 NMEX 1FAS 6BKD JDG1 GC0F XGM3 Q49B VL90', f as unknown as typeof fetch)
     expect(f.mock.calls[0]![0]).toBe('/api/check/NQ09NMEX1FAS6BKDJDG1GC0FXGM3Q49BVL90')
   })
+
+  it('still works in a WebView without AbortSignal.timeout', async () => {
+    const timeout = AbortSignal.timeout
+    Object.defineProperty(AbortSignal, 'timeout', { value: undefined, configurable: true, writable: true })
+    try {
+      const f = vi.fn(async (_url: string) => Response.json({ staker: null, windowDays: 7 }))
+      expect(await fetchCheck('NQ09 NMEX 1FAS 6BKD JDG1 GC0F XGM3 Q49B VL90', f as unknown as typeof fetch)).toMatchObject({ staker: null })
+      const p = vi.fn(async (_url: string) => Response.json({ asOf: 1, windowDays: 7, pools: [] }))
+      expect((await fetchPools('mainnet', p as unknown as typeof fetch)).pools).toEqual([])
+    } finally {
+      Object.defineProperty(AbortSignal, 'timeout', { value: timeout, configurable: true, writable: true })
+    }
+  })
 })
 
 describe('parsePolicy', () => {

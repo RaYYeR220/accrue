@@ -1,4 +1,5 @@
 import { normalizeAddress, VERDICTS, type Staker, type Verdict } from '@accrue/shared'
+import { timeoutSignal } from '../../lib/util'
 import { HttpError } from '../../providers/errors'
 import type { StakingPolicy } from './unstake'
 
@@ -153,7 +154,9 @@ function testnetRow(r: unknown): PoolRow | null {
 }
 
 async function getJson(url: string, f: typeof fetch): Promise<unknown> {
-  const res = await f(url, { signal: AbortSignal.timeout(10_000) })
+  // some WebViews lack AbortSignal.timeout: no timeout beats a TypeError
+  const signal = timeoutSignal(10_000)
+  const res = await f(url, signal ? { signal } : {})
   const body: unknown = await res.json().catch(() => null)
   if (!res.ok) throw new HttpError(res.status, body)
   return body
