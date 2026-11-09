@@ -54,7 +54,7 @@ in one shared campaign and reports it as one test.
 
 <!-- numbers:contracts -->
 
-26 tests in 3 suites, 26 passed, on a Polygon fork pinned to block 96,900,000 (forge 1.8.3, recorded 2026-11-08):
+26 tests in 3 suites, 26 passed, on a Polygon fork pinned to block 96,900,000 (forge 1.8.3, recorded 2026-11-09):
 
 - `test/AccrueRouter.fork.t.sol`: 22 tests, 22 passed
 - `test/AccrueRouter.invariant.t.sol`: 1 test, 1 passed
@@ -63,7 +63,7 @@ in one shared campaign and reports it as one test.
 - fuzz `testFuzz_withdrawAmount`: 256 runs
 - invariant campaign (both invariants share it; forge reports it as `invariant_ownersOnlyReceive`): 64 runs, 1,280 handler calls, 0 reverts
 
-`forge coverage` (recorded 2026-11-08):
+`forge coverage` (recorded 2026-11-09):
 
 | File | Lines | Statements | Branches | Functions |
 |---|---|---|---|---|

@@ -2,10 +2,10 @@
   "source": "coverage",
   "tool": "forge 1.8.3",
   "command": "cd contracts && forge coverage --report summary",
-  "ranAt": "2026-11-08T08:36:04.511Z",
-  "commit": "352557255f1713d779641b9b047eab29d2638fad",
+  "ranAt": "2026-11-09T15:08:46.613Z",
+  "commit": "615e4ff26992c83c6e0b3548648d57fbee2b7c7e",
   "testedCodeMatchesCommit": true,
-  "wallMs": 97569,
+  "wallMs": 106564,
   "ok": true,
   "files": [
     {

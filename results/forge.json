@@ -2,11 +2,11 @@
   "source": "forge",
   "tool": "forge 1.8.3",
   "command": "cd contracts && forge test --json",
-  "ranAt": "2026-11-08T08:34:26.164Z",
-  "commit": "352557255f1713d779641b9b047eab29d2638fad",
+  "ranAt": "2026-11-09T15:06:55.053Z",
+  "commit": "615e4ff26992c83c6e0b3548648d57fbee2b7c7e",
   "testedCodeMatchesCommit": true,
   "forkBlock": 96900000,
-  "wallMs": 249913,
+  "wallMs": 222790,
   "ok": true,
   "suites": [
     {

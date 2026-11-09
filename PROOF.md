@@ -26,6 +26,8 @@ Router: [`0x7523972ca2309B7e1a71A870D54eCFe96e71280b`](https://polygonscan.com/a
 | deployment | [`0xb0e01981…4b91e0`](https://polygonscan.com/tx/0xb0e019819a9db1ad0b2733bab4db906d7ca452586d08c158ece116c1294b91e0) | 97,015,445 | 2026-11-09 12:50:24 | created the router |
 | deposit | [`0x75059f00…bf72f4`](https://polygonscan.com/tx/0x75059f003c1ad48cfb85e2df4c21137d9f2563985b4c89076655bfca15bf72f4) | 97,015,602 | 2026-11-09 12:54:19 | Supplied for 0x1ed03e…, sent by 0x6967c6… |
 | withdraw | [`0x3f9590b3…4c32f6`](https://polygonscan.com/tx/0x3f9590b321813663d1b8dbbb59c393be3ac981c1e6e5bfafa630937cfc4c32f6) | 97,015,612 | 2026-11-09 12:54:34 | Withdrawn for 0x1ed03e…, sent by 0x6967c6… |
+| first $1.00 deposit from the app | [`0x05bde28c…0a7270`](https://polygonscan.com/tx/0x05bde28ce9fda79fbbd5f10efc15eb34dcfb43c6b90b04bddc7cdafacc0a7270) | 97,017,136 | 2026-11-09 13:32:40 | Supplied for 0xa125b9…, sent by 0x6967c6… |
+| withdrawal from the app | [`0x19290f6d…24c45e`](https://polygonscan.com/tx/0x19290f6de9f5741a263c15a8bd487221af88e7d0cf84f2e46b3e1d6ad324c45e) | 97,017,374 | 2026-11-09 13:38:37 | Withdrawn for 0xa125b9…, sent by 0x6967c6… |
 
 <!-- /numbers:polygon-proof -->
 
@@ -109,25 +111,25 @@ pinned in `app/test/unstake.test.ts`.
 
 <!-- numbers:pools -->
 
-From [`accrue.pages.dev/api/pools`](https://accrue.pages.dev/api/pools), fetched 2026-11-09 12:55 UTC; verdicts computed at 2026-11-09 12:55 UTC; indexed data reaches 2026-11-09 11:27 UTC to 2026-11-09 12:49 UTC depending on the pool, 7-day window. The app shows the same rows, live.
+From [`accrue.pages.dev/api/pools`](https://accrue.pages.dev/api/pools), fetched 2026-11-09 16:22 UTC; verdicts computed at 2026-11-09 16:21 UTC; indexed data reaches 2026-11-09 14:29 UTC to 2026-11-09 15:51 UTC depending on the pool, 7-day window. The app shows the same rows, live.
 
 | Pool | Pays | Fee | Verdict | Paid of earnings | Promised |
 |---|---|---:|---|---:|---:|
-| Garuda Pool | restakes | 5 % | Paid as promised | 95.01 % | 95.00 % |
+| Garuda Pool | restakes | 5 % | Paid as promised | 95.06 % | 95.00 % |
 | ImpactZero stake | restakes | 0 % | Paid as promised | 100.00 % | 100.00 % |
-| Keyring Staking | restakes | 5 % | Paid as promised | 100.02 % | 95.00 % |
-| Mint Pool | restakes | 5 % | Paid as promised | 95.00 % | 95.00 % |
+| Keyring Staking | restakes | 5 % | Paid as promised | 100.26 % | 95.00 % |
+| Mint Pool | restakes | 5 % | Paid as promised | 94.94 % | 95.00 % |
 | Nimiq Base Staking | restakes | 0 % | Paid as promised | 100.00 % | 100.00 % |
-| Nimiq.Fun | to wallet | 2.5 % | Paid as promised | 96.49 % | 97.50 % |
-| NimiqCafe Staking | restakes | 3 % | Paid as promised | 99.61 % | 97.00 % |
-| NimiqHub Staking | restakes | 5 % | Paid as promised | 95.72 % | 95.00 % |
-| NimiqPocket | restakes | 1 % | Paid as promised | 99.81 % | 99.00 % |
-| ObsidianStake | to wallet | 5 % | Paid as promised | 241.65 % | 95.00 % |
-| Ritvars Staking | restakes | 2 % | Paid as promised | 97.99 % | 98.00 % |
-| Siam Pool | restakes | 3 % | Paid as promised | 97.17 % | 97.00 % |
+| Nimiq.Fun | to wallet | 2.5 % | Paid as promised | 96.86 % | 97.50 % |
+| NimiqCafe Staking | restakes | 3 % | Paid as promised | 99.62 % | 97.00 % |
+| NimiqHub Staking | restakes | 5 % | Paid as promised | 95.84 % | 95.00 % |
+| NimiqPocket | restakes | 1 % | Paid as promised | 99.80 % | 99.00 % |
+| ObsidianStake | to wallet | 5 % | Paid as promised | 229.68 % | 95.00 % |
+| Ritvars Staking | restakes | 2 % | Paid as promised | 97.83 % | 98.00 % |
+| Siam Pool | restakes | 3 % | Paid as promised | 97.21 % | 97.00 % |
 | $NIM_pool | restakes | 0 % | Not enough data | 95.31 % | 100.00 % |
 | CHIPMUNK POOL | to wallet | 5 % | Not enough data | – | 95.00 % |
-| nim.re Staking Pool | restakes | 3.33 % | Not enough data | 87.06 % | 96.67 % |
+| nim.re Staking Pool | restakes | 3.33 % | Not enough data | 87.18 % | 96.67 % |
 | NODENIMIQ1.NIMIQ-JU.FR by &#64;Ju | restakes | 1 % | Not enough data | – | 99.00 % |
 | NODENIMIQ2.NIMIQ-JU.FR by &#64;Ju | restakes | 1 % | Not enough data | – | 99.00 % |
 | Synapse LN - Nimiq | restakes | 1 % | Not enough data | – | 99.00 % |
@@ -147,12 +149,12 @@ scoreboard on [accrue.pages.dev](https://accrue.pages.dev), and the raw rows at
 
 | Suite | Command | Tests | Result | Detail | Recorded |
 |---|---|---:|---|---|---|
-| Router (Foundry, Polygon fork) | `cd contracts && forge test` | 26 | 26 passed | 3 suites; 2 fuzz tests at 256 runs; invariant campaign 64 runs × 20 calls | 2026-11-08, forge 1.8.3 |
-| Shared logic: permits, payout math | `pnpm --filter @accrue/shared test` | 66 | 66 passed | 4 files | 2026-11-08, vitest 3.2.4 |
-| Worker: relayer, indexer, API | `pnpm --filter @accrue/worker test` | 249 | 249 passed | 17 files | 2026-11-08, vitest 3.2.4 |
-| App: flows, models, providers | `pnpm --filter @accrue/app test` | 498 | 498 passed | 28 files | 2026-11-08, vitest 3.2.4 |
-| App end to end (Playwright) | `pnpm --filter @accrue/app e2e` | 171 | 166 passed, 5 skipped | app-375 45, app-430 45, desktop-1440 27, mobile-375 27, wide-1920 27 | 2026-11-08, playwright 1.64.1 |
-| **Total** | | **1,010** | 1,005 passed, 5 skipped | | |
+| Router (Foundry, Polygon fork) | `cd contracts && forge test` | 26 | 26 passed | 3 suites; 2 fuzz tests at 256 runs; invariant campaign 64 runs × 20 calls | 2026-11-09, forge 1.8.3 |
+| Shared logic: permits, payout math | `pnpm --filter @accrue/shared test` | 73 | 73 passed | 4 files | 2026-11-09, vitest 3.2.4 |
+| Worker: relayer, indexer, API | `pnpm --filter @accrue/worker test` | 260 | 260 passed | 17 files | 2026-11-09, vitest 3.2.4 |
+| App: flows, models, providers | `pnpm --filter @accrue/app test` | 508 | 508 passed | 28 files | 2026-11-09, vitest 3.2.4 |
+| App end to end (Playwright) | `pnpm --filter @accrue/app e2e` | 173 | 168 passed, 5 skipped | app-375 46, app-430 46, desktop-1440 27, mobile-375 27, wide-1920 27 | 2026-11-09, playwright 1.64.1 |
+| **Total** | | **1,040** | 1,035 passed, 5 skipped | | |
 
 Recorded by `node scripts/collect-results.mjs` into [`results/`](results/). The skipped end-to-end cases are QR-code checks that apply only to a computer or only to a phone viewport.
 
@@ -162,7 +164,7 @@ Recorded by `node scripts/collect-results.mjs` into [`results/`](results/). The 
 
 <!-- numbers:contracts -->
 
-26 tests in 3 suites, 26 passed, on a Polygon fork pinned to block 96,900,000 (forge 1.8.3, recorded 2026-11-08):
+26 tests in 3 suites, 26 passed, on a Polygon fork pinned to block 96,900,000 (forge 1.8.3, recorded 2026-11-09):
 
 - `test/AccrueRouter.fork.t.sol`: 22 tests, 22 passed
 - `test/AccrueRouter.invariant.t.sol`: 1 test, 1 passed
@@ -171,7 +173,7 @@ Recorded by `node scripts/collect-results.mjs` into [`results/`](results/). The 
 - fuzz `testFuzz_withdrawAmount`: 256 runs
 - invariant campaign (both invariants share it; forge reports it as `invariant_ownersOnlyReceive`): 64 runs, 1,280 handler calls, 0 reverts
 
-`forge coverage` (recorded 2026-11-08):
+`forge coverage` (recorded 2026-11-09):
 
 | File | Lines | Statements | Branches | Functions |
 |---|---|---|---|---|

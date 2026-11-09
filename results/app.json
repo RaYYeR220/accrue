@@ -2,21 +2,21 @@
   "source": "app",
   "tool": "vitest 3.2.4",
   "command": "pnpm --filter @accrue/app test",
-  "ranAt": "2026-11-08T08:49:48.887Z",
-  "commit": "8a47efec589ded4fea899a5bad8ed12dd070bac5",
+  "ranAt": "2026-11-09T15:13:43.431Z",
+  "commit": "615e4ff26992c83c6e0b3548648d57fbee2b7c7e",
   "testedCodeMatchesCommit": true,
-  "wallMs": 13490,
+  "wallMs": 51939,
   "ok": true,
   "files": 28,
-  "tests": 498,
-  "passed": 498,
+  "tests": 508,
+  "passed": 508,
   "failed": 0,
   "skipped": 0,
   "byFile": [
     {
       "file": "app/test/aave.test.ts",
-      "tests": 8,
-      "passed": 8,
+      "tests": 14,
+      "passed": 14,
       "failed": 0,
       "skipped": 0
     },
@@ -134,8 +134,8 @@
     },
     {
       "file": "app/test/landing-data.test.ts",
-      "tests": 21,
-      "passed": 21,
+      "tests": 22,
+      "passed": 22,
       "failed": 0,
       "skipped": 0
     },
@@ -197,8 +197,8 @@
     },
     {
       "file": "app/test/staking.test.ts",
-      "tests": 54,
-      "passed": 54,
+      "tests": 57,
+      "passed": 57,
       "failed": 0,
       "skipped": 0
     },

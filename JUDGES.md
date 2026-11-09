@@ -37,25 +37,25 @@ current):
 
 <!-- numbers:pools -->
 
-From [`accrue.pages.dev/api/pools`](https://accrue.pages.dev/api/pools), fetched 2026-11-09 12:55 UTC; verdicts computed at 2026-11-09 12:55 UTC; indexed data reaches 2026-11-09 11:27 UTC to 2026-11-09 12:49 UTC depending on the pool, 7-day window. The app shows the same rows, live.
+From [`accrue.pages.dev/api/pools`](https://accrue.pages.dev/api/pools), fetched 2026-11-09 16:22 UTC; verdicts computed at 2026-11-09 16:21 UTC; indexed data reaches 2026-11-09 14:29 UTC to 2026-11-09 15:51 UTC depending on the pool, 7-day window. The app shows the same rows, live.
 
 | Pool | Pays | Fee | Verdict | Paid of earnings | Promised |
 |---|---|---:|---|---:|---:|
-| Garuda Pool | restakes | 5 % | Paid as promised | 95.01 % | 95.00 % |
+| Garuda Pool | restakes | 5 % | Paid as promised | 95.06 % | 95.00 % |
 | ImpactZero stake | restakes | 0 % | Paid as promised | 100.00 % | 100.00 % |
-| Keyring Staking | restakes | 5 % | Paid as promised | 100.02 % | 95.00 % |
-| Mint Pool | restakes | 5 % | Paid as promised | 95.00 % | 95.00 % |
+| Keyring Staking | restakes | 5 % | Paid as promised | 100.26 % | 95.00 % |
+| Mint Pool | restakes | 5 % | Paid as promised | 94.94 % | 95.00 % |
 | Nimiq Base Staking | restakes | 0 % | Paid as promised | 100.00 % | 100.00 % |
-| Nimiq.Fun | to wallet | 2.5 % | Paid as promised | 96.49 % | 97.50 % |
-| NimiqCafe Staking | restakes | 3 % | Paid as promised | 99.61 % | 97.00 % |
-| NimiqHub Staking | restakes | 5 % | Paid as promised | 95.72 % | 95.00 % |
-| NimiqPocket | restakes | 1 % | Paid as promised | 99.81 % | 99.00 % |
-| ObsidianStake | to wallet | 5 % | Paid as promised | 241.65 % | 95.00 % |
-| Ritvars Staking | restakes | 2 % | Paid as promised | 97.99 % | 98.00 % |
-| Siam Pool | restakes | 3 % | Paid as promised | 97.17 % | 97.00 % |
+| Nimiq.Fun | to wallet | 2.5 % | Paid as promised | 96.86 % | 97.50 % |
+| NimiqCafe Staking | restakes | 3 % | Paid as promised | 99.62 % | 97.00 % |
+| NimiqHub Staking | restakes | 5 % | Paid as promised | 95.84 % | 95.00 % |
+| NimiqPocket | restakes | 1 % | Paid as promised | 99.80 % | 99.00 % |
+| ObsidianStake | to wallet | 5 % | Paid as promised | 229.68 % | 95.00 % |
+| Ritvars Staking | restakes | 2 % | Paid as promised | 97.83 % | 98.00 % |
+| Siam Pool | restakes | 3 % | Paid as promised | 97.21 % | 97.00 % |
 | $NIM_pool | restakes | 0 % | Not enough data | 95.31 % | 100.00 % |
 | CHIPMUNK POOL | to wallet | 5 % | Not enough data | – | 95.00 % |
-| nim.re Staking Pool | restakes | 3.33 % | Not enough data | 87.06 % | 96.67 % |
+| nim.re Staking Pool | restakes | 3.33 % | Not enough data | 87.18 % | 96.67 % |
 | NODENIMIQ1.NIMIQ-JU.FR by &#64;Ju | restakes | 1 % | Not enough data | – | 99.00 % |
 | NODENIMIQ2.NIMIQ-JU.FR by &#64;Ju | restakes | 1 % | Not enough data | – | 99.00 % |
 | Synapse LN - Nimiq | restakes | 1 % | Not enough data | – | 99.00 % |

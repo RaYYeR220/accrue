@@ -183,12 +183,12 @@ Worker and the scripts all read.
 
 | Suite | Command | Tests | Result | Detail | Recorded |
 |---|---|---:|---|---|---|
-| Router (Foundry, Polygon fork) | `cd contracts && forge test` | 26 | 26 passed | 3 suites; 2 fuzz tests at 256 runs; invariant campaign 64 runs × 20 calls | 2026-11-08, forge 1.8.3 |
-| Shared logic: permits, payout math | `pnpm --filter @accrue/shared test` | 66 | 66 passed | 4 files | 2026-11-08, vitest 3.2.4 |
-| Worker: relayer, indexer, API | `pnpm --filter @accrue/worker test` | 249 | 249 passed | 17 files | 2026-11-08, vitest 3.2.4 |
-| App: flows, models, providers | `pnpm --filter @accrue/app test` | 498 | 498 passed | 28 files | 2026-11-08, vitest 3.2.4 |
-| App end to end (Playwright) | `pnpm --filter @accrue/app e2e` | 171 | 166 passed, 5 skipped | app-375 45, app-430 45, desktop-1440 27, mobile-375 27, wide-1920 27 | 2026-11-08, playwright 1.64.1 |
-| **Total** | | **1,010** | 1,005 passed, 5 skipped | | |
+| Router (Foundry, Polygon fork) | `cd contracts && forge test` | 26 | 26 passed | 3 suites; 2 fuzz tests at 256 runs; invariant campaign 64 runs × 20 calls | 2026-11-09, forge 1.8.3 |
+| Shared logic: permits, payout math | `pnpm --filter @accrue/shared test` | 73 | 73 passed | 4 files | 2026-11-09, vitest 3.2.4 |
+| Worker: relayer, indexer, API | `pnpm --filter @accrue/worker test` | 260 | 260 passed | 17 files | 2026-11-09, vitest 3.2.4 |
+| App: flows, models, providers | `pnpm --filter @accrue/app test` | 508 | 508 passed | 28 files | 2026-11-09, vitest 3.2.4 |
+| App end to end (Playwright) | `pnpm --filter @accrue/app e2e` | 173 | 168 passed, 5 skipped | app-375 46, app-430 46, desktop-1440 27, mobile-375 27, wide-1920 27 | 2026-11-09, playwright 1.64.1 |
+| **Total** | | **1,040** | 1,035 passed, 5 skipped | | |
 
 Recorded by `node scripts/collect-results.mjs` into [`results/`](results/). The skipped end-to-end cases are QR-code checks that apply only to a computer or only to a phone viewport.
 

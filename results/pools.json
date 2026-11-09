@@ -1,8 +1,8 @@
 {
   "source": "pools",
   "url": "https://accrue.pages.dev/api/pools",
-  "fetchedAt": "2026-11-09T12:55:38.470Z",
-  "asOf": 1794228904906,
+  "fetchedAt": "2026-11-09T16:22:50.448Z",
+  "asOf": 1794241264755,
   "windowDays": 7,
   "pools": [
     {
@@ -13,12 +13,12 @@
       "schedule": "Every minute",
       "stakers": 415,
       "verdict": "PAID_AS_PROMISED",
-      "ratio": 0.957216,
+      "ratio": 0.958424,
       "expectedRatio": 0.95,
-      "lastPayoutTs": 1794224131484,
-      "reachTs": 1794227236480,
+      "lastPayoutTs": 1794238468667,
+      "reachTs": 1794239123000,
       "reasons": [
-        "Paid 95.7% of earnings against 95.0% promised."
+        "Paid 95.8% of earnings against 95.0% promised."
       ]
     },
     {
@@ -29,13 +29,12 @@
       "schedule": "Every 4 hours",
       "stakers": 332,
       "verdict": "NOT_ENOUGH_DATA",
-      "ratio": 0.953066,
+      "ratio": 0.953094,
       "expectedRatio": 1,
       "lastPayoutTs": 1794225851911,
-      "reachTs": 1794228546552,
+      "reachTs": 1794234582242,
       "reasons": [
-        "Paid ratio within the uncertainty band; not conclusive.",
-        "The indexer is still catching up on recent transactions of this pool; the window uses the part it has."
+        "Paid ratio within the uncertainty band; not conclusive."
       ]
     },
     {
@@ -46,12 +45,12 @@
       "schedule": "Every 12 hours",
       "stakers": 154,
       "verdict": "PAID_AS_PROMISED",
-      "ratio": 2.416455,
+      "ratio": 2.296825,
       "expectedRatio": 0.95,
       "lastPayoutTs": 1794225604909,
-      "reachTs": 1794226759320,
+      "reachTs": 1794237690369,
       "reasons": [
-        "Paid 241.6% of earnings against 95.0% promised.",
+        "Paid 229.7% of earnings against 95.0% promised.",
         "Paid more than earned in this window (includes a one-off transfer)"
       ]
     },
@@ -63,12 +62,12 @@
       "schedule": "Every 3 hours",
       "stakers": 217,
       "verdict": "PAID_AS_PROMISED",
-      "ratio": 0.950025,
+      "ratio": 0.949405,
       "expectedRatio": 0.95,
-      "lastPayoutTs": 1794216968620,
-      "reachTs": 1794226639320,
+      "lastPayoutTs": 1794227718046,
+      "reachTs": 1794237570369,
       "reasons": [
-        "Paid 95.0% of earnings against 95.0% promised."
+        "Paid 94.9% of earnings against 95.0% promised."
       ]
     },
     {
@@ -79,10 +78,10 @@
       "schedule": "Every 3 hours",
       "stakers": 104,
       "verdict": "PAID_AS_PROMISED",
-      "ratio": 0.971741,
+      "ratio": 0.972063,
       "expectedRatio": 0.97,
-      "lastPayoutTs": 1794224238484,
-      "reachTs": 1794224846651,
+      "lastPayoutTs": 1794236088716,
+      "reachTs": 1794236433927,
       "reasons": [
         "Paid 97.2% of earnings against 97.0% promised."
       ]
@@ -95,10 +94,10 @@
       "schedule": "Payouts over 10 NIM are instant when NimiqPocket is elected .",
       "stakers": 195,
       "verdict": "PAID_AS_PROMISED",
-      "ratio": 0.998116,
+      "ratio": 0.997993,
       "expectedRatio": 0.99,
-      "lastPayoutTs": 1794227587775,
-      "reachTs": 1794227592954,
+      "lastPayoutTs": 1794238764758,
+      "reachTs": 1794238765760,
       "reasons": [
         "Paid 99.8% of earnings against 99.0% promised."
       ]
@@ -127,10 +126,10 @@
       "schedule": "Every 12 hours",
       "stakers": 283,
       "verdict": "NOT_ENOUGH_DATA",
-      "ratio": 0.870613,
+      "ratio": 0.871841,
       "expectedRatio": 0.9667,
-      "lastPayoutTs": 1794184760134,
-      "reachTs": 1794224368596,
+      "lastPayoutTs": 1794227785047,
+      "reachTs": 1794235896670,
       "reasons": [
         "Other outflows too large to conclude."
       ]
@@ -143,10 +142,10 @@
       "schedule": "Every 1 minute",
       "stakers": 64,
       "verdict": "PAID_AS_PROMISED",
-      "ratio": 0.996064,
+      "ratio": 0.996232,
       "expectedRatio": 0.97,
-      "lastPayoutTs": 1794228304272,
-      "reachTs": 1794228309271,
+      "lastPayoutTs": 1794239103002,
+      "reachTs": 1794239362123,
       "reasons": [
         "Paid 99.6% of earnings against 97.0% promised."
       ]
@@ -159,12 +158,12 @@
       "schedule": "Every 12 hours",
       "stakers": 172,
       "verdict": "PAID_AS_PROMISED",
-      "ratio": 0.97993,
+      "ratio": 0.978339,
       "expectedRatio": 0.98,
-      "lastPayoutTs": 1794185088298,
-      "reachTs": 1794225443908,
+      "lastPayoutTs": 1794228049170,
+      "reachTs": 1794236673927,
       "reasons": [
-        "Paid 98.0% of earnings against 98.0% promised."
+        "Paid 97.8% of earnings against 98.0% promised."
       ]
     },
     {
@@ -173,14 +172,14 @@
       "fee": 0.05,
       "payoutType": "restake",
       "schedule": "Every 12 hours",
-      "stakers": 262,
+      "stakers": 263,
       "verdict": "PAID_AS_PROMISED",
-      "ratio": 0.950051,
+      "ratio": 0.950615,
       "expectedRatio": 0.95,
-      "lastPayoutTs": 1794184705120,
-      "reachTs": 1794223651284,
+      "lastPayoutTs": 1794227723046,
+      "reachTs": 1794235061329,
       "reasons": [
-        "Paid 95.0% of earnings against 95.0% promised."
+        "Paid 95.1% of earnings against 95.0% promised."
       ]
     },
     {
@@ -191,10 +190,10 @@
       "schedule": "0 * * * *",
       "stakers": 72,
       "verdict": "CANT_VERIFY_ROUTED",
-      "ratio": 0.503476,
+      "ratio": 0.503465,
       "expectedRatio": 1,
-      "lastPayoutTs": 1794225617910,
-      "reachTs": 1794226759320,
+      "lastPayoutTs": 1794236416798,
+      "reachTs": 1794238645757,
       "reasons": [
         "49.7% of earnings leave the reward address to non-staker destinations."
       ]
@@ -207,12 +206,12 @@
       "schedule": "Every 12 hours",
       "stakers": 112,
       "verdict": "PAID_AS_PROMISED",
-      "ratio": 1.000235,
+      "ratio": 1.002604,
       "expectedRatio": 0.95,
-      "lastPayoutTs": 1794184896228,
-      "reachTs": 1794223651284,
+      "lastPayoutTs": 1794228211273,
+      "reachTs": 1794235181329,
       "reasons": [
-        "Paid 100.0% of earnings against 95.0% promised."
+        "Paid 100.3% of earnings against 95.0% promised."
       ]
     },
     {
@@ -223,12 +222,12 @@
       "schedule": "Every 12 hours",
       "stakers": 44,
       "verdict": "PAID_AS_PROMISED",
-      "ratio": 0.964929,
+      "ratio": 0.968636,
       "expectedRatio": 0.975,
-      "lastPayoutTs": 1794185310359,
-      "reachTs": 1794224368596,
+      "lastPayoutTs": 1794228132272,
+      "reachTs": 1794235181329,
       "reasons": [
-        "Paid 96.5% of earnings against 97.5% promised."
+        "Paid 96.9% of earnings against 97.5% promised."
       ]
     },
     {
@@ -239,10 +238,10 @@
       "schedule": "",
       "stakers": 15,
       "verdict": "PAID_AS_PROMISED",
-      "ratio": 0.99998,
+      "ratio": 0.999989,
       "expectedRatio": 1,
-      "lastPayoutTs": 1794226112186,
-      "reachTs": 1794226161186,
+      "lastPayoutTs": 1794237880372,
+      "reachTs": 1794237929504,
       "reasons": [
         "Paid 100.0% of earnings against 100.0% promised."
       ]
@@ -255,13 +254,12 @@
       "schedule": "",
       "stakers": 24,
       "verdict": "PAID_AS_PROMISED",
-      "ratio": 0.999994,
+      "ratio": 0.999995,
       "expectedRatio": 1,
-      "lastPayoutTs": 1794227824047,
-      "reachTs": 1794227831075,
+      "lastPayoutTs": 1794239464183,
+      "reachTs": 1794239481184,
       "reasons": [
-        "Paid 100.0% of earnings against 100.0% promised.",
-        "0.0% of earnings was paid to recipients not checked against the staker set."
+        "Paid 100.0% of earnings against 100.0% promised."
       ]
     },
     {
@@ -291,9 +289,9 @@
       "ratio": null,
       "expectedRatio": 0.99,
       "lastPayoutTs": 1794178852596,
-      "reachTs": 1794228552045,
+      "reachTs": 1794234583723,
       "reasons": [
-        "Only 2 complete payout cycle(s) with 462997721 luna earned in the window; need at least 3."
+        "Only 2 complete payout cycles with 4,629.98 NIM earned in the window; need at least 3."
       ]
     },
     {
@@ -307,9 +305,9 @@
       "ratio": null,
       "expectedRatio": 0.99,
       "lastPayoutTs": null,
-      "reachTs": 1794227238091,
+      "reachTs": 1794239123751,
       "reasons": [
-        "Only 0 complete payout cycle(s) with 0 luna earned in the window; need at least 3."
+        "No rewards earned in the window yet."
       ]
     },
     {
@@ -323,9 +321,9 @@
       "ratio": null,
       "expectedRatio": 0.99,
       "lastPayoutTs": null,
-      "reachTs": 1794227237091,
+      "reachTs": 1794239121751,
       "reasons": [
-        "Only 0 complete payout cycle(s) with 0 luna earned in the window; need at least 3."
+        "No rewards earned in the window yet."
       ]
     },
     {
@@ -339,9 +337,9 @@
       "ratio": null,
       "expectedRatio": 0.95,
       "lastPayoutTs": null,
-      "reachTs": 1794225444120,
+      "reachTs": 1794236674794,
       "reasons": [
-        "Only 0 complete payout cycle(s) with 0 luna earned in the window; need at least 3."
+        "No rewards earned in the window yet."
       ]
     }
   ]
