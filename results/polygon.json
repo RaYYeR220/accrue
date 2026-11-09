@@ -1,8 +1,61 @@
 {
   "source": "polygon",
-  "fetchedAt": "2026-11-08T08:39:30.964Z",
-  "router": null,
-  "deployBlock": null,
+  "fetchedAt": "2026-11-09T12:55:38.473Z",
+  "router": "0x7523972ca2309B7e1a71A870D54eCFe96e71280b",
+  "deployBlock": 97015445,
   "problems": [],
-  "txs": []
+  "facts": {
+    "hasCode": true,
+    "codeHash": "0x6ef6930f732cc0ceddec9bc1fcd42c20b3d185decdc9083bc6f3133a22bb7ba0",
+    "codeHashMatchesRecord": true,
+    "codeMatchesBuild": true,
+    "wiredToAaveRegistry": true,
+    "sourcify": "exact_match",
+    "sourceVerified": true
+  },
+  "txs": [
+    {
+      "label": "deployment",
+      "deployment": true,
+      "hash": "0xb0e019819a9db1ad0b2733bab4db906d7ca452586d08c158ece116c1294b91e0",
+      "block": 97015445,
+      "time": "2026-11-09 12:50:24",
+      "from": "0x1ed03edc67a8692a2f82de8885366db9a2883d0d",
+      "created": "0x7523972ca2309b7e1a71a870d54ecfe96e71280b",
+      "events": [],
+      "result": "created the router"
+    },
+    {
+      "label": "deposit",
+      "deployment": false,
+      "hash": "0x75059f003c1ad48cfb85e2df4c21137d9f2563985b4c89076655bfca15bf72f4",
+      "block": 97015602,
+      "time": "2026-11-09 12:54:19",
+      "from": "0x6967c6f5cad390e5d506974d8a8cd2e4e0374057",
+      "created": null,
+      "events": [
+        {
+          "name": "Supplied",
+          "owner": "0x1ed03edc67a8692a2f82de8885366db9a2883d0d"
+        }
+      ],
+      "result": "Supplied for 0x1ed03e…, sent by 0x6967c6…"
+    },
+    {
+      "label": "withdraw",
+      "deployment": false,
+      "hash": "0x3f9590b321813663d1b8dbbb59c393be3ac981c1e6e5bfafa630937cfc4c32f6",
+      "block": 97015612,
+      "time": "2026-11-09 12:54:34",
+      "from": "0x6967c6f5cad390e5d506974d8a8cd2e4e0374057",
+      "created": null,
+      "events": [
+        {
+          "name": "Withdrawn",
+          "owner": "0x1ed03edc67a8692a2f82de8885366db9a2883d0d"
+        }
+      ],
+      "result": "Withdrawn for 0x1ed03e…, sent by 0x6967c6…"
+    }
+  ]
 }

@@ -74,19 +74,19 @@ flowchart LR
   end
   fx["CoinGecko, CoinPaprika, Gate.io + Kraken, open.er-api.com"]
   app -->|"staking transactions"| nimprov --> staking
-  app -.->|"EIP-712 permit signature"| evmprov
-  app -.->|"signed permit"| relay
-  relay -.->|"supplyWithPermit / withdrawWithPermit, gas paid"| router
-  router -.-> aave
+  app -->|"EIP-712 permit signature"| evmprov
+  app -->|"signed permit"| relay
+  relay -->|"supplyWithPermit / withdrawWithPermit, gas paid"| router
+  router --> aave
   app -->|"verdicts, rates, positions"| api --> db
   api -->|"/api/aave, /api/position: eth_call"| aave
   api -->|"/api/rates"| fx
   idx -->|"rewards in, payouts out"| pools
   idx --> db
-  idx -.->|"Supplied / Withdrawn logs"| router
+  idx -->|"Supplied / Withdrawn logs"| router
 ```
 
-Solid lines are live. Dotted lines wait for the router deployment: until `packages/shared/src/deployments.json` names the router, the app asks for no permit, the relayer has nothing to call, and the app says dollar deposits are not open yet.
+Solid lines are live.
 
 <!-- /numbers:architecture -->
 
@@ -115,7 +115,7 @@ network and what went out to stakers. Over the last
 last paid against its published schedule. The rules, thresholds and their validation are in
 [METHODOLOGY.md](METHODOLOGY.md).
 
-**Router:** <!-- numbers:router -->deployment pending: no address is published yet<!-- /numbers:router -->.
+**Router:** <!-- numbers:router -->[`0x7523972ca2309B7e1a71A870D54eCFe96e71280b`](https://polygonscan.com/address/0x7523972ca2309B7e1a71A870D54eCFe96e71280b) on Polygon (chain 137), deployed in block 97,015,445<!-- /numbers:router -->.
 
 ## Nimiq integration
 

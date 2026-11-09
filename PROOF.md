@@ -14,7 +14,18 @@ node scripts/verify-onchain.mjs
 
 <!-- numbers:polygon-proof -->
 
-Deployment pending. Once the router is deployed, this section lists its deployment transaction and the first real deposit and withdrawal, each with its block and date, read back by `scripts/verify-onchain.mjs`.
+Router: [`0x7523972ca2309B7e1a71A870D54eCFe96e71280b`](https://polygonscan.com/address/0x7523972ca2309B7e1a71A870D54eCFe96e71280b), source on [Sourcify](https://repo.sourcify.dev/137/0x7523972ca2309B7e1a71A870D54eCFe96e71280b).
+
+- runtime code keccak256 `0x6ef6930f732cc0ceddec9bc1fcd42c20b3d185decdc9083bc6f3133a22bb7ba0`, equal to the recorded `codeHash`: yes
+- equal to a local `forge build` of `contracts/src` (immutable slots aside): yes
+- `POOL()` and `aTokenOf()` match Aave's registry: yes
+- Sourcify: exact_match
+
+| What | Transaction | Block | Date (UTC) | Result |
+|---|---|---:|---|---|
+| deployment | [`0xb0e01981…4b91e0`](https://polygonscan.com/tx/0xb0e019819a9db1ad0b2733bab4db906d7ca452586d08c158ece116c1294b91e0) | 97,015,445 | 2026-11-09 12:50:24 | created the router |
+| deposit | [`0x75059f00…bf72f4`](https://polygonscan.com/tx/0x75059f003c1ad48cfb85e2df4c21137d9f2563985b4c89076655bfca15bf72f4) | 97,015,602 | 2026-11-09 12:54:19 | Supplied for 0x1ed03e…, sent by 0x6967c6… |
+| withdraw | [`0x3f9590b3…4c32f6`](https://polygonscan.com/tx/0x3f9590b321813663d1b8dbbb59c393be3ac981c1e6e5bfafa630937cfc4c32f6) | 97,015,612 | 2026-11-09 12:54:34 | Withdrawn for 0x1ed03e…, sent by 0x6967c6… |
 
 <!-- /numbers:polygon-proof -->
 
@@ -78,31 +89,31 @@ pinned in `app/test/unstake.test.ts`.
 
 <!-- numbers:pools -->
 
-From [`accrue.pages.dev/api/pools`](https://accrue.pages.dev/api/pools), fetched 2026-11-08 08:49 UTC; verdicts computed at 2026-11-08 08:49 UTC; indexed data reaches 2026-11-08 07:14 UTC to 2026-11-08 08:21 UTC depending on the pool, 7-day window. The app shows the same rows, live.
+From [`accrue.pages.dev/api/pools`](https://accrue.pages.dev/api/pools), fetched 2026-11-09 12:55 UTC; verdicts computed at 2026-11-09 12:55 UTC; indexed data reaches 2026-11-09 11:27 UTC to 2026-11-09 12:49 UTC depending on the pool, 7-day window. The app shows the same rows, live.
 
 | Pool | Pays | Fee | Verdict | Paid of earnings | Promised |
 |---|---|---:|---|---:|---:|
-| Garuda Pool | restakes | 5 % | Paid as promised | 95.03 % | 95.00 % |
+| Garuda Pool | restakes | 5 % | Paid as promised | 95.01 % | 95.00 % |
 | ImpactZero stake | restakes | 0 % | Paid as promised | 100.00 % | 100.00 % |
-| Keyring Staking | restakes | 5 % | Paid as promised | 100.01 % | 95.00 % |
-| Mint Pool | restakes | 5 % | Paid as promised | 94.96 % | 95.00 % |
+| Keyring Staking | restakes | 5 % | Paid as promised | 100.02 % | 95.00 % |
+| Mint Pool | restakes | 5 % | Paid as promised | 95.00 % | 95.00 % |
 | Nimiq Base Staking | restakes | 0 % | Paid as promised | 100.00 % | 100.00 % |
-| Nimiq.Fun | to wallet | 2.5 % | Paid as promised | 95.77 % | 97.50 % |
-| NimiqCafe Staking | restakes | 3 % | Paid as promised | 99.60 % | 97.00 % |
-| NimiqHub Staking | restakes | 5 % | Paid as promised | 95.76 % | 95.00 % |
-| NimiqPocket | restakes | 1 % | Paid as promised | 99.78 % | 99.00 % |
-| ObsidianStake | to wallet | 5 % | Paid as promised | 221.55 % | 95.00 % |
-| Ritvars Staking | restakes | 2 % | Paid as promised | 97.90 % | 98.00 % |
-| Siam Pool | restakes | 3 % | Paid as promised | 97.30 % | 97.00 % |
-| $NIM_pool | restakes | 0 % | Not enough data | 95.30 % | 100.00 % |
+| Nimiq.Fun | to wallet | 2.5 % | Paid as promised | 96.49 % | 97.50 % |
+| NimiqCafe Staking | restakes | 3 % | Paid as promised | 99.61 % | 97.00 % |
+| NimiqHub Staking | restakes | 5 % | Paid as promised | 95.72 % | 95.00 % |
+| NimiqPocket | restakes | 1 % | Paid as promised | 99.81 % | 99.00 % |
+| ObsidianStake | to wallet | 5 % | Paid as promised | 241.65 % | 95.00 % |
+| Ritvars Staking | restakes | 2 % | Paid as promised | 97.99 % | 98.00 % |
+| Siam Pool | restakes | 3 % | Paid as promised | 97.17 % | 97.00 % |
+| $NIM_pool | restakes | 0 % | Not enough data | 95.31 % | 100.00 % |
 | CHIPMUNK POOL | to wallet | 5 % | Not enough data | – | 95.00 % |
-| nim.re Staking Pool | restakes | 3.33 % | Not enough data | 86.92 % | 96.67 % |
+| nim.re Staking Pool | restakes | 3.33 % | Not enough data | 87.06 % | 96.67 % |
 | NODENIMIQ1.NIMIQ-JU.FR by &#64;Ju | restakes | 1 % | Not enough data | – | 99.00 % |
 | NODENIMIQ2.NIMIQ-JU.FR by &#64;Ju | restakes | 1 % | Not enough data | – | 99.00 % |
 | Synapse LN - Nimiq | restakes | 1 % | Not enough data | – | 99.00 % |
 | Nimiq Surf | no payouts | 0 % | No payouts by design | – | 100.00 % |
 | Private Whalidator | no payouts | not listed | No payouts by design | – | – |
-| Nimiq Marketing Pool | restakes | 0 % | Can't verify (routed elsewhere) | 50.34 % | 100.00 % |
+| Nimiq Marketing Pool | restakes | 0 % | Can't verify (routed elsewhere) | 50.35 % | 100.00 % |
 
 <!-- /numbers:pools -->
 

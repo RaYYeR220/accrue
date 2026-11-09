@@ -3,7 +3,7 @@
 `AccrueRouter` has not had an external audit. This document records the in-house review of the contract, what
 was fixed, and the risks accepted on purpose.
 
-**Deployment:** <!-- numbers:router-status -->Not deployed yet: `packages/shared/src/deployments.json` holds `"router": null`, and until it names the router the app says plainly that dollar deposits are not open yet.<!-- /numbers:router-status -->
+**Deployment:** <!-- numbers:router-status -->Deployed at [`0x7523972ca2309B7e1a71A870D54eCFe96e71280b`](https://polygonscan.com/address/0x7523972ca2309B7e1a71A870D54eCFe96e71280b) ([Sourcify](https://repo.sourcify.dev/137/0x7523972ca2309B7e1a71A870D54eCFe96e71280b)).<!-- /numbers:router-status -->
 
 ## Reporting a vulnerability
 
