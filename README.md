@@ -134,7 +134,8 @@ Everything below runs inside Nimiq Pay through `@nimiq/mini-app-sdk` 0.2.5 and t
   (to confirm or fail every staking transaction after it is sent) and `getTransactionsByAddress` (Activity).
 - **Polygon through `window.ethereum`:** `eth_requestAccounts`, `eth_chainId`, `wallet_switchEthereumChain` and
   `wallet_addEthereumChain` (hex chain id `0x89`), `eth_signTypedData_v4` for the EIP-712 permits, and
-  `eth_sendTransaction` with `eth_getTransactionReceipt` only for the pay-the-fee-yourself fallback.
+  `eth_sendTransaction` only for the pay-the-fee-yourself fallback. Its receipt, like every Polygon balance,
+  is read from public Polygon RPCs, not through `window.ethereum`.
 - **Host context:** `nimiqPay.language` picks the language, `nimiqPay.userFiat` the currency every value is shown
   in (USD, EUR, CRC or GMD), and `nimiqPay.network` switches the NIM screens to testnet, with a badge.
 - **Mini App rules:** nothing asks the wallet before the first tap, one tap never opens two dialogs, a missing

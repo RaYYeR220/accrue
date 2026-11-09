@@ -4,8 +4,8 @@ dist-mock/
 .wrangler/
 out/
 cache/
-contracts/broadcast/*/31337/
-contracts/broadcast/**/dry-run/
+# forge's run logs; the deployment record is contracts/deployments/polygon.json
+contracts/broadcast/
 .env*
 *.pem
 .dev.vars
