@@ -6,6 +6,7 @@ import { toUiError, type UiError } from '../../providers/errors'
 import { evm } from '../../providers/evm'
 import { deposit } from './deposit'
 import { follow, report, type FlowOpts } from './flow'
+import { afterMove } from './usePosition'
 import { withdraw } from './withdraw'
 
 export interface DollarAction {
@@ -156,9 +157,10 @@ export function useDollarAction() {
   const queryClient = useQueryClient()
   useEffect(() => () => action.dispose(), [action])
   useEffect(() => {
-    // balances moved; a stale nonce may also mean the permit already landed through someone else
+    // balances moved; a stale nonce may also mean the permit already landed through someone else.
+    // Read past every cache, so "In Aave" and Withdraw follow at once.
     const moved = state.s === 'confirmed' || (state.s === 'failed' && state.error.code === 'PERMIT_NONCE_STALE')
-    if (moved) void queryClient.invalidateQueries({ queryKey: ['position'] })
+    if (moved) afterMove(queryClient)
   }, [state, queryClient])
   return { state, dispatch: action.dispatch, switchChain: action.switchChain, attach: action.attach }
 }

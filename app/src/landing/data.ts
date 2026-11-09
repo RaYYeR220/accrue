@@ -46,13 +46,15 @@ export interface CheckResult {
 
 export interface AssetPosition {
   aTokenBalance: bigint
-  scaledFromAccrue: bigint
-  principal: bigint
-  earned: bigint
+  // null when the API could not read the router's logs (a partial answer)
+  scaledFromAccrue: bigint | null
+  principal: bigint | null
+  earned: bigint | null
 }
 
 export interface PositionResult {
   assets: Partial<Record<AssetKey, AssetPosition>>
+  partial?: true
 }
 
 const ASSET_KEYS: readonly AssetKey[] = ['USDT0', 'USDC']
@@ -151,6 +153,9 @@ export function parseCheck(body: unknown): CheckResult {
 
 export function parsePosition(body: unknown): PositionResult {
   if (!isRecord(body) || !isRecord(body.assets)) throw new Error('position: bad envelope')
+  const partial = body.partial === true
+  // a partial answer has no Accrue figures; they stay unknown rather than read as 0
+  const tracked = (v: unknown, name: string, signed = false) => (partial && v === null ? null : toBig(v ?? 0, name, signed))
   const assets: PositionResult['assets'] = {}
   for (const key of ASSET_KEYS) {
     const a = body.assets[key]
@@ -158,12 +163,12 @@ export function parsePosition(body: unknown): PositionResult {
     if (!isRecord(a)) throw new Error(`position: bad ${key}`)
     assets[key] = {
       aTokenBalance: toBig(a.aTokenBalance, 'aTokenBalance'),
-      scaledFromAccrue: toBig(a.scaledFromAccrue ?? 0, 'scaledFromAccrue'),
-      principal: toBig(a.principal ?? 0, 'principal'),
-      earned: toBig(a.earned ?? 0, 'earned', true),
+      scaledFromAccrue: tracked(a.scaledFromAccrue, 'scaledFromAccrue'),
+      principal: tracked(a.principal, 'principal'),
+      earned: tracked(a.earned, 'earned', true),
     }
   }
-  return { assets }
+  return partial ? { assets, partial } : { assets }
 }
 
 export type CheckView =
@@ -198,14 +203,15 @@ export function describeCheck(r: CheckResult): CheckView {
 
 export type PositionView =
   | { kind: 'empty' }
-  | { kind: 'position'; rows: { asset: AssetKey; aTokenBalance: bigint; principal: bigint; earned: bigint }[] }
+  | { kind: 'position'; partial?: true; rows: { asset: AssetKey; aTokenBalance: bigint; principal: bigint | null; earned: bigint | null }[] }
 
 export function describePosition(p: PositionResult): PositionView {
   const rows = ASSET_KEYS.flatMap(asset => {
     const a = p.assets[asset]
-    return a && (a.aTokenBalance > 0n || a.principal > 0n) ? [{ asset, aTokenBalance: a.aTokenBalance, principal: a.principal, earned: a.earned }] : []
+    return a && (a.aTokenBalance > 0n || (a.principal ?? 0n) > 0n) ? [{ asset, aTokenBalance: a.aTokenBalance, principal: a.principal, earned: a.earned }] : []
   })
-  return rows.length ? { kind: 'position', rows } : { kind: 'empty' }
+  if (!rows.length) return { kind: 'empty' }
+  return p.partial ? { kind: 'position', partial: true, rows } : { kind: 'position', rows }
 }
 
 // NIM addresses go in compact form so the path has no spaces.

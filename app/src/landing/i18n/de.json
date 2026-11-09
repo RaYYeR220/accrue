@@ -125,6 +125,7 @@
   "landing.checker.position.emptyTitle": "Keine Aave-Position",
   "landing.checker.position.emptyBody": "Diese Adresse hält auf Polygon weder aUSDT0 noch aUSDC.",
   "landing.checker.position.note": "Gerade eben von Polygon gelesen. Der Zinssatz schwankt.",
+  "landing.checker.position.partial": "Was über Accrue eingezahlt wurde, lässt sich gerade nicht lesen; das Guthaben bei Aave ist aktuell.",
   "landing.board.title": "Alle {n} gelisteten Pools",
   "landing.board.live": "Vom Accrue-Indexer, {date} · {days}-Tage-Fenster · nach Stake sortiert",
   "landing.board.live.one": "Vom Accrue-Indexer, {date} · Ein-Tages-Fenster · nach Stake sortiert",

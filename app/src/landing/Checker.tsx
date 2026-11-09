@@ -98,12 +98,12 @@ function EvmResult({ view }: { view: PositionView }) {
           <h4>{r.asset}</h4>
           <div className="result-stats">
             <Stat label={t('landing.checker.position.inAave')} value={<Amount value={fmtUsd6(r.aTokenBalance)} />} />
-            <Stat label={t('landing.checker.position.viaAccrue')} value={<Amount value={fmtUsd6(r.principal)} />} />
-            <Stat label={t('landing.checker.position.earned')} value={<Amount value={fmtUsd6(r.earned)} />} />
+            <Stat label={t('landing.checker.position.viaAccrue')} value={r.principal === null ? '—' : <Amount value={fmtUsd6(r.principal)} />} />
+            <Stat label={t('landing.checker.position.earned')} value={r.earned === null ? '—' : <Amount value={fmtUsd6(r.earned)} />} />
           </div>
         </div>
       ))}
-      <p className="result-note">{t('landing.checker.position.note')}</p>
+      <p className="result-note">{t(view.partial ? 'landing.checker.position.partial' : 'landing.checker.position.note')}</p>
     </Card>
   )
 }

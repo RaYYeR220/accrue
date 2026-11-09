@@ -168,6 +168,19 @@ test.describe('dollars', () => {
     await expect(d.getByText('A permit on your Aave USDT position for 3.00 USDT', { exact: false })).toBeVisible()
   })
 
+  test("when Accrue's own figures cannot be read, the Aave balance still shows and Withdraw still works", async ({ page }) => {
+    await start(page, 'happy', '&position=partial')
+    await tab(page, 'Dollars')
+    await connectPolygon(page)
+    const usdt = asset(page, 'USDT')
+    await expect(page.getByText("Accrue's own figures can't be read right now.", { exact: false })).toBeVisible()
+    await expect(usdt.getByText('25.00 USDT')).toBeVisible()
+    for (const k of ['Put in through Accrue', 'Earned so far']) await expect(usdt.locator('.fact', { hasText: k }).locator('dd')).toHaveText('—')
+    await expect(usdt.getByRole('button', { name: 'Withdraw', exact: true })).toBeEnabled()
+    const d = await signDollars(page, 'Withdraw', '1')
+    await expect(d.getByText('Back in your wallet')).toBeVisible(SLOW)
+  })
+
   test('a returning person sees their dollars without the wallet being asked anything', async ({ page }) => {
     await start(page, 'happy')
     await tab(page, 'Dollars')

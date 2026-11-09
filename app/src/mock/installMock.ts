@@ -10,7 +10,7 @@ import { isScenarioName, MOCK_RATES, SCENARIO_NAMES, SCENARIOS, type RelayOutcom
 // /api/relay*, /api/rates, /api/health, /api/aave, /api/position, /api/pools, /api/check endpoints,
 // the testnet validators API and Polygon RPC reads. What a server or a chain would remember (relay
 // jobs, balances, the staker) lives in sessionStorage, so a reload finds it again.
-// Query: ?mock=<scenario>[&lang=de][&fiat=EUR][&network=testnet][&chain=0x89][&delay=0][&rates=down|stale|fxstale]
+// Query: ?mock=<scenario>[&lang=de][&fiat=EUR][&network=testnet][&chain=0x89][&delay=0][&rates=down|stale|fxstale][&position=partial]
 // Loaded only through the `import.meta.env.DEV` guard in main.tsx.
 
 export interface MockCall {
@@ -440,6 +440,11 @@ export function installMock(search: string, w: Window = window): MockHandle {
       const bal = balances.get(a.aToken.toLowerCase()) ?? 0n
       const p = principal.get(a.aToken.toLowerCase()) ?? 0n
       assets[k] = { aTokenBalance: bal.toString(), scaledFromAccrue: p.toString(), principal: p.toString(), earned: (bal - p).toString() }
+    }
+    // position=partial: the API could not read the router's logs; balances only
+    if (q.get('position') === 'partial') {
+      for (const a of Object.values(assets) as Record<string, unknown>[]) Object.assign(a, { scaledFromAccrue: null, principal: null, earned: null })
+      return { partial: true, reason: 'router_logs', assets }
     }
     return { assets }
   }

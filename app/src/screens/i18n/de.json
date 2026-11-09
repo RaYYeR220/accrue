@@ -115,6 +115,7 @@
   "usd.risk.exitV": "Eine Signatur, meist unter einer Minute. Gerade kann Aave {usdt} und {usdc} sofort auszahlen.",
   "usd.src": "Zinssätze und Liquidität aus dem Aave-Pool auf Polygon, gelesen um {time}.",
   "usd.srcDown": "Aaves Zahlen sind gerade nicht verfügbar.",
+  "usd.partial": "Die Zahlen von Accrue lassen sich gerade nicht lesen. Dein Guthaben bei Aave ist aktuell, und Abheben funktioniert wie immer.",
 
   "amount.labelSupply": "Betrag zum Einzahlen",
   "amount.labelWithdraw": "Betrag zum Abheben",

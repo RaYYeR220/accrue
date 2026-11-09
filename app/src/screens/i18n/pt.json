@@ -115,6 +115,7 @@
   "usd.risk.exitV": "Uma assinatura, geralmente menos de um minuto. Agora o Aave pode pagar {usdt} e {usdc} de uma vez.",
   "usd.src": "Taxas e liquidez lidas do pool do Aave na Polygon às {time}.",
   "usd.srcDown": "Os números do Aave não estão disponíveis agora.",
+  "usd.partial": "Os números do próprio Accrue não podem ser lidos agora. Seu saldo no Aave está atualizado, e Sacar funciona normalmente.",
 
   "amount.labelSupply": "Valor a depositar",
   "amount.labelWithdraw": "Valor a sacar",

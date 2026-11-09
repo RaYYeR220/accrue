@@ -115,6 +115,7 @@
   "usd.risk.exitV": "One signature, usually under a minute. Right now Aave can pay out {usdt} and {usdc} at once.",
   "usd.src": "Rates and liquidity read from the Aave pool on Polygon at {time}.",
   "usd.srcDown": "Aave's numbers are not available right now.",
+  "usd.partial": "Accrue's own figures can't be read right now. Your balance in Aave is live, and Withdraw works as usual.",
 
   "amount.labelSupply": "Amount to deposit",
   "amount.labelWithdraw": "Amount to withdraw",

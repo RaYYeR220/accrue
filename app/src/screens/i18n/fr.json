@@ -115,6 +115,7 @@
   "usd.risk.exitV": "Une signature, généralement moins d’une minute. En ce moment, Aave peut verser {usdt} et {usdc} d’un coup.",
   "usd.src": "Taux et liquidité lus dans le pool Aave sur Polygon à {time}.",
   "usd.srcDown": "Les chiffres d’Aave ne sont pas disponibles pour l’instant.",
+  "usd.partial": "Les chiffres propres à Accrue ne peuvent pas être lus pour l’instant. Votre solde sur Aave est à jour, et Retirer fonctionne comme d’habitude.",
 
   "amount.labelSupply": "Montant à déposer",
   "amount.labelWithdraw": "Montant à retirer",

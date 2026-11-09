@@ -125,6 +125,7 @@
   "landing.checker.position.emptyTitle": "Sin posición en Aave",
   "landing.checker.position.emptyBody": "Esta dirección no tiene aUSDT0 ni aUSDC en Polygon.",
   "landing.checker.position.note": "Leído de Polygon ahora mismo. El rendimiento varía.",
+  "landing.checker.position.partial": "Ahora mismo no se puede leer lo depositado con Accrue; el saldo en Aave está al día.",
   "landing.board.title": "Los {n} pools listados",
   "landing.board.live": "Del indexador de Accrue, {date} · periodo de {days} días · ordenado por stake",
   "landing.board.live.one": "Del indexador de Accrue, {date} · periodo de un día · ordenado por stake",

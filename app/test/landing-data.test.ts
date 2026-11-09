@@ -212,4 +212,15 @@ describe('parsePosition / describePosition', () => {
     })
     expect(describePosition(parsePosition({ assets: { USDC: body.assets.USDC } }))).toEqual({ kind: 'empty' })
   })
+
+  it('a partial answer shows the balance in Aave and leaves what came through Accrue unknown, never 0', () => {
+    const unknown = { scaledFromAccrue: null, principal: null, earned: null }
+    const partial = { partial: true, reason: 'router_logs', assets: { USDT0: { aTokenBalance: '12345678', ...unknown }, USDC: { aTokenBalance: '0', ...unknown } } }
+    expect(parsePosition(partial).assets.USDT0).toEqual({ aTokenBalance: 12_345_678n, ...unknown })
+    expect(describePosition(parsePosition(partial))).toEqual({
+      kind: 'position',
+      partial: true,
+      rows: [{ asset: 'USDT0', aTokenBalance: 12_345_678n, principal: null, earned: null }],
+    })
+  })
 })

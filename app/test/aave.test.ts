@@ -1,6 +1,7 @@
+import { QueryClient } from '@tanstack/react-query'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { fetchAave, parseAave } from '../src/features/dollars/useAave'
-import { fetchPosition, parsePosition } from '../src/features/dollars/usePosition'
+import { afterMove, fetchPosition, parsePosition, POSITION_FOLLOW_UP_MS, refreshPositions, type Position } from '../src/features/dollars/usePosition'
 import { HttpError } from '../src/providers/errors'
 
 const reserve = {
@@ -13,7 +14,7 @@ const reserve = {
 }
 const aave = { asOf: 1_762_500_060_000, reserves: { USDT0: reserve, USDC: { ...reserve, supplyApy: 0.041 } } }
 
-const pos = (o: Partial<Record<string, string>> = {}) => ({
+const pos = (o: Partial<Record<string, string | null>> = {}) => ({
   aTokenBalance: '100000123',
   scaledFromAccrue: '89000000',
   principal: '100000000',
@@ -21,8 +22,13 @@ const pos = (o: Partial<Record<string, string>> = {}) => ({
   ...o,
 })
 const position = { assets: { USDT0: pos(), USDC: pos({ aTokenBalance: '0', scaledFromAccrue: '0', principal: '0', earned: '0' }) } }
+const unknown = { scaledFromAccrue: null, principal: null, earned: null }
+const partial = { partial: true, reason: 'router_logs', assets: { USDT0: pos(unknown), USDC: pos({ aTokenBalance: '0', ...unknown }) } }
 
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  vi.unstubAllGlobals()
+  vi.useRealTimers()
+})
 
 describe('GET /api/aave', () => {
   it('parses ray and unit strings to bigints', () => {
@@ -87,5 +93,61 @@ describe('GET /api/position/:evm', () => {
     vi.stubGlobal('fetch', f)
     await fetchPosition(owner)
     expect(String((f.mock.calls[0] as unknown[])[0])).toBe(`/api/position/${owner}`)
+  })
+
+  it('a complete answer is not partial', () => {
+    expect(parsePosition(position).partial).toBe(false)
+  })
+
+  it('a partial answer (router logs unreadable) keeps the live balance, what Accrue tracks is unknown', () => {
+    const p = parsePosition(partial)
+    expect(p.partial).toBe(true)
+    expect(p.assets.USDT0).toEqual({ aTokenBalance: 100_000_123n, scaledFromAccrue: null, principal: null, earned: null })
+    expect(p.assets.USDC.aTokenBalance).toBe(0n)
+  })
+
+  it('a missing figure is only accepted in an answer marked partial', () => {
+    expect(() => parsePosition({ assets: { ...position.assets, USDT0: pos({ principal: null }) } })).toThrow()
+    expect(() => parsePosition({ ...partial, assets: { ...partial.assets, USDT0: pos({ ...unknown, aTokenBalance: null }) } })).toThrow()
+  })
+})
+
+describe('reading the position again right after a deposit or withdrawal lands', () => {
+  const owner = '0x1111111111111111111111111111111111111111'
+  const moved = { assets: { ...position.assets, USDT0: pos({ aTokenBalance: '200000123' }) } }
+  const seeded = () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    // what the screen showed a moment ago, still fresh for the query's 30 s staleTime
+    qc.setQueryData(['position', owner], parsePosition(position))
+    return qc
+  }
+
+  it('skips the server copy (?fresh=1) and the query staleTime, and shows the new balance', async () => {
+    const qc = seeded()
+    const f = vi.fn(async () => new Response(JSON.stringify(moved), { status: 200 }))
+    vi.stubGlobal('fetch', f)
+    await refreshPositions(qc)
+    expect(f.mock.calls.map(c => String((c as unknown[])[0]))).toEqual([`/api/position/${owner}?fresh=1`])
+    expect(qc.getQueryData<Position>(['position', owner])!.assets.USDT0.aTokenBalance).toBe(200_000_123n)
+  })
+
+  it('reads once more a few seconds later, in case the node that answered first had not seen the block yet', async () => {
+    vi.useFakeTimers()
+    const qc = seeded()
+    const f = vi.fn(async () => new Response(JSON.stringify(moved), { status: 200 }))
+    vi.stubGlobal('fetch', f)
+    afterMove(qc)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(f).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(POSITION_FOLLOW_UP_MS)
+    expect(f).toHaveBeenCalledTimes(2)
+    expect(f.mock.calls.every(c => String((c as unknown[])[0]).endsWith('?fresh=1'))).toBe(true)
+  })
+
+  it('a failed read leaves what was shown', async () => {
+    const qc = seeded()
+    vi.stubGlobal('fetch', async () => new Response('{}', { status: 503 }))
+    await refreshPositions(qc)
+    expect(qc.getQueryData<Position>(['position', owner])!.assets.USDT0.aTokenBalance).toBe(100_000_123n)
   })
 })

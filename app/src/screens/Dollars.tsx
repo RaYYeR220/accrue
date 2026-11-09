@@ -54,8 +54,8 @@ function AssetCard({ asset, onOpen }: { asset: AssetKey; onOpen: (s: SheetSpec) 
                 '—'
               ),
             },
-            { key: 'principal', k: t('usd.principal'), v: p ? tokens(p.principal, asset) : '—' },
-            { key: 'earned', k: t('usd.earned'), v: p ? tokens(p.earned > 0n ? p.earned : 0n, asset) : '—' },
+            { key: 'principal', k: t('usd.principal'), v: p && p.principal !== null ? tokens(p.principal, asset) : '—' },
+            { key: 'earned', k: t('usd.earned'), v: p && p.earned !== null ? tokens(p.earned > 0n ? p.earned : 0n, asset) : '—' },
             { key: 'wallet', k: t('usd.inWallet'), v: inWallet !== undefined ? tokens(inWallet, asset) : '—' },
           ]}
         />
@@ -146,6 +146,7 @@ export function Dollars() {
     <div className="screen">
       <ScreenHead title={t('usd.title')} sub={t('usd.sub')} />
       {app.network === 'testnet' && <Notice>{t('usd.mainnetOnly')}</Notice>}
+      {app.owner && app.position.data?.partial && <Notice>{t('usd.partial')}</Notice>}
       {!app.owner && (
         <Card className="connect-card">
           <p className="connect-lede">{t('usd.connectLede')}</p>
