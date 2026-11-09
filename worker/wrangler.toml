@@ -9,7 +9,7 @@ crons = ["* * * * *"]
 
 [vars]
 NIM_RPCS = "https://rpc.nimiqwatch.com"
-POLYGON_RPCS = "https://polygon-bor-rpc.publicnode.com,https://1rpc.io/matic,https://polygon.drpc.org"
+POLYGON_RPCS = "https://polygon.drpc.org,https://polygon-bor-rpc.publicnode.com,https://1rpc.io/matic"
 # the API's own reads (router logs in 100-block chunks, positions, Aave, health): from Cloudflare drpc
 # answers fast, publicnode often stalls 3 s and rate-limits, 1rpc refuses. The relayer keeps POLYGON_RPCS.
 POLYGON_READ_RPCS = "https://polygon.drpc.org,https://polygon-bor-rpc.publicnode.com"
