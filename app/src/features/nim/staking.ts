@@ -7,10 +7,11 @@ export type StakePlan =
   | { error: 'FUNDS_SPLIT'; available: bigint }
 
 // One staking transaction is funded from one account. Nimiq Pay funds staking from the HTLC
-// (where spendable NIM usually sits; the wallet address often reads 0), so with an HTLC account
-// that balance is what can be staked; without one, the wallet's. Home still shows the total.
+// (where spendable NIM usually sits; the wallet address often reads 0), so an HTLC holding NIM is
+// what can be staked. A fresh wallet has no HTLC account, and once funded one can appear empty
+// while the wallet holds the NIM (seen on a real device): then the wallet's. Home shows the total.
 export function stakeFundsOf(accounts: NimAccounts, b: NimBalances): bigint {
-  return accounts.htlc ? b.htlc : b.wallet
+  return accounts.htlc && b.htlc > 0n ? b.htlc : b.wallet
 }
 
 // The protocol checks the minimum on the staker's non-retired balance after the change,
@@ -21,7 +22,8 @@ export function stakePlan(args: { staker: Staker | null; spendable: bigint; amou
   const staked = staker ? staker.activeLuna + staker.inactiveLuna : 0n
   if (amount <= 0n || staked + amount < MIN_STAKE_LUNA) return { error: 'BELOW_MINIMUM' }
   if (amount > spendable) {
-    return total !== undefined && amount <= total ? { error: 'FUNDS_SPLIT', available: spendable } : { error: 'INSUFFICIENT_BALANCE' }
+    // "only 0 NIM can be staked" helps nobody: with nothing to draw on it is simply too little
+    return spendable > 0n && total !== undefined && amount <= total ? { error: 'FUNDS_SPLIT', available: spendable } : { error: 'INSUFFICIENT_BALANCE' }
   }
   return staker ? { kind: 'add', delegationRequired: false } : { kind: 'new', delegationRequired: true }
 }

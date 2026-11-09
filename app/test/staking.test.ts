@@ -53,6 +53,19 @@ describe('stake funding', () => {
     expect(stakeFundsOf({ wallet: WALLET }, bal('300', '0'))).toBe(nim('300'))
   })
 
+  it('an HTLC account holding nothing does not hide the wallet: the wallet funds the stake', () => {
+    // a funded fresh wallet on a real device: the HTLC account appears, empty, while the wallet holds the NIM
+    const b = bal('300', '0')
+    const spendable = stakeFundsOf({ wallet: WALLET, htlc: HTLC }, b)
+    expect(spendable).toBe(nim('300'))
+    expect(stakePlan({ staker: null, spendable, total: b.total, amount: nim('200') })).toEqual({ kind: 'new', delegationRequired: true })
+  })
+
+  it('never says "Only 0 NIM can be staked": with nothing to draw on it is too little NIM', () => {
+    expect(stakePlan({ staker: null, spendable: 0n, total: nim('300'), amount: nim('200') })).toEqual({ error: 'INSUFFICIENT_BALANCE' })
+    expect(stakePlan({ staker: null, spendable: 0n, total: 0n, amount: nim('200') })).toEqual({ error: 'INSUFFICIENT_BALANCE' })
+  })
+
   it('wallet 100 + HTLC 150 cannot fund a 200 NIM stake, and says how much can', () => {
     const b = bal('100', '150')
     const spendable = stakeFundsOf({ wallet: WALLET, htlc: HTLC }, b)
