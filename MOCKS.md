@@ -26,16 +26,24 @@ Three fallbacks are real data shown with their age or their gaps, not simulation
 
 ## Demo video
 
-The demo video was recorded in a desktop browser, with a test wallet standing in for Nimiq Pay. Its keys were
-held outside the page, and its signatures were made by a local key instead of Nimiq Pay's dialogs.
+The demo video was recorded in a desktop browser at phone size, with a test wallet standing in for Nimiq Pay. Its
+keys were held outside the page, and its signatures were made by a local key instead of Nimiq Pay's dialogs. The
+video says so on screen: "In a browser at phone size, with a test wallet standing in for Nimiq Pay. Every
+transaction shown is real: Polygon mainnet, Nimiq testnet for staking."
 
-- Every Polygon transaction in it is real, on mainnet: the $1.00 deposit
+- Every Polygon transaction in it is real, on mainnet, from the demo wallet
+  `0xA125b94355a53DBc62530bBfcf3040a18CeE3624`: the $1.00 deposit
   [`0x05bde28c…0a7270`](https://polygonscan.com/tx/0x05bde28ce9fda79fbbd5f10efc15eb34dcfb43c6b90b04bddc7cdafacc0a7270)
-  and the withdrawal
-  [`0x19290f6d…24c45e`](https://polygonscan.com/tx/0x19290f6de9f5741a263c15a8bd487221af88e7d0cf84f2e46b3e1d6ad324c45e),
-  both sent and paid for by Accrue's relayer. They are recorded with the others in
-  [PROOF.md](PROOF.md#polygon-mainnet).
-- The NIM staking scenes run on Nimiq testnet, with the app's Testnet badge on screen.
+  (block 97,017,136) and the withdrawal of all of it
+  [`0x19290f6d…24c45e`](https://polygonscan.com/tx/0x19290f6de9f5741a263c15a8bd487221af88e7d0cf84f2e46b3e1d6ad324c45e)
+  (block 97,017,374), both sent and paid for by Accrue's relayer. They are recorded with the others in
+  [PROOF.md](PROOF.md#polygon-mainnet), and `verify-onchain.mjs` reads them back.
+- The NIM staking scenes run on Nimiq testnet, with the app's Testnet badge on screen, and their transactions are
+  real testnet ones: the 100 NIM stake
+  [`80f92aed…09c764`](https://test.nimiq.watch/#80f92aeddc14334a4b97b5dad45b56129b9f927c07b7ff347e1077abc809c764)
+  (block 16,314,747) and stopping it
+  [`8a128481…7231ec`](https://test.nimiq.watch/#8a128481797198588cf8e3f2518a8b52e4cd4b81f5941b9902a7963b567231ec)
+  (block 16,314,845), both succeeded.
 - Payout Check shows mainnet data, live from `/api/pools` and `/api/check`.
 
 What Nimiq Pay itself does with Accrue on a phone was checked on a real device:
