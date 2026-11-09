@@ -2,7 +2,7 @@ import type { Env } from '../env'
 import { VERSION } from '../env'
 import { GAS_POLICY } from '../relayer/gas'
 import { polygonClient } from '../rpc/polygon'
-import { routerConfig } from '../indexer/router'
+import { routerConfig, scanKey } from '../indexer/router'
 
 /** Early warning only; relays stop at GAS_POLICY.floorWei, which is also what makes health not ok. */
 const LOW_GAS_WEI = 1_000_000_000_000_000_000n // 1 POL
@@ -42,16 +42,43 @@ async function indexerStatus(env: Env) {
   }
 }
 
-// a router whose deploy block is unknown cannot have its logs read: /api/position answers 503 for it
-function routerStatus(env: Env) {
+/**
+ * The router and how far the cron's fold of its logs is behind: blocks between the last folded one
+ * and the head (null when either cannot be read), and minutes since the fold last moved (null before
+ * the first fold). A router whose deploy block is unknown cannot have its logs read: /api/position
+ * answers 503 for it.
+ */
+async function routerStatus(env: Env) {
   const cfg = routerConfig(env)
   if (!cfg) return null
-  return cfg.misconfigured ? ('misconfigured' as const) : { address: cfg.router, deployBlock: cfg.deployBlock }
+  if (cfg.misconfigured) return 'misconfigured' as const
+  const readCursor = async () => {
+    try {
+      const row = await env.DB.prepare('SELECT value, updated_at FROM meta WHERE key = ?').bind(scanKey(cfg.router)).first<{ value: string; updated_at: number }>()
+      return row ?? ('none' as const)
+    } catch {
+      return null
+    }
+  }
+  const readHead = async () => {
+    try {
+      return Number(await polygonClient(env, { timeoutMs: 2_500 }).getBlockNumber({ cacheTime: 0 }))
+    } catch {
+      return null
+    }
+  }
+  const [cursor, head] = await Promise.all([readCursor(), readHead()])
+  const folded = cursor === null ? null : cursor === 'none' ? (cfg.deployBlock as number) - 1 : Number(cursor.value)
+  return {
+    address: cfg.router,
+    deployBlock: cfg.deployBlock,
+    lagBlocks: head === null || folded === null ? null : Math.max(0, head - folded),
+    lagMinutes: cursor && cursor !== 'none' ? Math.max(0, Math.round((Date.now() - cursor.updated_at) / 60_000)) : null,
+  }
 }
 
 export async function health(env: Env) {
-  const [r, indexer] = await Promise.all([relayerStatus(env), indexerStatus(env)])
+  const [r, indexer, router] = await Promise.all([relayerStatus(env), indexerStatus(env), routerStatus(env)])
   const indexerOk = !indexer.lastError && (indexer.lagMinutes === null || indexer.lagMinutes <= MAX_INDEXER_LAG_MIN)
-  const router = routerStatus(env)
   return { ok: r.ok && indexerOk && router !== 'misconfigured', relayer: r.relayer, router, indexer, version: VERSION }
 }

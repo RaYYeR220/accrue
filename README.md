@@ -162,6 +162,7 @@ Requirements: Node 24 and pnpm 9. The contract suites need Foundry and an archiv
 |---|---|---|
 | `NIM_RPCS` | `worker/wrangler.toml` | Comma-separated Nimiq JSON-RPC endpoints, tried in order. Default `https://rpc.nimiqwatch.com`. |
 | `POLYGON_RPCS` | `worker/wrangler.toml` | Comma-separated Polygon RPC endpoints; the relayer broadcasts to all of them. |
+| `POLYGON_LOG_RPCS` | `worker/wrangler.toml`, optional | The Polygon endpoints that serve `eth_getLogs` over 1,800 blocks, tried in order, for the router's events; unset, `POLYGON_RPCS`. |
 | `RELAYER_ADDRESS` | `worker/wrangler.toml` | Public address of the relayer key; `/api/health` reports its POL balance. |
 | `RELAYER_KEY` | Worker secret (`.dev.vars` locally) | The relayer's hot key. It pays gas and cannot move user funds anywhere but back to their owner. |
 | `ROUTER_ADDRESS` | `worker/wrangler.toml`, optional | Overrides the router in `packages/shared/src/deployments.json`. |
@@ -222,6 +223,10 @@ node scripts/verify-onchain.mjs           # checks the chain and the live app, o
   pool is. [METHODOLOGY.md](METHODOLOGY.md#honest-limits) lists every limit.
 - **The indexer reads one public Nimiq RPC.** If it falls behind, each verdict carries a "data as of" reason and
   `/api/health` reports the lag.
+- **"Earned so far" needs the router's logs from public Polygon RPCs.** When none of them serves the logs,
+  the Dollars screen still shows the live Aave balance and Withdraw works; only the Accrue figures show a dash
+  until the next read. `/api/health` reports how far the router's log scan is behind (`router.lagBlocks`,
+  `router.lagMinutes`).
 - **Unstake timing comes from the protocol's rules.** The testnet transactions in [PROOF.md](PROOF.md#nimiq-testnet)
   show the lock and the refusals; the release block itself (one epoch plus one block after the election block
   that starts the wait) is computed from the protocol source, and the countdown turns blocks into time with the

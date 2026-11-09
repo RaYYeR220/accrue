@@ -637,12 +637,42 @@ describe('GET /api/position/:evm and the router log scan', () => {
     })
   })
 
-  it('the cron scans the router after its indexer tick', async () => {
+  const cursorOf = (db: FakeD1) => db.query<{ value: string }>('SELECT value FROM meta WHERE key = ?', `router_scan:${ROUTER.toLowerCase()}`)[0]?.value
+
+  it('every cron run scans the router', async () => {
     world()
     const db = new FakeD1()
     const r = await runScheduled(routed(db))
     expect(r.router).toMatchObject({ from: 900, to: 3_436, events: 4 })
-    expect(db.query<{ value: string }>("SELECT value FROM meta WHERE key = ?", `router_scan:${ROUTER.toLowerCase()}`)[0]!.value).toBe('3436')
+    expect(cursorOf(db)).toBe('3436')
+  })
+
+  it('a run whose job never finishes (as when the platform stops it) has already moved the router fold', async () => {
+    const chain = world()
+    // everything but Polygon hangs: the indexer job, whatever it is, never returns
+    vi.stubGlobal('fetch', (input: unknown, init?: { body?: string }) =>
+      String(input).startsWith('https://polygon.test') ? chain.fetch(input, init) : new Promise(() => {}),
+    )
+    const db = new FakeD1()
+    void runScheduled(routed(db))
+    await vi.waitFor(() => expect(cursorOf(db)).toBe('3436'))
+  })
+
+  it('/api/health reports how far the router fold is behind the head, in blocks and in minutes since it moved', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    const t = Date.UTC(2026, 10, 9, 13)
+    vi.setSystemTime(t)
+    world(3_500)
+    const db = new FakeD1()
+    // nothing folded yet: the whole range since the deploy block
+    expect((await health(routed(db))).router).toEqual({ address: ROUTER, deployBlock: 900, lagBlocks: 2_601, lagMinutes: null })
+    await scanRouterLogs(routed(db), { maxChunks: 3 })
+    vi.setSystemTime(t + 3 * 60_000)
+    world(3_590)
+    expect((await health(routed(db))).router).toEqual({ address: ROUTER, deployBlock: 900, lagBlocks: 154, lagMinutes: 3 })
+    // without a head the block lag is unknown, the time lag is not
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 502 })))
+    expect((await health(routed(db))).router).toEqual({ address: ROUTER, deployBlock: 900, lagBlocks: null, lagMinutes: 3 })
   })
 
   it('the scan resumes where it stopped and never folds an event twice', async () => {

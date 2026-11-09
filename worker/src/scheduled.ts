@@ -126,12 +126,14 @@ type Verdicts = { computed: number; pruned: boolean }
  * sync the validators API refuses, turns into a scan, so the indexer never idles. A sync or prune is
  * marked tried before it runs, so one that keeps failing waits RETRY_FAILED_MS and cannot hold up the
  * other jobs; a scan never syncs. With CRON_ONE_JOB_PER_RUN=false every due job runs, then a scan and
- * the verdicts. The router's new Supplied/Withdrawn logs (for /api/position) are read every run.
+ * the verdicts. The router's new Supplied/Withdrawn logs (for /api/position) are folded first in every
+ * run: they are cheap and on the money path, so a run the platform stops for CPU mid-job has still
+ * moved them.
  */
 export async function runScheduled(env: Env, deps: TickDeps = {}) {
   const now = (deps.now ?? Date.now)()
   const cfg = cronConfig(env as CronVars)
-  const state = await jobState(env)
+  const [router, state] = await Promise.all([scanRouterLogs(env, { maxChunks: 3 }), jobState(env)])
   const planned: Job[] = !state ? ['scan'] : cfg.oneJobPerRun ? [pickJob(state, now, cfg)] : [...dueJobs(state, now, cfg), 'scan', 'verdict']
   const jobs: Job[] = []
   let tick: TickResult | null = null
@@ -178,6 +180,5 @@ export async function runScheduled(env: Env, deps: TickDeps = {}) {
       await scanJob()
     }
   }
-  const router = await scanRouterLogs(env, { maxChunks: 3 })
   return { job: jobs[jobs.length - 1]!, jobs, tick: tick as TickResult | null, verdicts: verdicts as Verdicts | null, router, rates }
 }

@@ -15,13 +15,14 @@ function db(rows: { key: string; value: string; updated_at: number }[] | Error) 
   } as never
 }
 
-/** Answers eth_getBalance with `wei` (or fails), echoing each JSON-RPC id. */
+/** Answers eth_getBalance with `wei` and eth_blockNumber (or fails), echoing each JSON-RPC id. */
 function polygon(wei: bigint | 'down') {
   return vi.fn(async (_url: string, init: { body: string }) => {
     if (wei === 'down') throw new Error('connect ECONNREFUSED 10.0.0.1:443 secret-path')
     const req = JSON.parse(init.body) as { id: number; method: string }
-    expect(req.method).toBe('eth_getBalance')
-    return new Response(JSON.stringify({ jsonrpc: '2.0', id: req.id, result: `0x${wei.toString(16)}` }))
+    expect(['eth_getBalance', 'eth_blockNumber']).toContain(req.method)
+    const result = req.method === 'eth_blockNumber' ? '0x5c84a10' : `0x${wei.toString(16)}`
+    return new Response(JSON.stringify({ jsonrpc: '2.0', id: req.id, result }))
   })
 }
 
@@ -111,11 +112,12 @@ describe('health', () => {
 
   it('skips the relayer block when no address is configured', async () => {
     vi.useFakeTimers({ now: NOW, toFake: ['Date'] })
-    const f = vi.fn()
+    const f = polygon(10n ** 18n)
     vi.stubGlobal('fetch', f)
     const h = await health(env({ RELAYER_ADDRESS: '', DB: db(fresh) }))
     expect(h.relayer).toBeNull()
     expect(h.ok).toBe(true)
-    expect(f).not.toHaveBeenCalled()
+    // only the router's head is read
+    expect(f.mock.calls.map(([, init]) => (JSON.parse(init.body) as { method: string }).method)).not.toContain('eth_getBalance')
   })
 })
